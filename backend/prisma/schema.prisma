@@ -1,0 +1,290 @@
+// This is your Prisma schema file,
+// learn more about it in the docs: https://pris.ly/d/prisma-schema
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+enum Role {
+  USER
+  ADMIN
+  CANTEEN
+}
+
+enum OrderStatus {
+  ORDERED
+  PICKED_UP
+  NO_SHOW
+  CANCELLED
+}
+
+// Organizational Structure Models
+model Company {
+  id        String     @id @default(uuid())
+  name      String     @unique
+  isActive  Boolean    @default(true)
+  createdAt DateTime   @default(now())
+  updatedAt DateTime   @updatedAt
+
+  divisions Division[]
+
+  @@index([name])
+}
+
+model Division {
+  id        String       @id @default(uuid())
+  name      String
+  companyId String
+  isActive  Boolean      @default(true)
+  createdAt DateTime     @default(now())
+  updatedAt DateTime     @updatedAt
+
+  company     Company      @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  departments Department[]
+
+  @@unique([companyId, name])
+  @@index([companyId])
+}
+
+model Department {
+  id             String   @id @default(uuid())
+  name           String
+  divisionId     String
+  defaultShiftId String?  // Legacy field - will be removed after migration
+  workDays       String   @default("1,2,3,4,5") // 0=Sun, 1=Mon, 2=Tue, 3=Wed, 4=Thu, 5=Fri, 6=Sat
+  isActive       Boolean  @default(true)
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+
+  division       Division          @relation(fields: [divisionId], references: [id], onDelete: Cascade)
+  defaultShift   Shift?            @relation("DepartmentDefaultShift", fields: [defaultShiftId], references: [id])
+  allowedShifts  DepartmentShift[]
+  users          User[]
+
+  @@unique([divisionId, name])
+  @@index([divisionId])
+}
+
+// Join table for Department-Shift many-to-many relationship
+model DepartmentShift {
+  id           String   @id @default(uuid())
+  departmentId String
+  shiftId      String
+  createdAt    DateTime @default(now())
+
+  department Department @relation(fields: [departmentId], references: [id], onDelete: Cascade)
+  shift      Shift      @relation(fields: [shiftId], references: [id], onDelete: Cascade)
+
+  @@unique([departmentId, shiftId])
+  @@index([departmentId])
+  @@index([shiftId])
+}
+
+model User {
+  id           String      @id @default(uuid())
+  externalId   String      @unique // Employee ID from import
+  name         String
+  email        String?
+  password     String      // Hashed password
+  company      String      // Legacy field for display
+  division     String      // Legacy field for display
+  department   String      // Legacy field for display
+  departmentId String?     // Optional reference to Department
+  role         Role        @default(USER)
+  noShowCount  Int         @default(0)
+  mustChangePassword Boolean @default(true)
+  isActive     Boolean     @default(true)
+  createdAt    DateTime    @default(now())
+  updatedAt    DateTime    @updatedAt
+
+  departmentRef Department? @relation(fields: [departmentId], references: [id])
+  orders        Order[]
+  blacklists    Blacklist[]
+
+  @@index([externalId])
+  @@index([name])
+  @@index([company])
+  @@index([departmentId])
+}
+
+model Shift {
+  id        String   @id @default(uuid())
+  name      String   @unique // "Shift 1", "Shift 2", "Shift 3"
+  startTime String   // "08:00" format (HH:mm)
+  endTime   String   // "15:00" format (HH:mm)
+  isActive  Boolean  @default(true)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  orders           Order[]
+  departments      Department[]      @relation("DepartmentDefaultShift")
+  departmentShifts DepartmentShift[]
+  holidays         Holiday[]
+}
+
+model Order {
+  id            String      @id @default(uuid())
+  userId        String
+  shiftId       String
+  orderDate     DateTime    // Date of the order (current day only)
+  orderTime     DateTime    @default(now())
+  status        OrderStatus @default(ORDERED)
+  qrCode        String      @unique
+  checkInTime   DateTime?
+  checkedInById String?     // ID of admin/canteen staff who processed check-in
+  checkedInBy   String?     // Name of admin/canteen staff (denormalized for quick display)
+  cancelledById String?     // ID of user who cancelled the order
+  cancelledBy   String?     // Name of user who cancelled (denormalized)
+  cancelReason  String?     // Reason for cancellation
+  createdAt     DateTime    @default(now())
+  updatedAt     DateTime    @updatedAt
+
+  user        User        @relation(fields: [userId], references: [id], onDelete: Cascade)
+  shift       Shift       @relation(fields: [shiftId], references: [id])
+
+  @@index([userId])
+  @@index([shiftId])
+  @@index([orderDate])
+  @@index([status])
+  @@index([qrCode])
+  @@index([checkedInById])
+}
+
+model Blacklist {
+  id        String    @id @default(uuid())
+  userId    String
+  reason    String
+  startDate DateTime  @default(now())
+  endDate   DateTime?
+  isActive  Boolean   @default(true)
+  createdAt DateTime  @default(now())
+  updatedAt DateTime  @updatedAt
+
+  user      User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@index([isActive])
+}
+
+model Settings {
+  id                 String @id @default("default")
+  cutoffHours        Int    @default(6)      // Hours before shift to stop orders
+  blacklistStrikes   Int    @default(3)      // No-shows before blacklist
+  blacklistDuration  Int    @default(7)      // Days of blacklist
+  maxOrderDaysAhead  Int    @default(7)      // Maximum days in advance for ordering
+  
+  // NTP Settings
+  ntpEnabled         Boolean @default(true)  // Enable NTP sync
+  ntpServer          String  @default("pool.ntp.org") // NTP server address
+  ntpTimezone        String  @default("Asia/Jakarta") // Server timezone
+  ntpSyncInterval    Int     @default(3600)  // Sync interval in seconds (default 1 hour)
+  ntpLastSync        DateTime? // Last successful NTP sync time
+  ntpOffset          Int     @default(0)     // Time offset in milliseconds
+  
+  createdAt          DateTime @default(now())
+  updatedAt          DateTime @updatedAt
+}
+
+// Audit Log for comprehensive activity tracking
+enum AuditAction {
+  // Auth actions
+  LOGIN
+  LOGOUT
+  LOGIN_FAILED
+  PASSWORD_CHANGE
+  
+  // CRUD actions
+  CREATE
+  UPDATE
+  DELETE
+  
+  // Order actions
+  ORDER_CREATED
+  ORDER_CANCELLED
+  ORDER_CHECKIN
+  ORDER_NOSHOW
+  
+  // Blacklist actions
+  USER_BLACKLISTED
+  USER_UNBLOCKED
+  STRIKES_RESET
+  
+  // System actions
+  SETTINGS_UPDATE
+  NTP_SYNC
+  IMPORT_DATA
+  EXPORT_DATA
+  
+  // Other
+  VIEW
+  SEARCH
+  OTHER
+}
+
+model AuditLog {
+  id          String      @id @default(uuid())
+  timestamp   DateTime    @default(now())
+  
+  // Who performed the action
+  userId      String?     // Can be null for system actions or failed logins
+  userName    String?     // Denormalized for quick display
+  userRole    String?     // Role at time of action
+  
+  // What action was performed
+  action      AuditAction
+  
+  // What entity was affected
+  entity      String      // e.g., "User", "Order", "Shift", "Settings"
+  entityId    String?     // ID of the affected entity
+  entityName  String?     // Denormalized name for quick display
+  
+  // Change details
+  oldValue    Json?       // Previous state (for updates/deletes)
+  newValue    Json?       // New state (for creates/updates)
+  changes     Json?       // Summary of what changed
+  
+  // Request context
+  ipAddress   String?
+  userAgent   String?
+  requestPath String?     // API endpoint called
+  requestMethod String?   // GET, POST, PUT, DELETE
+  
+  // Additional metadata
+  metadata    Json?       // Any additional context
+  description String?     // Human-readable description
+  
+  // Status
+  success     Boolean     @default(true)
+  errorMessage String?    // If action failed
+  
+  @@index([timestamp])
+  @@index([userId])
+  @@index([action])
+  @@index([entity])
+  @@index([entityId])
+  @@index([success])
+}
+
+// Holiday calendar for blocking food orders on specific dates
+model Holiday {
+  id          String   @id @default(uuid())
+  date        DateTime @db.Date // The date of the holiday
+  name        String   // Holiday name (e.g., "Idul Fitri", "Natal")
+  description String?  // Optional description
+  shiftId     String?  // If null = fullday, if set = only this shift is blocked
+  shift       Shift?   @relation(fields: [shiftId], references: [id], onDelete: SetNull)
+  isActive    Boolean  @default(true)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  @@unique([date, shiftId]) // Unique per date + shift combo
+  @@index([date])
+  @@index([isActive])
+  @@index([shiftId])
+}
+
