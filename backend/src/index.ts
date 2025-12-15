@@ -16,6 +16,7 @@ import auditRoutes from './routes/audit.routes';
 import messageRoutes from './routes/message.routes';
 import announcementRoutes from './routes/announcement.routes';
 import emailRoutes from './routes/email.routes';
+import serverRoutes from './routes/server.routes';
 
 import { sseManager } from './controllers/sse.controller';
 import { startScheduler } from './services/scheduler';
@@ -61,6 +62,7 @@ app.use('/api/audit', auditRoutes);
 app.use('/api/messages', messageRoutes);
 app.use('/api/announcements', announcementRoutes);
 app.use('/api/email', emailRoutes);
+app.use('/api/server', serverRoutes);
 
 
 // Error handling middleware (centralized)

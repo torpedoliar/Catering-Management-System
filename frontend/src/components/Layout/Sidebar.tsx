@@ -21,7 +21,9 @@ import {
     Megaphone,
     Mail,
     ChevronDown,
-    ChevronRight
+    ChevronRight,
+    Activity,
+    DatabaseBackup
 } from 'lucide-react';
 
 interface SidebarProps {
@@ -34,6 +36,7 @@ export default function Sidebar({ onClose }: SidebarProps) {
     const [userExpanded, setUserExpanded] = useState(true);
     const [adminExpanded, setAdminExpanded] = useState(false);
     const [canteenExpanded, setCanteenExpanded] = useState(true);
+    const [serverExpanded, setServerExpanded] = useState(false);
 
     const isActive = (path: string) => location.pathname === path;
 
@@ -77,6 +80,11 @@ export default function Sidebar({ onClose }: SidebarProps) {
 
     const canteenLinks = [
         { path: '/canteen/checkin', icon: ScanLine, label: 'Check-in' },
+    ];
+
+    const serverLinks = [
+        { path: '/admin/performance', icon: Activity, label: 'Performance' },
+        { path: '/admin/backup', icon: DatabaseBackup, label: 'Backup & Restore' },
     ];
 
     const NavLink = ({ path, icon: Icon, label, colorIndex }: { path: string; icon: any; label: string; colorIndex: number }) => (
@@ -178,6 +186,28 @@ export default function Sidebar({ onClose }: SidebarProps) {
                             <div className="space-y-2">
                                 {adminLinks.map((link, index) => (
                                     <NavLink key={link.path} {...link} colorIndex={index} />
+                                ))}
+                            </div>
+                        )}
+                    </div>
+                )}
+
+                {/* Server section */}
+                {user?.role === 'ADMIN' && (
+                    <div className="mb-3">
+                        <div
+                            onClick={() => setServerExpanded(!serverExpanded)}
+                            className="flex items-center justify-between px-3 py-2.5 cursor-pointer rounded-xl transition-all duration-200 mb-2 bg-white/[0.03] border border-white/[0.05] backdrop-blur-sm hover:bg-white/[0.08] hover:border-white/[0.1]"
+                        >
+                            <p className="text-[10px] font-semibold text-orange-400 uppercase tracking-wider">
+                                Server
+                            </p>
+                            {serverExpanded ? <ChevronDown className="w-3.5 h-3.5 text-slate-400" /> : <ChevronRight className="w-3.5 h-3.5 text-slate-400" />}
+                        </div>
+                        {serverExpanded && (
+                            <div className="space-y-2">
+                                {serverLinks.map((link, index) => (
+                                    <NavLink key={link.path} {...link} colorIndex={index + 4} />
                                 ))}
                             </div>
                         )}

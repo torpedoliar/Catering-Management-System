@@ -26,6 +26,8 @@ const CostAnalysisPage = lazy(() => import('./pages/admin/CostAnalysisPage'));
 const AnnouncementPage = lazy(() => import('./pages/admin/AnnouncementPage'));
 const EmailSettingsPage = lazy(() => import('./pages/admin/EmailSettingsPage'));
 const OrderListPage = lazy(() => import('./pages/admin/OrderListPage'));
+const PerformancePage = lazy(() => import('./pages/admin/PerformancePage'));
+const BackupRestorePage = lazy(() => import('./pages/admin/BackupRestorePage'));
 const CheckInPage = lazy(() => import('./pages/canteen/CheckInPage'));
 
 // Layout
@@ -96,6 +98,8 @@ function AppRoutes() {
                     <Route path="/admin/audit-log" element={<AuditLogPage />} />
                     <Route path="/admin/messages" element={<MessagesPage />} />
                     <Route path="/admin/email-settings" element={<EmailSettingsPage />} />
+                    <Route path="/admin/performance" element={<PerformancePage />} />
+                    <Route path="/admin/backup" element={<BackupRestorePage />} />
                 </Route>
 
                 {/* Canteen Routes */}
