@@ -81,7 +81,7 @@ function AppRoutes() {
                 </Route>
 
                 {/* Admin Routes */}
-                <Route element={<ProtectedRoute roles={['ADMIN']}><Outlet /></ProtectedRoute>}>
+                <Route element={<ProtectedRoute roles={['ADMIN']}><Suspense fallback={<div className="flex items-center justify-center h-screen"><div className="animate-spin rounded-full h-12 w-12 border-t-2 border-b-2 border-orange-500"></div></div>}><Outlet /></Suspense></ProtectedRoute>}>
                     <Route path="/admin/dashboard" element={<DashboardPage />} />
                     <Route path="/admin/orders" element={<OrderListPage />} />
                     <Route path="/admin/shifts" element={<ShiftConfigPage />} />
@@ -99,7 +99,7 @@ function AppRoutes() {
                 </Route>
 
                 {/* Canteen Routes */}
-                <Route element={<ProtectedRoute roles={['CANTEEN', 'ADMIN']}><Outlet /></ProtectedRoute>}>
+                <Route element={<ProtectedRoute roles={['CANTEEN', 'ADMIN']}><Suspense fallback={<div className="flex items-center justify-center h-screen"><div className="animate-spin rounded-full h-12 w-12 border-t-2 border-b-2 border-orange-500"></div></div>}><Outlet /></Suspense></ProtectedRoute>}>
                     <Route path="/canteen/checkin" element={<CheckInPage />} />
                 </Route>
             </Route>

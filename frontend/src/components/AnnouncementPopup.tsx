@@ -47,6 +47,9 @@ export default function AnnouncementPopup() {
     // Reset state when user logs out (token becomes null)
     useEffect(() => {
         if (!token) {
+            // Clear sessionStorage so announcements show again on next login
+            sessionStorage.removeItem('announcementsShown');
+            sessionStorage.removeItem('dismissedAnnouncements');
             setShownThisSession(false);
             setDismissedIds(new Set());
             setIsVisible(false);
