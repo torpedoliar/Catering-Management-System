@@ -1,5 +1,5 @@
 import { Router, Response } from 'express';
-import { PrismaClient } from '@prisma/client';
+import { prisma } from '../lib/prisma';
 import QRCode from 'qrcode';
 import { v4 as uuidv4 } from 'uuid';
 import ExcelJS from 'exceljs';
@@ -10,13 +10,16 @@ import { sseManager } from '../controllers/sse.controller';
 import { getNow, getToday, getTomorrow, isPastCutoff, isPastCutoffForDate } from '../services/time.service';
 import { logOrder, getRequestContext } from '../services/audit.service';
 import { ErrorMessages, formatErrorMessage } from '../utils/errorMessages';
+import { apiRateLimitMiddleware } from '../services/rate-limiter.service';
+import { validate } from '../middleware/validate.middleware';
+import { createOrderSchema, bulkOrderSchema } from '../utils/validation';
+import { OrderWhereFilter, BulkOrderSuccess, BulkOrderFailure } from '../types';
 import multer from 'multer';
 import sharp from 'sharp';
 import fs from 'fs';
 import path from 'path';
 
 const router = Router();
-const prisma = new PrismaClient();
 
 // Multer config for check-in photo
 const storage = multer.memoryStorage();
@@ -33,9 +36,9 @@ router.get('/my-orders', authMiddleware, async (req: AuthRequest, res: Response)
     try {
         const { status, startDate, endDate, page = '1', limit = '20' } = req.query;
 
-        const where: any = { userId: req.user?.id };
+        const where: OrderWhereFilter = { userId: req.user?.id };
 
-        if (status) where.status = status;
+        if (status) where.status = status as import('@prisma/client').OrderStatus;
         if (startDate || endDate) {
             where.orderDate = {};
             if (startDate) where.orderDate.gte = new Date(startDate as string);
@@ -109,7 +112,7 @@ router.get('/today', authMiddleware, async (req: AuthRequest, res: Response) => 
 });
 
 // Create order (with blacklist validation, cutoff validated per selected date inside)
-router.post('/', authMiddleware, blacklistMiddleware, async (req: AuthRequest, res: Response) => {
+router.post('/', authMiddleware, blacklistMiddleware, validate(createOrderSchema), async (req: AuthRequest, res: Response) => {
     const context = getRequestContext(req);
 
     try {
@@ -289,7 +292,7 @@ router.post('/', authMiddleware, blacklistMiddleware, async (req: AuthRequest, r
 });
 
 // Bulk create orders (with blacklist validation)
-router.post('/bulk', authMiddleware, blacklistMiddleware, async (req: AuthRequest, res: Response) => {
+router.post('/bulk', authMiddleware, blacklistMiddleware, apiRateLimitMiddleware('bulk-order'), validate(bulkOrderSchema), async (req: AuthRequest, res: Response) => {
     const context = getRequestContext(req);
 
     try {
@@ -316,8 +319,8 @@ router.post('/bulk', authMiddleware, blacklistMiddleware, async (req: AuthReques
         const maxDate = new Date(today);
         maxDate.setDate(maxDate.getDate() + maxOrderDaysAhead);
 
-        const successOrders: any[] = [];
-        const failedOrders: any[] = [];
+        const successOrders: BulkOrderSuccess[] = [];
+        const failedOrders: BulkOrderFailure[] = [];
 
         for (const orderReq of orderRequests) {
             const { date: orderDateParam, shiftId } = orderReq;
@@ -489,6 +492,7 @@ router.post('/bulk', authMiddleware, blacklistMiddleware, async (req: AuthReques
 
                 successOrders.push({
                     date: orderDateParam,
+                    shiftId,
                     order: { ...order, qrCodeImage },
                 });
             } catch (err) {

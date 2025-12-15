@@ -1,17 +1,18 @@
 import { Router, Response } from 'express';
 import bcrypt from 'bcryptjs';
 import jwt from 'jsonwebtoken';
-import { PrismaClient } from '@prisma/client';
+import { prisma } from '../lib/prisma';
 import { AuthRequest, authMiddleware } from '../middleware/auth.middleware';
 import { getNow } from '../services/time.service';
 import { logAuth, getRequestContext } from '../services/audit.service';
 import { rateLimiter } from '../services/rate-limiter.service';
+import { validate } from '../middleware/validate.middleware';
+import { loginSchema, changePasswordSchema } from '../utils/validation';
 
 const router = Router();
-const prisma = new PrismaClient();
 
 // Login
-router.post('/login', async (req, res) => {
+router.post('/login', validate(loginSchema), async (req, res) => {
     const context = getRequestContext(req);
 
     try {
@@ -187,7 +188,7 @@ router.post('/logout', authMiddleware, async (req: AuthRequest, res: Response) =
 });
 
 // Change password
-router.post('/change-password', authMiddleware, async (req: AuthRequest, res: Response) => {
+router.post('/change-password', authMiddleware, validate(changePasswordSchema), async (req: AuthRequest, res: Response) => {
     const context = getRequestContext(req);
 
     try {

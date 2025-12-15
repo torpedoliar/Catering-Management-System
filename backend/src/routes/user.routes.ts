@@ -1,5 +1,5 @@
 import { Router, Response } from 'express';
-import { PrismaClient } from '@prisma/client';
+import { prisma } from '../lib/prisma';
 import bcrypt from 'bcryptjs';
 import multer from 'multer';
 import ExcelJS from 'exceljs';
@@ -9,9 +9,12 @@ import path from 'path';
 import { AuthRequest, authMiddleware, adminMiddleware } from '../middleware/auth.middleware';
 import { ErrorMessages } from '../utils/errorMessages';
 import { logUserManagement, logDataOperation, getRequestContext } from '../services/audit.service';
+import { apiRateLimitMiddleware } from '../services/rate-limiter.service';
+import { validate } from '../middleware/validate.middleware';
+import { createUserSchema, updateUserSchema } from '../utils/validation';
+import { UserWhereFilter, ImportUserData, ImportError } from '../types';
 
 const router = Router();
-const prisma = new PrismaClient();
 const storage = multer.memoryStorage();
 const upload = multer({ storage });
 
@@ -26,7 +29,7 @@ router.get('/', authMiddleware, adminMiddleware, async (req: AuthRequest, res: R
     try {
         const { search, company, division, department, page = '1', limit = '50' } = req.query;
 
-        const where: any = { isActive: true };
+        const where: UserWhereFilter = { isActive: true };
 
         if (search) {
             where.OR = [
@@ -121,7 +124,7 @@ router.get('/:id', authMiddleware, async (req: AuthRequest, res: Response) => {
 });
 
 // Create user (Admin only)
-router.post('/', authMiddleware, adminMiddleware, upload.single('photo'), async (req: AuthRequest, res: Response) => {
+router.post('/', authMiddleware, adminMiddleware, upload.single('photo'), validate(createUserSchema), async (req: AuthRequest, res: Response) => {
     try {
         const { externalId, name, email, password, company, division, department, departmentId, role } = req.body;
 
@@ -328,7 +331,7 @@ router.delete('/:id', authMiddleware, adminMiddleware, async (req: AuthRequest, 
 });
 
 // Import users from Excel (Admin only)
-router.post('/import', authMiddleware, adminMiddleware, upload.single('file'), async (req: AuthRequest, res: Response) => {
+router.post('/import', authMiddleware, adminMiddleware, apiRateLimitMiddleware('upload'), upload.single('file'), async (req: AuthRequest, res: Response) => {
     const context = getRequestContext(req);
     try {
         if (!req.file) {
@@ -343,8 +346,8 @@ router.post('/import', authMiddleware, adminMiddleware, upload.single('file'), a
             return res.status(400).json({ error: 'No worksheet found in file' });
         }
 
-        const users: any[] = [];
-        const errors: any[] = [];
+        const users: ImportUserData[] = [];
+        const errors: ImportError[] = [];
         let rowNumber = 0;
 
         worksheet.eachRow((row, index) => {
@@ -424,7 +427,7 @@ router.post('/import', authMiddleware, adminMiddleware, upload.single('file'), a
 });
 
 // Export users template
-router.get('/export/template', authMiddleware, adminMiddleware, async (req: AuthRequest, res: Response) => {
+router.get('/export/template', authMiddleware, adminMiddleware, apiRateLimitMiddleware('export'), async (req: AuthRequest, res: Response) => {
     try {
         const workbook = new ExcelJS.Workbook();
         const worksheet = workbook.addWorksheet('Users');

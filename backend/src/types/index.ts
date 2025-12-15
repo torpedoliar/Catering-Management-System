@@ -48,9 +48,10 @@ export interface BulkOrderRequest {
 export interface BulkOrderSuccess {
     date: string;
     shiftId: string;
-    shiftName: string;
-    orderId: string;
-    qrCode: string;
+    shiftName?: string;
+    orderId?: string;
+    qrCode?: string;
+    order?: Record<string, unknown>; // Full order object with qrCodeImage
 }
 
 export interface BulkOrderFailure {
@@ -86,8 +87,10 @@ export interface ImportResult {
 }
 
 export interface ImportError {
-    row: number;
-    message: string;
+    row?: number;
+    message?: string;
+    error?: string;
+    externalId?: string;
 }
 
 // ============================================
