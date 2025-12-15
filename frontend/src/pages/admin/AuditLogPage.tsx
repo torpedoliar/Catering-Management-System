@@ -2,6 +2,7 @@ import { useState, useEffect, useCallback } from 'react';
 import { format } from 'date-fns';
 import { id } from 'date-fns/locale';
 import toast from 'react-hot-toast';
+import { formatDateTimeWIB } from '../../utils/timezone';
 import { useSSERefresh, ALL_DATA_EVENTS } from '../../contexts/SSEContext';
 import {
     Search,
@@ -33,7 +34,29 @@ import {
     Loader2
 } from 'lucide-react';
 
-const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:3012/api';
+const API_URL = import.meta.env.VITE_API_URL ?? 'http://localhost:3012';
+
+// Helper to format timestamp - timestamps are stored in WIB already
+const formatWIBDate = (timestamp: string): string => {
+    // Parse timestamp and format without timezone conversion
+    // Remove 'Z' suffix if present to prevent UTC interpretation
+    const cleanTimestamp = timestamp.replace('Z', '');
+    const date = new Date(cleanTimestamp);
+    const day = date.getDate().toString().padStart(2, '0');
+    const month = (date.getMonth() + 1).toString().padStart(2, '0');
+    const year = date.getFullYear();
+    return `${day}/${month}/${year}`;
+};
+
+const formatWIBTime = (timestamp: string): string => {
+    // Remove 'Z' suffix if present to prevent UTC interpretation
+    const cleanTimestamp = timestamp.replace('Z', '');
+    const date = new Date(cleanTimestamp);
+    const hours = date.getHours().toString().padStart(2, '0');
+    const minutes = date.getMinutes().toString().padStart(2, '0');
+    const seconds = date.getSeconds().toString().padStart(2, '0');
+    return `${hours}.${minutes}.${seconds}`;
+};
 
 interface AuditLog {
     id: string;
@@ -111,7 +134,7 @@ export default function AuditLogPage() {
             if (filterStartDate) params.append('startDate', filterStartDate);
             if (filterEndDate) params.append('endDate', filterEndDate);
 
-            const response = await fetch(`${API_URL}/audit?${params}`, {
+            const response = await fetch(`${API_URL}/api/audit?${params}`, {
                 headers: { Authorization: `Bearer ${token}` },
             });
 
@@ -131,7 +154,7 @@ export default function AuditLogPage() {
     const fetchStats = async () => {
         try {
             const token = getToken();
-            const response = await fetch(`${API_URL}/audit/stats?days=7`, {
+            const response = await fetch(`${API_URL}/api/audit/stats?days=7`, {
                 headers: { Authorization: `Bearer ${token}` },
             });
 
@@ -147,8 +170,8 @@ export default function AuditLogPage() {
         try {
             const token = getToken();
             const [actionsRes, entitiesRes] = await Promise.all([
-                fetch(`${API_URL}/audit/actions`, { headers: { Authorization: `Bearer ${token}` } }),
-                fetch(`${API_URL}/audit/entities`, { headers: { Authorization: `Bearer ${token}` } }),
+                fetch(`${API_URL}/api/audit/actions`, { headers: { Authorization: `Bearer ${token}` } }),
+                fetch(`${API_URL}/api/audit/entities`, { headers: { Authorization: `Bearer ${token}` } }),
             ]);
 
             if (actionsRes.ok) setActions(await actionsRes.json());
@@ -481,8 +504,8 @@ export default function AuditLogPage() {
                                 {logs.map((log) => (
                                     <tr key={log.id} className="hover:bg-slate-800/30 transition-colors">
                                         <td className="px-4 py-3 text-sm whitespace-nowrap">
-                                            <div className="text-slate-300">{format(new Date(log.timestamp), 'dd/MM/yyyy')}</div>
-                                            <div className="text-xs text-slate-500">{format(new Date(log.timestamp), 'HH:mm:ss')}</div>
+                                            <div className="text-slate-300">{formatWIBDate(log.timestamp)}</div>
+                                            <div className="text-xs text-slate-500">{formatWIBTime(log.timestamp)} WIB</div>
                                         </td>
                                         <td className="px-4 py-3 text-sm">
                                             <div className="text-white font-medium">{log.userName || 'System'}</div>
@@ -578,7 +601,7 @@ export default function AuditLogPage() {
                                 <div>
                                     <h3 className="text-lg font-semibold text-white">{formatActionLabel(selectedLog.action)}</h3>
                                     <p className="text-sm text-slate-400">
-                                        {format(new Date(selectedLog.timestamp), 'EEEE, dd MMMM yyyy HH:mm:ss', { locale: id })}
+                                        {formatDateTimeWIB(selectedLog.timestamp)}
                                     </p>
                                 </div>
                             </div>
@@ -629,6 +652,46 @@ export default function AuditLogPage() {
                                 <div>
                                     <h4 className="text-sm font-medium text-slate-400 mb-2">Deskripsi</h4>
                                     <p className="text-white bg-slate-700/30 rounded-lg p-3">{selectedLog.description}</p>
+                                </div>
+                            )}
+
+                            {/* Rate Limit Info for LOGIN_FAILED */}
+                            {selectedLog.action === 'LOGIN_FAILED' && selectedLog.metadata && (
+                                <div>
+                                    <h4 className="text-sm font-medium text-slate-400 mb-2">Informasi Rate Limiting</h4>
+                                    <div className="bg-orange-500/10 border border-orange-500/30 rounded-lg p-4 space-y-2">
+                                        {selectedLog.metadata.ip && (
+                                            <div className="flex items-center justify-between">
+                                                <span className="text-sm text-slate-400">IP Address:</span>
+                                                <code className="text-orange-400 font-mono text-sm bg-orange-500/10 px-2 py-1 rounded">
+                                                    {selectedLog.metadata.ip}
+                                                </code>
+                                            </div>
+                                        )}
+                                        {selectedLog.metadata.remainingAttempts !== undefined && (
+                                            <div className="flex items-center justify-between">
+                                                <span className="text-sm text-slate-400">Sisa Percobaan:</span>
+                                                <span className={`font-semibold px-2 py-1 rounded ${selectedLog.metadata.remainingAttempts === 0
+                                                    ? 'text-red-400 bg-red-500/20'
+                                                    : selectedLog.metadata.remainingAttempts <= 2
+                                                        ? 'text-orange-400 bg-orange-500/20'
+                                                        : 'text-green-400 bg-green-500/20'
+                                                    }`}>
+                                                    {selectedLog.metadata.remainingAttempts === 0
+                                                        ? 'LOCKED - Tunggu 1 menit'
+                                                        : `${selectedLog.metadata.remainingAttempts} kali lagi`}
+                                                </span>
+                                            </div>
+                                        )}
+                                        {selectedLog.metadata.remainingAttempts === 0 && (
+                                            <div className="mt-3 p-3 bg-red-500/10 border border-red-500/30 rounded-lg">
+                                                <p className="text-xs text-red-400 flex items-center gap-2">
+                                                    <AlertTriangle className="w-4 h-4" />
+                                                    User diblokir selama 1 menit setelah log ini dibuat
+                                                </p>
+                                            </div>
+                                        )}
+                                    </div>
                                 </div>
                             )}
 

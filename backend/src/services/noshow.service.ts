@@ -30,6 +30,37 @@ function isTimeAfter(time1: string, time2: string): boolean {
 }
 
 /**
+ * Check if a shift is an overnight shift (ends the next day)
+ * e.g., 23:00 - 07:00 is overnight because endTime < startTime
+ */
+function isOvernightShift(startTime: string, endTime: string): boolean {
+    const [startH, startM] = startTime.split(':').map(Number);
+    const [endH, endM] = endTime.split(':').map(Number);
+    // If end time is before or equal to start time, it's overnight
+    return endH < startH || (endH === startH && endM <= startM);
+}
+
+/**
+ * Check if an overnight shift has ended
+ * For overnight shifts (e.g., 23:00-07:00):
+ * - The shift starts today and ends tomorrow
+ * - We should only mark as no-show AFTER the shift ends tomorrow
+ * - So on the order date, we should NOT mark as no-show (shift hasn't even started/ended)
+ */
+function hasShiftEnded(shift: { startTime: string; endTime: string }, currentTime: string): boolean {
+    const isOvernight = isOvernightShift(shift.startTime, shift.endTime);
+
+    if (isOvernight) {
+        // For overnight shifts, we should NEVER mark as no-show on the same day as orderDate
+        // because the shift ends on the NEXT day
+        return false;
+    }
+
+    // For regular daytime shifts, just check if current time is after end time
+    return isTimeAfter(currentTime, shift.endTime);
+}
+
+/**
  * Process all no-show orders for shifts that have ended
  * This should be called periodically (e.g., every hour via cron)
  */
@@ -45,29 +76,37 @@ export async function processNoShows(): Promise<NoShowResult> {
         const today = getToday();
         const tomorrow = getTomorrow();
 
+        // Also get yesterday for overnight shifts that ended today
+        const yesterday = new Date(today);
+        yesterday.setDate(yesterday.getDate() - 1);
+        yesterday.setHours(0, 0, 0, 0);
+
         // Get current time
         const currentTime = getCurrentTime();
         console.log(`[NoShow Service] Processing no-shows at ${currentTime}`);
 
         // Find all shifts that have ended today
-        const endedShifts = await prisma.shift.findMany({
+        const allShifts = await prisma.shift.findMany({
             where: {
                 isActive: true,
             },
         });
 
-        // Filter to only shifts that have ended
-        const shiftsEnded = endedShifts.filter(shift => isTimeAfter(currentTime, shift.endTime));
+        // Filter to only daytime shifts that have ended today
+        const daytimeShiftsEnded = allShifts.filter(shift => hasShiftEnded(shift, currentTime));
 
-        if (shiftsEnded.length === 0) {
-            console.log('[NoShow Service] No shifts have ended yet');
-            return result;
-        }
+        // Filter overnight shifts that ended today (orders from yesterday)
+        const overnightShiftsThatEndedToday = allShifts.filter(shift => {
+            const isOvernight = isOvernightShift(shift.startTime, shift.endTime);
+            if (!isOvernight) return false;
+            // Check if current time is after the end time (the shift ended today)
+            return isTimeAfter(currentTime, shift.endTime);
+        });
 
-        console.log(`[NoShow Service] Found ${shiftsEnded.length} ended shifts`);
+        console.log(`[NoShow Service] Found ${daytimeShiftsEnded.length} daytime shifts ended, ${overnightShiftsThatEndedToday.length} overnight shifts ended`);
 
-        // Find all ORDERED orders for today's ended shifts
-        const pendingOrders = await prisma.order.findMany({
+        // Find all ORDERED orders for today's ended daytime shifts
+        const pendingDaytimeOrders = daytimeShiftsEnded.length > 0 ? await prisma.order.findMany({
             where: {
                 orderDate: {
                     gte: today,
@@ -75,14 +114,34 @@ export async function processNoShows(): Promise<NoShowResult> {
                 },
                 status: 'ORDERED',
                 shiftId: {
-                    in: shiftsEnded.map(s => s.id),
+                    in: daytimeShiftsEnded.map(s => s.id),
                 },
             },
             include: {
                 user: true,
                 shift: true,
             },
-        });
+        }) : [];
+
+        // Find all ORDERED orders for yesterday's overnight shifts (that ended today)
+        const pendingOvernightOrders = overnightShiftsThatEndedToday.length > 0 ? await prisma.order.findMany({
+            where: {
+                orderDate: {
+                    gte: yesterday,
+                    lt: today,
+                },
+                status: 'ORDERED',
+                shiftId: {
+                    in: overnightShiftsThatEndedToday.map(s => s.id),
+                },
+            },
+            include: {
+                user: true,
+                shift: true,
+            },
+        }) : [];
+
+        const pendingOrders = [...pendingDaytimeOrders, ...pendingOvernightOrders];
 
         if (pendingOrders.length === 0) {
             console.log('[NoShow Service] No pending orders to process');
@@ -194,6 +253,9 @@ export async function processNoShows(): Promise<NoShowResult> {
                         timestamp: getNow().toISOString(),
                         reason: 'auto_noshow',
                     });
+
+                    // Cancel all pending orders for this blacklisted user
+                    await cancelOrdersForBlacklistedUser(updatedUser.id, getNow(), endDate);
                 }
             }
 
@@ -257,4 +319,123 @@ export async function getNoShowStats() {
         pending,
         pickupRate: totalOrders > 0 ? Math.round((pickedUp / totalOrders) * 100) : 0,
     };
+}
+
+/**
+ * Cancel all pending orders for a user who has been blacklisted
+ * This should be called whenever a user is blacklisted (auto or manual)
+ */
+export async function cancelOrdersForBlacklistedUser(
+    userId: string,
+    blacklistDate: Date,
+    blacklistEndDate: Date | null
+): Promise<{ cancelledCount: number; cancelledOrders: any[] }> {
+    const result = {
+        cancelledCount: 0,
+        cancelledOrders: [] as any[],
+    };
+
+    try {
+        const today = getToday();
+
+        // Find all pending orders (ORDERED status) for this user from today onwards
+        const pendingOrders = await prisma.order.findMany({
+            where: {
+                userId,
+                status: 'ORDERED',
+                orderDate: { gte: today },
+            },
+            include: {
+                shift: true,
+                user: { select: { name: true, externalId: true } },
+            },
+        });
+
+        if (pendingOrders.length === 0) {
+            console.log(`[NoShow Service] No pending orders to cancel for user ${userId}`);
+            return result;
+        }
+
+        // Format blacklist date for the cancel reason
+        const blacklistDateStr = blacklistDate.toLocaleDateString('id-ID', {
+            day: 'numeric',
+            month: 'long',
+            year: 'numeric',
+        });
+        const blacklistEndStr = blacklistEndDate
+            ? blacklistEndDate.toLocaleDateString('id-ID', { day: 'numeric', month: 'long', year: 'numeric' })
+            : 'Permanen';
+
+        const cancelReason = `Pesanan dibatalkan otomatis karena user di-blacklist pada ${blacklistDateStr} (berakhir: ${blacklistEndStr})`;
+
+        // Cancel each order
+        for (const order of pendingOrders) {
+            const updatedOrder = await prisma.order.update({
+                where: { id: order.id },
+                data: {
+                    status: 'CANCELLED',
+                    cancelledBy: 'System (Blacklist)',
+                    cancelReason,
+                },
+                include: { shift: true },
+            });
+
+            // Create a cancellation message
+            await prisma.message.create({
+                data: {
+                    orderId: order.id,
+                    shiftId: order.shiftId,
+                    userId,
+                    type: 'CANCELLATION',
+                    content: cancelReason,
+                    orderDate: order.orderDate,
+                },
+            });
+
+            // Log audit for auto-cancel
+            await createAuditLog(null, {
+                action: AuditAction.ORDER_CANCELLED,
+                entity: 'Order',
+                entityId: order.id,
+                entityName: `Order #${order.id.slice(-8)}`,
+                oldValue: { status: 'ORDERED' },
+                newValue: { status: 'CANCELLED' },
+                description: `Order auto-cancelled due to user blacklist`,
+                metadata: {
+                    userId,
+                    userName: order.user.name,
+                    shiftName: order.shift.name,
+                    orderDate: order.orderDate.toISOString(),
+                    blacklistDate: blacklistDateStr,
+                    blacklistEndDate: blacklistEndStr,
+                    cancelledBy: 'System (Blacklist)',
+                },
+            });
+
+            result.cancelledCount++;
+            result.cancelledOrders.push({
+                orderId: order.id,
+                orderDate: order.orderDate,
+                shiftName: order.shift.name,
+            });
+
+            // Broadcast order cancelled event
+            sseManager.broadcast('order:cancelled', {
+                orderId: order.id,
+                userId,
+                userName: order.user.name,
+                shiftName: order.shift.name,
+                reason: cancelReason,
+                cancelledBy: 'System (Blacklist)',
+                timestamp: getNow().toISOString(),
+            });
+        }
+
+        console.log(`[NoShow Service] Cancelled ${result.cancelledCount} orders for blacklisted user ${userId}`);
+
+        return result;
+    } catch (error) {
+        console.error('[NoShow Service] Error cancelling orders for blacklisted user:', error);
+        throw error;
+    }
 }

@@ -1,7 +1,7 @@
 import { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../contexts/AuthContext';
-import { UtensilsCrossed, Lock, User, Loader2, Sparkles } from 'lucide-react';
+import { UtensilsCrossed, Lock, User, Loader2 } from 'lucide-react';
 import toast from 'react-hot-toast';
 import { handleApiError, showSuccess } from '../utils/errorHandler';
 
@@ -26,6 +26,49 @@ export default function LoginPage() {
             showSuccess('Selamat datang kembali!');
             navigate('/');
         } catch (error: any) {
+            // Check for rate limit error (429)
+            if (error.response?.status === 429) {
+                const remainingTime = error.response?.data?.remainingTime || error.response?.data?.retryAfter;
+                if (remainingTime) {
+                    toast.error(
+                        `Akun diblokir! Coba lagi dalam ${remainingTime} detik.`,
+                        { duration: 5000 }
+                    );
+                } else {
+                    toast.error('Terlalu banyak percobaan login. Silakan tunggu beberapa saat.');
+                }
+                return;
+            }
+
+            // Handle invalid credentials with progressive warnings
+            if (error.response?.status === 401) {
+                const attemptCount = error.response?.data?.attemptCount || 0;
+                const remainingAttempts = error.response?.data?.remainingAttempts;
+
+                let message = 'Kredensial salah';
+
+                if (attemptCount > 0) {
+                    message += ` (${attemptCount}x salah)`;
+
+                    // Show warning when approaching limit (3 or more attempts)
+                    if (remainingAttempts !== undefined && remainingAttempts <= 2) {
+                        if (remainingAttempts === 0) {
+                            message = `❌ ${attemptCount}x salah! Akun Anda akan diblokir pada percobaan berikutnya`;
+                        } else {
+                            message += `\n⚠️ ${remainingAttempts}x lagi sebelum akun dibatasi aksesnya`;
+                        }
+                        toast.error(message, { duration: 5000 });
+                    } else {
+                        toast.error(message);
+                    }
+                } else {
+                    toast.error(message);
+                }
+
+                return;
+            }
+
+            // Fallback to default error handler
             handleApiError(error);
         } finally {
             setIsLoading(false);
@@ -33,65 +76,55 @@ export default function LoginPage() {
     };
 
     return (
-        <div className="min-h-screen flex items-center justify-center p-4 relative overflow-hidden">
-            {/* Animated background orbs */}
-            <div className="absolute top-1/4 left-1/4 w-96 h-96 bg-primary-500/20 rounded-full blur-3xl animate-pulse" />
-            <div className="absolute bottom-1/4 right-1/4 w-96 h-96 bg-accent-purple/20 rounded-full blur-3xl animate-pulse" style={{ animationDelay: '1s' }} />
-            <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[600px] h-[600px] bg-accent-teal/10 rounded-full blur-3xl" />
-
-            <div className="w-full max-w-md relative z-10">
+        <div className="min-h-screen flex items-center justify-center p-4 bg-[#faf9f7]">
+            <div className="w-full max-w-sm">
                 {/* Logo Section */}
-                <div className="text-center mb-10 animate-fade-in">
-                    <div className="relative inline-block">
-                        <div className="w-24 h-24 rounded-3xl bg-gradient-to-br from-primary-500 to-accent-purple flex items-center justify-center shadow-glow animate-float">
-                            <UtensilsCrossed className="w-12 h-12 text-white" />
-                        </div>
-                        <div className="absolute -top-1 -right-1 w-6 h-6 bg-gradient-to-br from-accent-teal to-accent-cyan rounded-full flex items-center justify-center animate-pulse">
-                            <Sparkles className="w-3 h-3 text-white" />
-                        </div>
+                <div className="text-center mb-8">
+                    <div className="inline-flex items-center justify-center w-14 h-14 rounded-xl bg-gradient-to-br from-orange-500 to-amber-500 mb-4 shadow-lg shadow-orange-500/20">
+                        <UtensilsCrossed className="w-7 h-7 text-white" />
                     </div>
-                    <h1 className="text-4xl font-extrabold mt-6 mb-2">
-                        <span className="text-gradient">Catering Management</span>
+                    <h1 className="text-2xl font-bold text-[#1a1f37]">
+                        Catering Management
                     </h1>
-                    <p className="text-white/60">Zero Waste Corporate Catering System</p>
+                    <p className="text-slate-500 text-sm mt-1">Corporate Catering System</p>
                 </div>
 
                 {/* Login Card */}
-                <div className="card card-glow animate-slide-up">
-                    <div className="text-center mb-8">
-                        <h2 className="text-2xl font-bold text-white">Selamat Datang</h2>
-                        <p className="text-white/50 mt-1">Masuk untuk melanjutkan</p>
+                <div className="bg-white rounded-xl border border-slate-200 shadow-sm p-6">
+                    <div className="text-center mb-6">
+                        <h2 className="text-lg font-semibold text-slate-900">Selamat Datang</h2>
+                        <p className="text-slate-500 text-sm mt-0.5">Masuk untuk melanjutkan</p>
                     </div>
 
-                    <form onSubmit={handleSubmit} className="space-y-6">
+                    <form onSubmit={handleSubmit} className="space-y-4">
                         <div>
-                            <label className="block text-sm font-medium text-white/70 mb-2">
+                            <label className="block text-sm font-medium text-slate-700 mb-1.5">
                                 ID Karyawan
                             </label>
-                            <div className="relative group">
-                                <User className="absolute left-4 top-1/2 -translate-y-1/2 w-5 h-5 text-white/40 group-focus-within:text-primary-400 transition-colors" />
+                            <div className="relative">
+                                <User className="absolute left-3 top-1/2 -translate-y-1/2 w-4.5 h-4.5 text-slate-400" />
                                 <input
                                     type="text"
                                     value={externalId}
                                     onChange={(e) => setExternalId(e.target.value)}
                                     placeholder="Masukkan ID karyawan"
-                                    className="input-field pl-12"
+                                    className="input-field pl-10"
                                 />
                             </div>
                         </div>
 
                         <div>
-                            <label className="block text-sm font-medium text-white/70 mb-2">
+                            <label className="block text-sm font-medium text-slate-700 mb-1.5">
                                 Password
                             </label>
-                            <div className="relative group">
-                                <Lock className="absolute left-4 top-1/2 -translate-y-1/2 w-5 h-5 text-white/40 group-focus-within:text-primary-400 transition-colors" />
+                            <div className="relative">
+                                <Lock className="absolute left-3 top-1/2 -translate-y-1/2 w-4.5 h-4.5 text-slate-400" />
                                 <input
                                     type="password"
                                     value={password}
                                     onChange={(e) => setPassword(e.target.value)}
                                     placeholder="Masukkan password"
-                                    className="input-field pl-12"
+                                    className="input-field pl-10"
                                 />
                             </div>
                         </div>
@@ -99,48 +132,45 @@ export default function LoginPage() {
                         <button
                             type="submit"
                             disabled={isLoading}
-                            className="btn-primary w-full flex items-center justify-center gap-2 text-lg py-4"
+                            className="btn-primary w-full flex items-center justify-center gap-2 py-2.5 mt-2"
                         >
                             {isLoading ? (
                                 <>
-                                    <Loader2 className="w-5 h-5 animate-spin" />
+                                    <Loader2 className="w-4 h-4 animate-spin" />
                                     Memproses...
                                 </>
                             ) : (
-                                <>
-                                    <Sparkles className="w-5 h-5" />
-                                    Masuk
-                                </>
+                                'Masuk'
                             )}
                         </button>
                     </form>
 
                     {/* Demo Credentials */}
-                    <div className="mt-8 p-4 rounded-2xl bg-white/5 border border-white/10">
+                    <div className="mt-6 pt-6 border-t border-slate-100">
                         <div className="flex items-center gap-2 mb-3">
-                            <div className="w-2 h-2 rounded-full bg-accent-teal animate-pulse" />
-                            <span className="text-xs font-semibold text-white/50 uppercase tracking-wider">Demo Account</span>
+                            <div className="w-1.5 h-1.5 rounded-full bg-emerald-500" />
+                            <span className="text-xs font-medium text-slate-400 uppercase tracking-wide">Demo Account</span>
                         </div>
-                        <div className="space-y-2 text-sm">
-                            <div className="flex justify-between items-center py-1.5 px-3 rounded-lg hover:bg-white/5 transition-colors">
-                                <span className="text-white/40">Admin</span>
-                                <code className="text-primary-400 font-mono">ADMIN001 / admin123</code>
+                        <div className="space-y-1.5 text-sm">
+                            <div className="flex justify-between items-center py-1.5 px-2.5 rounded-md hover:bg-slate-50 transition-colors">
+                                <span className="text-slate-500">Admin</span>
+                                <code className="text-orange-600 font-mono text-xs bg-orange-50 px-2 py-0.5 rounded">ADMIN001 / admin123</code>
                             </div>
-                            <div className="flex justify-between items-center py-1.5 px-3 rounded-lg hover:bg-white/5 transition-colors">
-                                <span className="text-white/40">Canteen</span>
-                                <code className="text-accent-teal font-mono">CANTEEN001 / admin123</code>
+                            <div className="flex justify-between items-center py-1.5 px-2.5 rounded-md hover:bg-slate-50 transition-colors">
+                                <span className="text-slate-500">Canteen</span>
+                                <code className="text-emerald-600 font-mono text-xs bg-emerald-50 px-2 py-0.5 rounded">CANTEEN001 / admin123</code>
                             </div>
-                            <div className="flex justify-between items-center py-1.5 px-3 rounded-lg hover:bg-white/5 transition-colors">
-                                <span className="text-white/40">User</span>
-                                <code className="text-accent-purple font-mono">EMP001 / admin123</code>
+                            <div className="flex justify-between items-center py-1.5 px-2.5 rounded-md hover:bg-slate-50 transition-colors">
+                                <span className="text-slate-500">User</span>
+                                <code className="text-purple-600 font-mono text-xs bg-purple-50 px-2 py-0.5 rounded">EMP001 / admin123</code>
                             </div>
                         </div>
                     </div>
                 </div>
 
                 {/* Footer */}
-                <p className="text-center text-sm text-white/30 mt-8">
-                    Powered by <span className="text-gradient font-semibold">Catering Management System</span>
+                <p className="text-center text-xs text-slate-400 mt-6">
+                    Powered by Catering Management System
                 </p>
             </div>
         </div>

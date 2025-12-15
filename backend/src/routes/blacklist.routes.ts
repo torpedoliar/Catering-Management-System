@@ -5,6 +5,7 @@ import { AuthRequest, authMiddleware, adminMiddleware } from '../middleware/auth
 import { sseManager } from '../controllers/sse.controller';
 import { getNow } from '../services/time.service';
 import { logBlacklist, getRequestContext } from '../services/audit.service';
+import { cancelOrdersForBlacklistedUser } from '../services/noshow.service';
 import { ErrorMessages } from '../utils/errorMessages';
 
 const router = Router();
@@ -167,7 +168,14 @@ router.post('/', authMiddleware, adminMiddleware, async (req: AuthRequest, res: 
             timestamp: getNow().toISOString(),
         });
 
-        res.status(201).json(blacklist);
+        // Cancel all pending orders for this blacklisted user
+        const cancelResult = await cancelOrdersForBlacklistedUser(userId, getNow(), endDate);
+
+        res.status(201).json({
+            ...blacklist,
+            cancelledOrders: cancelResult.cancelledCount,
+            cancelledOrderDetails: cancelResult.cancelledOrders,
+        });
     } catch (error) {
         console.error('Create blacklist error:', error);
         res.status(500).json({ error: 'Failed to blacklist user' });
@@ -328,7 +336,57 @@ router.post('/reset-strikes/:userId', authMiddleware, adminMiddleware, async (re
             data: { noShowCount: newCount },
         });
 
-        // Log the action
+        // Get blacklist threshold from settings
+        const settings = await prisma.settings.findUnique({ where: { id: 'default' } });
+        const blacklistStrikes = settings?.blacklistStrikes ?? 3;
+
+        // Check if user should be auto-unblocked (if newCount is below threshold)
+        let autoUnblocked = false;
+        if (newCount < blacklistStrikes) {
+            // Check if user is currently blacklisted
+            const activeBlacklist = await prisma.blacklist.findFirst({
+                where: {
+                    userId,
+                    isActive: true,
+                    OR: [
+                        { endDate: null },
+                        { endDate: { gt: getNow() } },
+                    ],
+                },
+            });
+
+            if (activeBlacklist) {
+                // Auto-unblock the user
+                await prisma.blacklist.update({
+                    where: { id: activeBlacklist.id },
+                    data: {
+                        isActive: false,
+                        endDate: getNow(),
+                    },
+                });
+                autoUnblocked = true;
+
+                // Log unblock action
+                await logBlacklist('USER_UNBLOCKED', req.user || null, user, context, {
+                    metadata: {
+                        autoUnblock: true,
+                        reason: `Auto-unblocked: strikes reduced from ${previousCount} to ${newCount} (below threshold ${blacklistStrikes})`,
+                        strikesReductionReason: reason.trim(),
+                    },
+                });
+
+                // Broadcast unblock event
+                sseManager.broadcast('user:unblocked', {
+                    userId,
+                    userName: user.name,
+                    unblockReason: `Auto-unblocked: strikes reduced below threshold`,
+                    autoUnblock: true,
+                    timestamp: getNow().toISOString(),
+                });
+            }
+        }
+
+        // Log the strikes reset action
         await logBlacklist('STRIKES_RESET', req.user || null, user, context, {
             metadata: {
                 previousCount,
@@ -336,6 +394,7 @@ router.post('/reset-strikes/:userId', authMiddleware, adminMiddleware, async (re
                 reduceBy: reduceBy || 'all',
                 reason: reason.trim(),
                 confirmedWithPassword: true,
+                autoUnblocked,
             },
         });
 
@@ -346,13 +405,18 @@ router.post('/reset-strikes/:userId', authMiddleware, adminMiddleware, async (re
             previousCount,
             newCount,
             reason: reason.trim(),
+            autoUnblocked,
             timestamp: getNow().toISOString(),
         });
 
         res.json({
-            message: 'No-show count updated successfully',
+            message: autoUnblocked
+                ? `No-show count updated and user auto-unblocked (below threshold ${blacklistStrikes})`
+                : 'No-show count updated successfully',
             previousCount,
             newCount,
+            autoUnblocked,
+            threshold: blacklistStrikes,
         });
     } catch (error) {
         console.error('Reset strikes error:', error);

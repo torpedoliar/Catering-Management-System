@@ -127,32 +127,44 @@ export default function DashboardPage() {
     const { isConnected, connectedClients } = useSSE();
     const [stats, setStats] = useState<Stats | null>(null);
     const [todayOrders, setTodayOrders] = useState<Order[]>([]);
+    const [allFilteredOrders, setAllFilteredOrders] = useState<Order[]>([]);
     const [tomorrowOrders, setTomorrowOrders] = useState<TomorrowOrder[]>([]);
     const [isLoading, setIsLoading] = useState(true);
     const [expandedDept, setExpandedDept] = useState<string | null>(null);
 
+    // Date range state - use local date format to avoid UTC timezone issues
+    const getLocalDateString = (date: Date = new Date()): string => {
+        const year = date.getFullYear();
+        const month = (date.getMonth() + 1).toString().padStart(2, '0');
+        const day = date.getDate().toString().padStart(2, '0');
+        return `${year}-${month}-${day}`;
+    };
+
+    const [startDate, setStartDate] = useState(() => getLocalDateString());
+    const [endDate, setEndDate] = useState(() => getLocalDateString());
+
     const loadData = useCallback(async () => {
         try {
-            const today = new Date().toISOString().split('T')[0];
-            const tomorrow = new Date(Date.now() + 24 * 60 * 60 * 1000).toISOString().split('T')[0];
+            const tomorrow = getLocalDateString(new Date(Date.now() + 24 * 60 * 60 * 1000));
 
             const [statsRes, ordersRes, tomorrowRes] = await Promise.all([
-                api.get('/api/orders/stats/today'),
-                api.get(`/api/orders?startDate=${today}&endDate=${today}&limit=100`),
+                api.get(`/api/orders/stats/range?startDate=${startDate}&endDate=${endDate}`),
+                api.get(`/api/orders?startDate=${startDate}&endDate=${endDate}&limit=100`),
                 api.get(`/api/orders?startDate=${tomorrow}&endDate=${tomorrow}&limit=100`),
             ]);
             setStats(statsRes.data);
 
             const allOrders: Order[] = ordersRes.data.orders;
             setTodayOrders(allOrders.slice(0, 10));
+            setAllFilteredOrders(allOrders); // Store all orders for recap calculation
 
-            setTomorrowOrders(tomorrowRes.data.orders || []);
+            setTomorrowOrders((tomorrowRes.data.orders || []).filter((o: Order) => o.status !== 'CANCELLED'));
         } catch (error) {
             console.error('Failed to load dashboard:', error);
         } finally {
             setIsLoading(false);
         }
-    }, []);
+    }, [startDate, endDate]);
 
     useEffect(() => {
         loadData();
@@ -160,24 +172,41 @@ export default function DashboardPage() {
 
     useSSERefresh([...ORDER_EVENTS, ...USER_EVENTS], loadData);
 
-    const processNoShows = async () => {
-        if (!confirm('Proses semua order pending sebagai no-show? Aksi ini tidak dapat dibatalkan.')) return;
+    // Quick date range helpers
+    const setToday = () => {
+        const today = getLocalDateString();
+        setStartDate(today);
+        setEndDate(today);
+    };
 
-        try {
-            const res = await api.post('/api/orders/process-noshows');
-            alert(`Diproses ${res.data.results.processed} no-shows.`);
-            loadData();
-        } catch (error: any) {
-            alert(error.response?.data?.error || 'Gagal memproses no-shows');
-        }
+    const setYesterday = () => {
+        const yesterday = new Date(Date.now() - 24 * 60 * 60 * 1000);
+        const yesterdayStr = getLocalDateString(yesterday);
+        setStartDate(yesterdayStr);
+        setEndDate(yesterdayStr);
+    };
+
+    const setLast7Days = () => {
+        const end = getLocalDateString();
+        const start = getLocalDateString(new Date(Date.now() - 7 * 24 * 60 * 60 * 1000));
+        setStartDate(start);
+        setEndDate(end);
+    };
+
+    const setThisMonth = () => {
+        const now = new Date();
+        const start = getLocalDateString(new Date(now.getFullYear(), now.getMonth(), 1));
+        const end = getLocalDateString();
+        setStartDate(start);
+        setEndDate(end);
     };
 
     if (isLoading) {
         return (
             <div className="flex items-center justify-center h-[60vh]">
                 <div className="text-center">
-                    <Loader2 className="w-12 h-12 animate-spin text-primary-500 mx-auto" />
-                    <p className="text-white/50 mt-4">Memuat dashboard...</p>
+                    <Loader2 className="w-12 h-12 animate-spin text-orange-500 mx-auto" />
+                    <p className="text-slate-500 mt-4">Memuat dashboard...</p>
                 </div>
             </div>
         );
@@ -203,20 +232,23 @@ export default function DashboardPage() {
         }
     };
 
-    // Build company-shift recap from today orders
+    // Build company-shift recap from ALL filtered orders (not just the displayed 10)
+    // Filter out cancelled orders to match the total count
     const companyShiftRecap: CompanyShiftRecap[] = [];
     const companyMap = new Map<string, Map<string, number>>();
-    
-    todayOrders.forEach(order => {
-        const company = order.user.company || 'Unknown';
-        const shift = order.shift.name;
-        
-        if (!companyMap.has(company)) {
-            companyMap.set(company, new Map());
-        }
-        const shiftMap = companyMap.get(company)!;
-        shiftMap.set(shift, (shiftMap.get(shift) || 0) + 1);
-    });
+
+    allFilteredOrders
+        .filter(order => order.status !== 'CANCELLED')
+        .forEach(order => {
+            const company = order.user.company || 'Unknown';
+            const shift = order.shift.name;
+
+            if (!companyMap.has(company)) {
+                companyMap.set(company, new Map());
+            }
+            const shiftMap = companyMap.get(company)!;
+            shiftMap.set(shift, (shiftMap.get(shift) || 0) + 1);
+        });
 
     companyMap.forEach((shifts, company) => {
         const shiftsObj: { [key: string]: number } = {};
@@ -236,36 +268,91 @@ export default function DashboardPage() {
             {/* Header */}
             <div className="flex flex-col lg:flex-row lg:items-center lg:justify-between gap-4">
                 <div className="flex items-center gap-4">
-                    <div className="w-16 h-16 rounded-2xl bg-gradient-to-br from-primary-500 to-accent-purple flex items-center justify-center shadow-glow">
-                        <Zap className="w-8 h-8 text-white" />
+                    <div className="w-14 h-14 rounded-2xl bg-gradient-to-br from-orange-500 to-amber-500 flex items-center justify-center shadow-lg shadow-orange-500/20">
+                        <Zap className="w-7 h-7 text-white" />
                     </div>
                     <div>
-                        <h1 className="text-title-1 text-white">Dashboard</h1>
-                        <p className="text-white/50">
-                            {stats?.date ? format(new Date(stats.date), 'EEEE, dd MMMM yyyy', { locale: id }) : 'Loading...'}
+                        <h1 className="text-2xl font-bold text-[#1a1f37]">Dashboard</h1>
+                        <p className="text-slate-500">
+                            {startDate === endDate
+                                ? format(new Date(startDate), 'EEEE, dd MMMM yyyy', { locale: id })
+                                : `${format(new Date(startDate), 'dd MMM yyyy', { locale: id })} - ${format(new Date(endDate), 'dd MMM yyyy', { locale: id })}`
+                            }
                         </p>
                     </div>
                 </div>
                 <div className="flex flex-wrap items-center gap-3">
-                    <div className={`flex items-center gap-2 px-4 py-2 rounded-full text-sm font-medium border ${
-                        isConnected 
-                            ? 'bg-success/10 border-success/30 text-success' 
-                            : 'bg-danger/10 border-danger/30 text-danger'
-                    }`}>
+                    <div className={`flex items-center gap-2 px-4 py-2 rounded-full text-sm font-medium ${isConnected
+                        ? 'bg-emerald-50 text-emerald-600'
+                        : 'bg-red-50 text-red-600'
+                        }`}>
                         <div className="relative">
                             <Wifi className="w-4 h-4" />
-                            {isConnected && <span className="absolute inset-0 bg-success rounded-full animate-ping opacity-50" />}
+                            {isConnected && <span className="absolute inset-0 bg-emerald-500 rounded-full animate-ping opacity-30" />}
                         </div>
                         <span>{connectedClients} terhubung</span>
                     </div>
-                    <button onClick={loadData} className="btn-secondary flex items-center gap-2">
+                    <button onClick={loadData} className="btn-primary flex items-center gap-2">
                         <RefreshCw className="w-4 h-4" />
                         Refresh
                     </button>
-                    <button onClick={processNoShows} className="btn-danger flex items-center gap-2">
-                        <XCircle className="w-4 h-4" />
-                        Proses No-Show
-                    </button>
+                </div>
+            </div>
+
+            {/* Date Range Filter */}
+            <div className="card">
+                <div className="flex flex-col lg:flex-row lg:items-center gap-4">
+                    <div className="flex items-center gap-2">
+                        <CalendarDays className="w-5 h-5 text-orange-500" />
+                        <span className="text-sm font-medium text-[#1a1f37]">Filter Tanggal:</span>
+                    </div>
+                    <div className="flex flex-wrap items-center gap-2">
+                        <button
+                            onClick={setToday}
+                            className={`px-3 py-1.5 rounded-lg text-sm font-medium transition-all ${startDate === endDate && startDate === getLocalDateString()
+                                ? 'bg-orange-500 text-white'
+                                : 'bg-slate-100 text-slate-600 hover:bg-slate-200'
+                                }`}
+                        >
+                            Hari Ini
+                        </button>
+                        <button
+                            onClick={setYesterday}
+                            className={`px-3 py-1.5 rounded-lg text-sm font-medium transition-all ${startDate === endDate && startDate === getLocalDateString(new Date(Date.now() - 24 * 60 * 60 * 1000))
+                                ? 'bg-orange-500 text-white'
+                                : 'bg-slate-100 text-slate-600 hover:bg-slate-200'
+                                }`}
+                        >
+                            Kemarin
+                        </button>
+                        <button
+                            onClick={setLast7Days}
+                            className="px-3 py-1.5 rounded-lg text-sm font-medium bg-slate-100 text-slate-600 hover:bg-slate-200 transition-all"
+                        >
+                            7 Hari Terakhir
+                        </button>
+                        <button
+                            onClick={setThisMonth}
+                            className="px-3 py-1.5 rounded-lg text-sm font-medium bg-slate-100 text-slate-600 hover:bg-slate-200 transition-all"
+                        >
+                            Bulan Ini
+                        </button>
+                    </div>
+                    <div className="flex items-center gap-2 ml-auto">
+                        <input
+                            type="date"
+                            value={startDate}
+                            onChange={(e) => setStartDate(e.target.value)}
+                            className="input-field"
+                        />
+                        <span className="text-slate-400">—</span>
+                        <input
+                            type="date"
+                            value={endDate}
+                            onChange={(e) => setEndDate(e.target.value)}
+                            className="input-field"
+                        />
+                    </div>
                 </div>
             </div>
 
@@ -288,45 +375,45 @@ export default function DashboardPage() {
 
             {/* Stats Grid */}
             <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-4">
-                <StatCard 
-                    icon={<LayoutDashboard />} 
-                    label="Total Order" 
-                    value={stats?.total || 0} 
-                    gradient="from-primary-500 to-accent-purple"
+                <StatCard
+                    icon={<LayoutDashboard className="w-5 h-5" />}
+                    label="Total Order"
+                    value={stats?.total || 0}
+                    gradient="from-orange-500 to-amber-500"
                 />
-                <StatCard 
-                    icon={<CheckCircle2 />} 
-                    label="Sudah Diambil" 
-                    value={stats?.pickedUp || 0} 
-                    gradient="from-success to-accent-teal"
-                    valueColor="text-success"
+                <StatCard
+                    icon={<CheckCircle2 className="w-5 h-5" />}
+                    label="Sudah Diambil"
+                    value={stats?.pickedUp || 0}
+                    gradient="from-emerald-500 to-teal-500"
+                    valueColor="text-emerald-600"
                 />
-                <StatCard 
-                    icon={<Clock />} 
-                    label="Menunggu" 
-                    value={stats?.pending || 0} 
-                    gradient="from-info to-accent-cyan"
-                    valueColor="text-info"
+                <StatCard
+                    icon={<Clock className="w-5 h-5" />}
+                    label="Menunggu"
+                    value={stats?.pending || 0}
+                    gradient="from-blue-500 to-cyan-500"
+                    valueColor="text-blue-600"
                 />
-                <StatCard 
-                    icon={<XCircle />} 
-                    label="Tidak Diambil" 
-                    value={stats?.noShow || 0} 
-                    gradient="from-danger to-red-500"
-                    valueColor="text-danger"
+                <StatCard
+                    icon={<XCircle className="w-5 h-5" />}
+                    label="Tidak Diambil"
+                    value={stats?.noShow || 0}
+                    gradient="from-red-500 to-rose-500"
+                    valueColor="text-red-600"
                 />
-                <StatCard 
-                    icon={<Percent />} 
-                    label="Tingkat Ambil" 
-                    value={`${stats?.pickupRate || 0}%`} 
-                    gradient="from-accent-purple to-accent-pink"
+                <StatCard
+                    icon={<Percent className="w-5 h-5" />}
+                    label="Tingkat Ambil"
+                    value={`${stats?.pickupRate || 0}%`}
+                    gradient="from-purple-500 to-pink-500"
                 />
-                <StatCard 
-                    icon={<Ban />} 
-                    label="Diblacklist" 
-                    value={stats?.blacklistedCount || 0} 
-                    gradient="from-danger to-accent-pink"
-                    valueColor="text-danger"
+                <StatCard
+                    icon={<Ban className="w-5 h-5" />}
+                    label="Diblacklist"
+                    value={stats?.blacklistedCount || 0}
+                    gradient="from-rose-500 to-red-600"
+                    valueColor="text-red-600"
                 />
             </div>
 
@@ -338,11 +425,12 @@ export default function DashboardPage() {
                         <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-primary-500 to-accent-purple flex items-center justify-center">
                             <TrendingUp className="w-5 h-5 text-white" />
                         </div>
-                        <h2 className="text-lg font-bold text-white">Performa per Shift</h2>
+                        <h2 className="text-lg font-bold text-white">Pengambilan Makan per Shift</h2>
                     </div>
                     <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                         {stats?.byShift.map((shift) => {
-                            const shiftOrders = todayOrders.filter(o => o.shift.name === shift.shiftName);
+                            // Use allFilteredOrders for accurate count (not todayOrders which is limited to 10)
+                            const shiftOrders = allFilteredOrders.filter(o => o.shift.name === shift.shiftName && o.status !== 'CANCELLED');
                             const pickedUp = shiftOrders.filter(o => o.status === 'PICKED_UP').length;
                             const pending = shiftOrders.filter(o => o.status === 'ORDERED').length;
                             const total = shiftOrders.length;
@@ -357,9 +445,9 @@ export default function DashboardPage() {
 
                                     {/* Donut Chart */}
                                     <div className="flex justify-center mb-4">
-                                        <DonutChart 
-                                            pickedUp={pickedUp} 
-                                            pending={pending} 
+                                        <DonutChart
+                                            pickedUp={pickedUp}
+                                            pending={pending}
                                             total={total}
                                             size={120}
                                         />
@@ -553,62 +641,62 @@ export default function DashboardPage() {
             </div>
 
             {/* Row 3 - No Show Users */}
-            {((stats?.noShowUsers?.today && stats.noShowUsers.today.length > 0) || 
-              (stats?.noShowUsers?.yesterday && stats.noShowUsers.yesterday.length > 0)) && (
-                <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-                    {/* Today's No-Shows */}
-                    {stats?.noShowUsers?.today && stats.noShowUsers.today.length > 0 && (
-                        <div className="card border-danger/30">
-                            <div className="flex items-center gap-3 mb-4">
-                                <div className="w-10 h-10 rounded-xl bg-danger/20 flex items-center justify-center">
-                                    <XCircle className="w-5 h-5 text-danger" />
-                                </div>
-                                <div>
-                                    <h2 className="text-lg font-bold text-white">No-Show Hari Ini</h2>
-                                    <p className="text-xs text-white/40">{stats.noShowUsers.today.length} user</p>
-                                </div>
-                            </div>
-                            <div className="space-y-2 max-h-[300px] overflow-y-auto">
-                                {stats.noShowUsers.today.map((user, idx) => (
-                                    <div key={idx} className="flex items-center justify-between p-3 rounded-xl bg-danger/10 border border-danger/20">
-                                        <div>
-                                            <p className="font-medium text-white">{user.name}</p>
-                                            <p className="text-xs text-white/40">{user.externalId} • {user.shiftName}</p>
-                                        </div>
-                                        <span className="badge badge-danger">{user.noShowCount} total</span>
+            {((stats?.noShowUsers?.today && stats.noShowUsers.today.length > 0) ||
+                (stats?.noShowUsers?.yesterday && stats.noShowUsers.yesterday.length > 0)) && (
+                    <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+                        {/* Today's No-Shows */}
+                        {stats?.noShowUsers?.today && stats.noShowUsers.today.length > 0 && (
+                            <div className="card border-danger/30">
+                                <div className="flex items-center gap-3 mb-4">
+                                    <div className="w-10 h-10 rounded-xl bg-danger/20 flex items-center justify-center">
+                                        <XCircle className="w-5 h-5 text-danger" />
                                     </div>
-                                ))}
+                                    <div>
+                                        <h2 className="text-lg font-bold text-white">No-Show Hari Ini</h2>
+                                        <p className="text-xs text-white/40">{stats.noShowUsers.today.length} user</p>
+                                    </div>
+                                </div>
+                                <div className="space-y-2 max-h-[300px] overflow-y-auto">
+                                    {stats.noShowUsers.today.map((user, idx) => (
+                                        <div key={idx} className="flex items-center justify-between p-3 rounded-xl bg-danger/10 border border-danger/20">
+                                            <div>
+                                                <p className="font-medium text-white">{user.name}</p>
+                                                <p className="text-xs text-white/40">{user.externalId} • {user.shiftName}</p>
+                                            </div>
+                                            <span className="badge badge-danger">{user.noShowCount} total</span>
+                                        </div>
+                                    ))}
+                                </div>
                             </div>
-                        </div>
-                    )}
+                        )}
 
-                    {/* Yesterday's No-Shows */}
-                    {stats?.noShowUsers?.yesterday && stats.noShowUsers.yesterday.length > 0 && (
-                        <div className="card border-warning/30">
-                            <div className="flex items-center gap-3 mb-4">
-                                <div className="w-10 h-10 rounded-xl bg-warning/20 flex items-center justify-center">
-                                    <Clock className="w-5 h-5 text-warning" />
-                                </div>
-                                <div>
-                                    <h2 className="text-lg font-bold text-white">No-Show Kemarin</h2>
-                                    <p className="text-xs text-white/40">{stats.noShowUsers.yesterday.length} user</p>
-                                </div>
-                            </div>
-                            <div className="space-y-2 max-h-[300px] overflow-y-auto">
-                                {stats.noShowUsers.yesterday.map((user, idx) => (
-                                    <div key={idx} className="flex items-center justify-between p-3 rounded-xl bg-warning/10 border border-warning/20">
-                                        <div>
-                                            <p className="font-medium text-white">{user.name}</p>
-                                            <p className="text-xs text-white/40">{user.externalId} • {user.shiftName}</p>
-                                        </div>
-                                        <span className="badge badge-warning">{user.noShowCount} total</span>
+                        {/* Yesterday's No-Shows */}
+                        {stats?.noShowUsers?.yesterday && stats.noShowUsers.yesterday.length > 0 && (
+                            <div className="card border-warning/30">
+                                <div className="flex items-center gap-3 mb-4">
+                                    <div className="w-10 h-10 rounded-xl bg-warning/20 flex items-center justify-center">
+                                        <Clock className="w-5 h-5 text-warning" />
                                     </div>
-                                ))}
+                                    <div>
+                                        <h2 className="text-lg font-bold text-white">No-Show Kemarin</h2>
+                                        <p className="text-xs text-white/40">{stats.noShowUsers.yesterday.length} user</p>
+                                    </div>
+                                </div>
+                                <div className="space-y-2 max-h-[300px] overflow-y-auto">
+                                    {stats.noShowUsers.yesterday.map((user, idx) => (
+                                        <div key={idx} className="flex items-center justify-between p-3 rounded-xl bg-warning/10 border border-warning/20">
+                                            <div>
+                                                <p className="font-medium text-white">{user.name}</p>
+                                                <p className="text-xs text-white/40">{user.externalId} • {user.shiftName}</p>
+                                            </div>
+                                            <span className="badge badge-warning">{user.noShowCount} total</span>
+                                        </div>
+                                    ))}
+                                </div>
                             </div>
-                        </div>
-                    )}
-                </div>
-            )}
+                        )}
+                    </div>
+                )}
 
             {/* Row 4 - Tomorrow's Orders */}
             {tomorrowOrders.length > 0 && (
@@ -668,13 +756,13 @@ function DonutChart({ pickedUp, pending, total, size = 120 }: {
     const strokeWidth = 12;
     const radius = (size - strokeWidth) / 2;
     const circumference = 2 * Math.PI * radius;
-    
+
     const pickedUpPercent = total > 0 ? (pickedUp / total) * 100 : 0;
     const pendingPercent = total > 0 ? (pending / total) * 100 : 0;
-    
+
     const pickedUpOffset = circumference - (pickedUpPercent / 100) * circumference;
     const pendingOffset = circumference - (pendingPercent / 100) * circumference;
-    
+
     // Starting angle for pending (after picked up)
     const pendingRotation = (pickedUpPercent / 100) * 360 - 90;
 
@@ -690,7 +778,7 @@ function DonutChart({ pickedUp, pending, total, size = 120 }: {
                     stroke="rgba(255,255,255,0.1)"
                     strokeWidth={strokeWidth}
                 />
-                
+
                 {/* Pending segment (warning/orange) */}
                 {pending > 0 && (
                     <circle
@@ -703,13 +791,13 @@ function DonutChart({ pickedUp, pending, total, size = 120 }: {
                         strokeDasharray={circumference}
                         strokeDashoffset={pendingOffset}
                         strokeLinecap="round"
-                        style={{ 
+                        style={{
                             transform: `rotate(${pendingRotation}deg)`,
                             transformOrigin: 'center'
                         }}
                     />
                 )}
-                
+
                 {/* Picked up segment (success/green) */}
                 {pickedUp > 0 && (
                     <circle
@@ -724,7 +812,7 @@ function DonutChart({ pickedUp, pending, total, size = 120 }: {
                         strokeLinecap="round"
                     />
                 )}
-                
+
                 {/* Gradient definitions */}
                 <defs>
                     <linearGradient id="successGradient" x1="0%" y1="0%" x2="100%" y2="0%">
@@ -737,7 +825,7 @@ function DonutChart({ pickedUp, pending, total, size = 120 }: {
                     </linearGradient>
                 </defs>
             </svg>
-            
+
             {/* Center text */}
             <div className="absolute inset-0 flex flex-col items-center justify-center">
                 <span className="text-2xl font-bold text-white">{total > 0 ? Math.round(pickedUpPercent) : 0}%</span>
@@ -747,21 +835,21 @@ function DonutChart({ pickedUp, pending, total, size = 120 }: {
     );
 }
 
-function StatCard({ icon, label, value, gradient, valueColor = 'text-white' }: { 
-    icon: React.ReactNode; 
-    label: string; 
+function StatCard({ icon, label, value, gradient, valueColor = 'text-[#1a1f37]' }: {
+    icon: React.ReactNode;
+    label: string;
     value: number | string;
     gradient: string;
     valueColor?: string;
 }) {
     return (
-        <div className="stat-card group">
+        <div className="card group hover:shadow-lg transition-all duration-200">
             <div className="flex items-center justify-between">
                 <div>
-                    <p className="text-xs text-white/40 uppercase tracking-wider">{label}</p>
+                    <p className="text-xs text-slate-500 uppercase tracking-wider font-medium">{label}</p>
                     <p className={`text-2xl font-bold mt-1 ${valueColor}`}>{value}</p>
                 </div>
-                <div className={`stat-icon bg-gradient-to-br ${gradient} group-hover:scale-110 transition-transform`}>
+                <div className={`w-12 h-12 rounded-xl bg-gradient-to-br ${gradient} flex items-center justify-center text-white group-hover:scale-110 transition-transform shadow-lg`}>
                     {icon}
                 </div>
             </div>

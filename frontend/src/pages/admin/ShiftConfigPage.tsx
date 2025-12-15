@@ -11,6 +11,7 @@ interface Shift {
     name: string;
     startTime: string;
     endTime: string;
+    mealPrice: number;
     isActive: boolean;
 }
 
@@ -28,7 +29,7 @@ export default function ShiftConfigPage() {
     const [originalSettings, setOriginalSettings] = useState<Settings | null>(null);
     const [isLoading, setIsLoading] = useState(true);
     const [isSaving, setIsSaving] = useState(false);
-    const [newShift, setNewShift] = useState({ name: '', startTime: '', endTime: '' });
+    const [newShift, setNewShift] = useState({ name: '', startTime: '', endTime: '', mealPrice: 25000 });
     const [showAddForm, setShowAddForm] = useState(false);
     const [hasChanges, setHasChanges] = useState(false);
 
@@ -95,6 +96,7 @@ export default function ShiftConfigPage() {
                     name: shift.name,
                     startTime: shift.startTime,
                     endTime: shift.endTime,
+                    mealPrice: shift.mealPrice,
                     isActive: shift.isActive
                 });
             }
@@ -122,9 +124,12 @@ export default function ShiftConfigPage() {
         }
 
         try {
-            await api.post('/api/shifts', newShift);
+            await api.post('/api/shifts', {
+                ...newShift,
+                mealPrice: newShift.mealPrice || 25000
+            });
             toast.success('Shift berhasil dibuat');
-            setNewShift({ name: '', startTime: '', endTime: '' });
+            setNewShift({ name: '', startTime: '', endTime: '', mealPrice: 25000 });
             setShowAddForm(false);
             loadData();
         } catch (error: any) {
@@ -135,7 +140,7 @@ export default function ShiftConfigPage() {
     if (isLoading) {
         return (
             <div className="flex items-center justify-center h-[60vh]">
-                <Loader2 className="w-8 h-8 animate-spin text-cyan-500" />
+                <Loader2 className="w-8 h-8 animate-spin text-orange-500" />
             </div>
         );
     }
@@ -144,8 +149,8 @@ export default function ShiftConfigPage() {
         <div className="max-w-4xl mx-auto space-y-6 animate-fade-in">
             <div className="flex items-center justify-between">
                 <div>
-                    <h1 className="text-2xl font-bold text-white">Konfigurasi Shift</h1>
-                    <p className="text-slate-400">Atur shift makan dan waktu cutoff</p>
+                    <h1 className="text-2xl font-bold text-[#1a1f37]">Konfigurasi Shift</h1>
+                    <p className="text-slate-500">Atur shift makan dan waktu cutoff</p>
                 </div>
                 {hasChanges && (
                     <div className="flex items-center gap-3">
@@ -159,7 +164,7 @@ export default function ShiftConfigPage() {
                         <button
                             onClick={saveAllChanges}
                             disabled={isSaving}
-                            className="btn-success flex items-center gap-2"
+                            className="bg-emerald-500 hover:bg-emerald-600 text-white px-4 py-2 rounded-xl flex items-center gap-2 font-medium transition-colors disabled:opacity-50"
                         >
                             {isSaving ? <Loader2 className="w-4 h-4 animate-spin" /> : <Save className="w-4 h-4" />}
                             Simpan Semua
@@ -170,17 +175,17 @@ export default function ShiftConfigPage() {
 
             {/* Unsaved changes indicator */}
             {hasChanges && (
-                <div className="bg-yellow-500/10 border border-yellow-500/30 rounded-lg p-3 text-yellow-400 text-sm flex items-center gap-2">
-                    <div className="w-2 h-2 rounded-full bg-yellow-400 animate-pulse"></div>
+                <div className="bg-amber-50 border border-amber-200 rounded-xl p-3 text-amber-700 text-sm flex items-center gap-2">
+                    <div className="w-2 h-2 rounded-full bg-amber-500 animate-pulse"></div>
                     Ada perubahan yang belum disimpan. Klik "Simpan Semua" untuk menyimpan.
                 </div>
             )}
 
             {/* Shifts */}
-            <div className="glass-dark rounded-xl p-6">
+            <div className="card p-6">
                 <div className="flex items-center justify-between mb-6">
-                    <h2 className="text-lg font-semibold text-white flex items-center gap-2">
-                        <Clock className="w-5 h-5 text-cyan-400" />
+                    <h2 className="text-lg font-semibold text-[#1a1f37] flex items-center gap-2">
+                        <Clock className="w-5 h-5 text-orange-500" />
                         Shift Makan
                     </h2>
                     <button
@@ -194,8 +199,8 @@ export default function ShiftConfigPage() {
 
                 {/* Add Shift Form */}
                 {showAddForm && (
-                    <div className="mb-6 p-4 rounded-xl bg-slate-800/50 border border-slate-700/50">
-                        <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
+                    <div className="mb-6 p-4 rounded-xl bg-slate-50 border border-slate-200">
+                        <div className="grid grid-cols-1 md:grid-cols-5 gap-4">
                             <input
                                 type="text"
                                 placeholder="Nama Shift"
@@ -211,7 +216,19 @@ export default function ShiftConfigPage() {
                                 value={newShift.endTime}
                                 onChange={(v) => setNewShift(s => ({ ...s, endTime: v }))}
                             />
-                            <button onClick={createShift} className="btn-primary">
+                            <div className="relative">
+                                <span className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400 text-sm">Rp</span>
+                                <input
+                                    type="number"
+                                    placeholder="Harga"
+                                    value={newShift.mealPrice}
+                                    onChange={(e) => setNewShift(s => ({ ...s, mealPrice: parseInt(e.target.value) || 0 }))}
+                                    className="input-field pl-10"
+                                    min="0"
+                                    step="1000"
+                                />
+                            </div>
+                            <button onClick={createShift} className="bg-orange-500 hover:bg-orange-600 text-white px-4 py-2 rounded-xl font-medium transition-colors">
                                 Buat
                             </button>
                         </div>
@@ -220,10 +237,10 @@ export default function ShiftConfigPage() {
 
                 <div className="space-y-4">
                     {shifts.map((shift) => (
-                        <div key={shift.id} className="p-4 rounded-xl bg-slate-800/50 border border-slate-700/50">
-                            <div className="grid grid-cols-1 md:grid-cols-4 gap-4 items-center">
+                        <div key={shift.id} className="p-4 rounded-xl bg-slate-50 border border-slate-200">
+                            <div className="grid grid-cols-1 md:grid-cols-5 gap-4 items-center">
                                 <div>
-                                    <label className="text-xs text-slate-400 uppercase tracking-wide">Nama</label>
+                                    <label className="text-xs text-slate-500 uppercase tracking-wide">Nama</label>
                                     <input
                                         type="text"
                                         value={shift.name}
@@ -232,7 +249,7 @@ export default function ShiftConfigPage() {
                                     />
                                 </div>
                                 <div>
-                                    <label className="text-xs text-slate-400 uppercase tracking-wide">Jam Mulai</label>
+                                    <label className="text-xs text-slate-500 uppercase tracking-wide">Jam Mulai</label>
                                     <TimeInput
                                         value={shift.startTime}
                                         onChange={(v) => updateShiftLocal(shift.id, { startTime: v })}
@@ -240,12 +257,26 @@ export default function ShiftConfigPage() {
                                     />
                                 </div>
                                 <div>
-                                    <label className="text-xs text-slate-400 uppercase tracking-wide">Jam Selesai</label>
+                                    <label className="text-xs text-slate-500 uppercase tracking-wide">Jam Selesai</label>
                                     <TimeInput
                                         value={shift.endTime}
                                         onChange={(v) => updateShiftLocal(shift.id, { endTime: v })}
                                         className="mt-1"
                                     />
+                                </div>
+                                <div>
+                                    <label className="text-xs text-slate-500 uppercase tracking-wide">Harga Makanan</label>
+                                    <div className="relative mt-1">
+                                        <span className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400 text-sm">Rp</span>
+                                        <input
+                                            type="number"
+                                            value={shift.mealPrice || 25000}
+                                            onChange={(e) => updateShiftLocal(shift.id, { mealPrice: parseInt(e.target.value) || 0 })}
+                                            className="input-field pl-10"
+                                            min="0"
+                                            step="1000"
+                                        />
+                                    </div>
                                 </div>
                                 <div className="flex items-end">
                                     <label className="flex items-center gap-2 cursor-pointer">
@@ -253,9 +284,9 @@ export default function ShiftConfigPage() {
                                             type="checkbox"
                                             checked={shift.isActive}
                                             onChange={(e) => updateShiftLocal(shift.id, { isActive: e.target.checked })}
-                                            className="w-4 h-4 rounded border-slate-600 text-cyan-500 focus:ring-cyan-500 focus:ring-offset-slate-800"
+                                            className="w-4 h-4 rounded border-slate-300 text-orange-500 focus:ring-orange-500"
                                         />
-                                        <span className="text-slate-300">Aktif</span>
+                                        <span className="text-slate-700">Aktif</span>
                                     </label>
                                 </div>
                             </div>
@@ -265,12 +296,12 @@ export default function ShiftConfigPage() {
             </div>
 
             {/* Settings */}
-            <div className="glass-dark rounded-xl p-6">
-                <h2 className="text-lg font-semibold text-white mb-6">Pengaturan Sistem</h2>
+            <div className="card p-6">
+                <h2 className="text-lg font-semibold text-[#1a1f37] mb-6">Pengaturan Sistem</h2>
 
                 <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
                     <div>
-                        <label className="block text-sm text-slate-400 mb-2">
+                        <label className="block text-sm text-slate-500 mb-2">
                             Jam Cutoff Sebelum Shift
                         </label>
                         <input
@@ -287,7 +318,7 @@ export default function ShiftConfigPage() {
                     </div>
 
                     <div>
-                        <label className="block text-sm text-slate-400 mb-2">
+                        <label className="block text-sm text-slate-500 mb-2">
                             Strike No-Show untuk Blacklist
                         </label>
                         <input
@@ -304,7 +335,7 @@ export default function ShiftConfigPage() {
                     </div>
 
                     <div>
-                        <label className="block text-sm text-slate-400 mb-2">
+                        <label className="block text-sm text-slate-500 mb-2">
                             Durasi Blacklist (Hari)
                         </label>
                         <input
@@ -321,7 +352,7 @@ export default function ShiftConfigPage() {
                     </div>
 
                     <div>
-                        <label className="block text-sm text-slate-400 mb-2">
+                        <label className="block text-sm text-slate-500 mb-2">
                             Maksimal Hari Order ke Depan
                         </label>
                         <input
@@ -345,7 +376,7 @@ export default function ShiftConfigPage() {
                     <button
                         onClick={saveAllChanges}
                         disabled={isSaving}
-                        className="btn-success flex items-center gap-2 shadow-lg shadow-green-500/25 px-6 py-3"
+                        className="bg-emerald-500 hover:bg-emerald-600 text-white px-6 py-3 rounded-2xl flex items-center gap-2 shadow-lg shadow-emerald-500/25 font-medium transition-colors disabled:opacity-50"
                     >
                         {isSaving ? <Loader2 className="w-5 h-5 animate-spin" /> : <Save className="w-5 h-5" />}
                         Simpan Semua Perubahan

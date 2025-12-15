@@ -226,7 +226,7 @@ export default function CompanyManagementPage() {
     if (isLoading) {
         return (
             <div className="flex items-center justify-center h-[60vh]">
-                <Loader2 className="w-8 h-8 animate-spin text-cyan-500" />
+                <Loader2 className="w-8 h-8 animate-spin text-orange-500" />
             </div>
         );
     }
@@ -235,8 +235,8 @@ export default function CompanyManagementPage() {
         <div className="space-y-6 animate-fade-in">
             <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
                 <div>
-                    <h1 className="text-2xl font-bold text-white">Company Management</h1>
-                    <p className="text-slate-400">Manage organizational structure and department settings</p>
+                    <h1 className="text-2xl font-bold text-[#1a1f37]">Company Management</h1>
+                    <p className="text-slate-500">Manage organizational structure and department settings</p>
                 </div>
                 <div className="flex gap-3">
                     <button
@@ -250,7 +250,7 @@ export default function CompanyManagementPage() {
 
                     {/* Template & Import */}
                     <a
-                        href={`${import.meta.env.VITE_API_URL || 'http://localhost:3012'}/api/companies/export/template?token=${localStorage.getItem('token')}`}
+                        href={`${import.meta.env.VITE_API_URL ?? 'http://localhost:3012'}/api/companies/export/template?token=${localStorage.getItem('token')}`}
                         target="_blank"
                         rel="noopener noreferrer"
                         className="btn-secondary flex items-center gap-2"
@@ -294,7 +294,7 @@ export default function CompanyManagementPage() {
 
                     <button
                         onClick={() => setShowAddCompany(true)}
-                        className="btn-primary flex items-center gap-2"
+                        className="bg-orange-500 hover:bg-orange-600 text-white px-4 py-2 rounded-xl flex items-center gap-2 font-medium transition-colors"
                     >
                         <Plus className="w-4 h-4" />
                         Add Company
@@ -304,7 +304,7 @@ export default function CompanyManagementPage() {
 
             {/* Add Company Modal */}
             {showAddCompany && (
-                <div className="glass-dark rounded-xl p-4">
+                <div className="card p-4">
                     <div className="flex items-center gap-3">
                         <input
                             type="text"
@@ -315,10 +315,10 @@ export default function CompanyManagementPage() {
                             className="input-field flex-1"
                             autoFocus
                         />
-                        <button onClick={createCompany} className="btn-success">
+                        <button onClick={createCompany} className="bg-emerald-500 hover:bg-emerald-600 text-white p-2 rounded-xl transition-colors">
                             <Save className="w-4 h-4" />
                         </button>
-                        <button onClick={() => { setShowAddCompany(false); setNewName(''); }} className="btn-secondary">
+                        <button onClick={() => { setShowAddCompany(false); setNewName(''); }} className="btn-secondary p-2">
                             <X className="w-4 h-4" />
                         </button>
                     </div>
@@ -328,54 +328,54 @@ export default function CompanyManagementPage() {
             {/* Companies Tree */}
             <div className="space-y-4">
                 {companies.length === 0 ? (
-                    <div className="glass-dark rounded-xl p-12 text-center">
-                        <Building2 className="w-12 h-12 mx-auto text-slate-600 mb-4" />
-                        <p className="text-slate-400">No companies yet. Create one or import from existing users.</p>
+                    <div className="card p-12 text-center">
+                        <Building2 className="w-12 h-12 mx-auto text-slate-300 mb-4" />
+                        <p className="text-slate-500">No companies yet. Create one or import from existing users.</p>
                     </div>
                 ) : (
                     companies.map((company) => (
-                        <div key={company.id} className="glass-dark rounded-xl overflow-hidden">
+                        <div key={company.id} className="card overflow-hidden">
                             {/* Company Header */}
-                            <div className="flex items-center justify-between p-4 bg-slate-800/50">
+                            <div className="flex items-center justify-between p-4 bg-slate-50">
                                 <button
                                     onClick={() => toggleCompany(company.id)}
                                     className="flex items-center gap-3 flex-1 text-left"
                                 >
                                     {expandedCompanies.has(company.id) ? (
-                                        <ChevronDown className="w-5 h-5 text-cyan-400" />
+                                        <ChevronDown className="w-5 h-5 text-orange-500" />
                                     ) : (
                                         <ChevronRight className="w-5 h-5 text-slate-400" />
                                     )}
-                                    <Building2 className="w-5 h-5 text-cyan-400" />
-                                    <span className="text-lg font-semibold text-white">{company.name}</span>
-                                    <span className="text-sm text-slate-400">
+                                    <Building2 className="w-5 h-5 text-orange-500" />
+                                    <span className="text-lg font-semibold text-[#1a1f37]">{company.name}</span>
+                                    <span className="text-sm text-slate-500">
                                         ({company.divisions.length} divisions)
                                     </span>
                                 </button>
                                 <div className="flex items-center gap-2">
                                     <button
                                         onClick={() => setShowAddDivision(company.id)}
-                                        className="p-2 hover:bg-slate-700/50 rounded-lg transition-colors"
+                                        className="p-2 hover:bg-slate-200 rounded-lg transition-colors"
                                         title="Add Division"
                                     >
-                                        <Plus className="w-4 h-4 text-slate-400 hover:text-cyan-400" />
+                                        <Plus className="w-4 h-4 text-slate-400 hover:text-orange-500" />
                                     </button>
                                     <button
                                         onClick={() => deleteCompany(company.id)}
-                                        className="p-2 hover:bg-red-500/20 rounded-lg transition-colors"
+                                        className="p-2 hover:bg-red-100 rounded-lg transition-colors"
                                         title="Delete Company"
                                     >
-                                        <Trash2 className="w-4 h-4 text-slate-400 hover:text-red-400" />
+                                        <Trash2 className="w-4 h-4 text-slate-400 hover:text-red-500" />
                                     </button>
                                 </div>
                             </div>
 
                             {/* Divisions */}
                             {expandedCompanies.has(company.id) && (
-                                <div className="border-t border-slate-700/50">
+                                <div className="border-t border-slate-100">
                                     {/* Add Division Form */}
                                     {showAddDivision === company.id && (
-                                        <div className="p-4 bg-slate-800/30 border-b border-slate-700/50">
+                                        <div className="p-4 bg-slate-50 border-b border-slate-100">
                                             <div className="flex items-center gap-3 ml-8">
                                                 <input
                                                     type="text"
@@ -386,10 +386,10 @@ export default function CompanyManagementPage() {
                                                     className="input-field flex-1"
                                                     autoFocus
                                                 />
-                                                <button onClick={() => createDivision(company.id)} className="btn-success">
+                                                <button onClick={() => createDivision(company.id)} className="bg-emerald-500 hover:bg-emerald-600 text-white p-2 rounded-xl transition-colors">
                                                     <Save className="w-4 h-4" />
                                                 </button>
-                                                <button onClick={() => { setShowAddDivision(null); setNewName(''); }} className="btn-secondary">
+                                                <button onClick={() => { setShowAddDivision(null); setNewName(''); }} className="btn-secondary p-2">
                                                     <X className="w-4 h-4" />
                                                 </button>
                                             </div>
@@ -399,17 +399,17 @@ export default function CompanyManagementPage() {
                                     {company.divisions.map((division) => (
                                         <div key={division.id}>
                                             {/* Division Header */}
-                                            <div className="flex items-center justify-between p-3 pl-8 hover:bg-slate-800/30">
+                                            <div className="flex items-center justify-between p-3 pl-8 hover:bg-slate-50">
                                                 <button
                                                     onClick={() => toggleDivision(division.id)}
                                                     className="flex items-center gap-3 flex-1 text-left"
                                                 >
                                                     {expandedDivisions.has(division.id) ? (
-                                                        <ChevronDown className="w-4 h-4 text-cyan-400" />
+                                                        <ChevronDown className="w-4 h-4 text-orange-500" />
                                                     ) : (
                                                         <ChevronRight className="w-4 h-4 text-slate-400" />
                                                     )}
-                                                    <span className="text-white">{division.name}</span>
+                                                    <span className="text-[#1a1f37]">{division.name}</span>
                                                     <span className="text-sm text-slate-500">
                                                         ({division.departments.length} departments)
                                                     </span>
@@ -417,27 +417,27 @@ export default function CompanyManagementPage() {
                                                 <div className="flex items-center gap-2">
                                                     <button
                                                         onClick={() => setShowAddDepartment(division.id)}
-                                                        className="p-1.5 hover:bg-slate-700/50 rounded transition-colors"
+                                                        className="p-1.5 hover:bg-slate-200 rounded transition-colors"
                                                         title="Add Department"
                                                     >
-                                                        <Plus className="w-4 h-4 text-slate-400 hover:text-cyan-400" />
+                                                        <Plus className="w-4 h-4 text-slate-400 hover:text-orange-500" />
                                                     </button>
                                                     <button
                                                         onClick={() => deleteDivision(division.id)}
-                                                        className="p-1.5 hover:bg-red-500/20 rounded transition-colors"
+                                                        className="p-1.5 hover:bg-red-100 rounded transition-colors"
                                                         title="Delete Division"
                                                     >
-                                                        <Trash2 className="w-4 h-4 text-slate-400 hover:text-red-400" />
+                                                        <Trash2 className="w-4 h-4 text-slate-400 hover:text-red-500" />
                                                     </button>
                                                 </div>
                                             </div>
 
                                             {/* Departments */}
                                             {expandedDivisions.has(division.id) && (
-                                                <div className="bg-slate-900/30">
+                                                <div className="bg-slate-50/50">
                                                     {/* Add Department Form */}
                                                     {showAddDepartment === division.id && (
-                                                        <div className="p-3 pl-16 border-b border-slate-700/30">
+                                                        <div className="p-3 pl-16 border-b border-slate-100">
                                                             <div className="flex items-center gap-3">
                                                                 <input
                                                                     type="text"
@@ -448,10 +448,10 @@ export default function CompanyManagementPage() {
                                                                     className="input-field flex-1"
                                                                     autoFocus
                                                                 />
-                                                                <button onClick={() => createDepartment(division.id)} className="btn-success">
+                                                                <button onClick={() => createDepartment(division.id)} className="bg-emerald-500 hover:bg-emerald-600 text-white p-2 rounded-xl transition-colors">
                                                                     <Save className="w-4 h-4" />
                                                                 </button>
-                                                                <button onClick={() => { setShowAddDepartment(null); setNewName(''); }} className="btn-secondary">
+                                                                <button onClick={() => { setShowAddDepartment(null); setNewName(''); }} className="btn-secondary p-2">
                                                                     <X className="w-4 h-4" />
                                                                 </button>
                                                             </div>
@@ -459,18 +459,18 @@ export default function CompanyManagementPage() {
                                                     )}
 
                                                     {division.departments.map((dept) => (
-                                                        <div key={dept.id} className="p-3 pl-16 border-b border-slate-700/30 last:border-b-0">
+                                                        <div key={dept.id} className="p-3 pl-16 border-b border-slate-100 last:border-b-0">
                                                             {editingDepartment?.id === dept.id ? (
                                                                 /* Edit Mode */
                                                                 <div className="space-y-4">
                                                                     <div className="flex items-center gap-2">
-                                                                        <span className="text-white font-medium">{dept.name}</span>
+                                                                        <span className="text-[#1a1f37] font-medium">{dept.name}</span>
                                                                         <span className="text-xs text-slate-500">({dept._count.users} users)</span>
                                                                     </div>
 
                                                                     {/* Work Days */}
                                                                     <div>
-                                                                        <label className="text-sm text-slate-400 mb-2 flex items-center gap-2">
+                                                                        <label className="text-sm text-slate-500 mb-2 flex items-center gap-2">
                                                                             <Calendar className="w-4 h-4" />
                                                                             Work Days
                                                                         </label>
@@ -480,8 +480,8 @@ export default function CompanyManagementPage() {
                                                                                     key={day.value}
                                                                                     onClick={() => toggleWorkDay(day.value)}
                                                                                     className={`px-3 py-1.5 rounded-lg text-sm font-medium transition-colors ${editWorkDays.includes(day.value)
-                                                                                        ? 'bg-cyan-500 text-white'
-                                                                                        : 'bg-slate-700/50 text-slate-400 hover:bg-slate-700'
+                                                                                        ? 'bg-orange-500 text-white'
+                                                                                        : 'bg-slate-100 text-slate-600 hover:bg-slate-200'
                                                                                         }`}
                                                                                 >
                                                                                     {day.label}
@@ -492,7 +492,7 @@ export default function CompanyManagementPage() {
 
                                                                     {/* Allowed Shifts */}
                                                                     <div>
-                                                                        <label className="text-sm text-slate-400 mb-2 flex items-center gap-2">
+                                                                        <label className="text-sm text-slate-500 mb-2 flex items-center gap-2">
                                                                             <Clock className="w-4 h-4" />
                                                                             Allowed Shifts
                                                                         </label>
@@ -509,8 +509,8 @@ export default function CompanyManagementPage() {
                                                                                         );
                                                                                     }}
                                                                                     className={`px-3 py-1.5 rounded-lg text-sm font-medium transition-colors ${editShiftIds.includes(shift.id)
-                                                                                        ? 'bg-cyan-500 text-white'
-                                                                                        : 'bg-slate-700/50 text-slate-400 hover:bg-slate-700'
+                                                                                        ? 'bg-orange-500 text-white'
+                                                                                        : 'bg-slate-100 text-slate-600 hover:bg-slate-200'
                                                                                         }`}
                                                                                 >
                                                                                     {shift.name} ({shift.startTime} - {shift.endTime})
@@ -526,7 +526,7 @@ export default function CompanyManagementPage() {
 
                                                                     {/* Actions */}
                                                                     <div className="flex gap-2">
-                                                                        <button onClick={saveDepartment} className="btn-success flex items-center gap-2">
+                                                                        <button onClick={saveDepartment} className="bg-emerald-500 hover:bg-emerald-600 text-white px-4 py-2 rounded-xl flex items-center gap-2 font-medium transition-colors">
                                                                             <Save className="w-4 h-4" />
                                                                             Save
                                                                         </button>
@@ -539,13 +539,13 @@ export default function CompanyManagementPage() {
                                                                 /* View Mode */
                                                                 <div className="flex items-center justify-between">
                                                                     <div>
-                                                                        <span className="text-white">{dept.name}</span>
+                                                                        <span className="text-[#1a1f37]">{dept.name}</span>
                                                                         <div className="flex items-center gap-4 mt-1">
                                                                             <span className="text-xs text-slate-500">
                                                                                 {dept._count.users} users
                                                                             </span>
                                                                             {dept.allowedShifts && dept.allowedShifts.length > 0 && (
-                                                                                <span className="text-xs text-cyan-400 flex items-center gap-1">
+                                                                                <span className="text-xs text-orange-500 flex items-center gap-1">
                                                                                     <Clock className="w-3 h-3" />
                                                                                     {dept.allowedShifts.map(ds => ds.shift.name).join(', ')}
                                                                                 </span>
@@ -561,17 +561,17 @@ export default function CompanyManagementPage() {
                                                                     <div className="flex items-center gap-2">
                                                                         <button
                                                                             onClick={() => startEditDepartment(dept)}
-                                                                            className="p-1.5 hover:bg-slate-700/50 rounded transition-colors"
+                                                                            className="p-1.5 hover:bg-slate-200 rounded transition-colors"
                                                                             title="Edit"
                                                                         >
-                                                                            <Edit2 className="w-4 h-4 text-slate-400 hover:text-cyan-400" />
+                                                                            <Edit2 className="w-4 h-4 text-slate-400 hover:text-orange-500" />
                                                                         </button>
                                                                         <button
                                                                             onClick={() => deleteDepartment(dept.id)}
-                                                                            className="p-1.5 hover:bg-red-500/20 rounded transition-colors"
+                                                                            className="p-1.5 hover:bg-red-100 rounded transition-colors"
                                                                             title="Delete"
                                                                         >
-                                                                            <Trash2 className="w-4 h-4 text-slate-400 hover:text-red-400" />
+                                                                            <Trash2 className="w-4 h-4 text-slate-400 hover:text-red-500" />
                                                                         </button>
                                                                     </div>
                                                                 </div>

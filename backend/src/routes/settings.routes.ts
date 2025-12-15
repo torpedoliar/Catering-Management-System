@@ -6,6 +6,9 @@ import { getNow } from '../services/time.service';
 import { ErrorMessages } from '../utils/errorMessages';
 import { logSettings, getRequestContext } from '../services/audit.service';
 
+import { OrderService } from '../services/order.service';
+import { getToday } from '../services/time.service';
+
 const router = Router();
 const prisma = new PrismaClient();
 
@@ -73,6 +76,22 @@ router.put('/', authMiddleware, adminMiddleware, async (req: AuthRequest, res: R
                 maxOrderDaysAhead: maxOrderDaysAhead || 7,
             },
         });
+
+        // Check if maxOrderDaysAhead is reduced, if so, cancel excess orders
+        if (maxOrderDaysAhead !== undefined && oldSettings?.maxOrderDaysAhead && maxOrderDaysAhead < oldSettings.maxOrderDaysAhead) {
+            console.log(`[Settings] Max order days reduced from ${oldSettings.maxOrderDaysAhead} to ${maxOrderDaysAhead}. Processing auto-cancellations...`);
+
+            // Calculate last allowed date
+            const today = getToday();
+            // date = today + maxDays;
+            const maxValidDate = new Date(today);
+            maxValidDate.setDate(maxValidDate.getDate() + maxOrderDaysAhead);
+            maxValidDate.setHours(23, 59, 59, 999); // End of that day
+
+            // Run cancellation in background to not block response? 
+            // Better to await it to ensure consistency, loop is usually fast enough for moderate data.
+            await OrderService.cancelOrdersBeyondDate(maxValidDate, `Kebijakan batas pemesanan diubah menjadi ${maxOrderDaysAhead} hari ke depan`);
+        }
 
         // Log audit
         await logSettings(req.user || null, oldSettings, settings, getRequestContext(req), { settingsType: 'System Settings' });

@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { format, subDays } from 'date-fns';
-import { FileSpreadsheet, Download, Loader2, Calendar } from 'lucide-react';
+import { FileDown, Calendar, Filter, Loader2 } from 'lucide-react';
 import toast from 'react-hot-toast';
 
 
@@ -9,6 +9,7 @@ export default function ExportPage() {
     const [endDate, setEndDate] = useState(format(new Date(), 'yyyy-MM-dd'));
     const [status, setStatus] = useState('');
     const [isExporting, setIsExporting] = useState(false);
+
 
     const handleExport = async () => {
         setIsExporting(true);
@@ -19,7 +20,7 @@ export default function ExportPage() {
             if (status) params.append('status', status);
 
             const token = localStorage.getItem('token');
-            const apiUrl = import.meta.env.VITE_API_URL || 'http://localhost:3012';
+            const apiUrl = import.meta.env.VITE_API_URL ?? 'http://localhost:3012';
 
             const response = await fetch(`${apiUrl}/api/orders/export?${params}`, {
                 method: 'GET',
@@ -63,7 +64,7 @@ export default function ExportPage() {
             <div className="glass-dark rounded-xl p-6">
                 <div className="flex items-center gap-3 mb-6">
                     <div className="w-12 h-12 rounded-xl bg-cyan-500/20 flex items-center justify-center">
-                        <FileSpreadsheet className="w-6 h-6 text-cyan-400" />
+                        <Filter className="w-6 h-6 text-cyan-400" />
                     </div>
                     <div>
                         <h2 className="text-lg font-semibold text-white">Transaction Export</h2>
@@ -139,24 +140,26 @@ export default function ExportPage() {
                         </p>
                     </div>
 
-                    {/* Export Button */}
-                    <button
-                        onClick={handleExport}
-                        disabled={isExporting}
-                        className="btn-primary w-full flex items-center justify-center gap-2"
-                    >
-                        {isExporting ? (
-                            <>
-                                <Loader2 className="w-5 h-5 animate-spin" />
-                                Generating Export...
-                            </>
-                        ) : (
-                            <>
-                                <Download className="w-5 h-5" />
-                                Export to Excel
-                            </>
-                        )}
-                    </button>
+                    {/* Export Buttons */}
+                    <div className="flex flex-col sm:flex-row gap-3">
+                        <button
+                            onClick={handleExport}
+                            disabled={isExporting}
+                            className="btn-primary flex items-center justify-center gap-2 flex-1"
+                        >
+                            {isExporting ? (
+                                <>
+                                    <Loader2 className="w-5 h-5 animate-spin" />
+                                    Generating Excel...
+                                </>
+                            ) : (
+                                <>
+                                    <FileDown className="w-5 h-5" />
+                                    Export to Excel
+                                </>
+                            )}
+                        </button>
+                    </div>
                 </div>
             </div>
         </div>

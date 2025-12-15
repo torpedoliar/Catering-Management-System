@@ -206,7 +206,7 @@ router.get('/:id', authMiddleware, async (req: AuthRequest, res: Response) => {
 // Create shift (Admin only)
 router.post('/', authMiddleware, adminMiddleware, async (req: AuthRequest, res: Response) => {
     try {
-        const { name, startTime, endTime } = req.body;
+        const { name, startTime, endTime, mealPrice } = req.body;
 
         if (!name || !startTime || !endTime) {
             return res.status(400).json({ error: 'Name, start time, and end time are required' });
@@ -219,7 +219,12 @@ router.post('/', authMiddleware, adminMiddleware, async (req: AuthRequest, res: 
         }
 
         const shift = await prisma.shift.create({
-            data: { name, startTime, endTime },
+            data: {
+                name,
+                startTime,
+                endTime,
+                ...(mealPrice !== undefined && { mealPrice })
+            },
         });
 
         // Log audit
@@ -245,7 +250,7 @@ router.post('/', authMiddleware, adminMiddleware, async (req: AuthRequest, res: 
 // Update shift (Admin only)
 router.put('/:id', authMiddleware, adminMiddleware, async (req: AuthRequest, res: Response) => {
     try {
-        const { name, startTime, endTime, isActive } = req.body;
+        const { name, startTime, endTime, isActive, mealPrice } = req.body;
 
         // Get old shift for audit
         const oldShift = await prisma.shift.findUnique({ where: { id: req.params.id } });
@@ -266,6 +271,7 @@ router.put('/:id', authMiddleware, adminMiddleware, async (req: AuthRequest, res
                 ...(startTime && { startTime }),
                 ...(endTime && { endTime }),
                 ...(isActive !== undefined && { isActive }),
+                ...(mealPrice !== undefined && { mealPrice }),
             },
         });
 

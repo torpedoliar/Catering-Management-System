@@ -1,17 +1,19 @@
 import { useState, useEffect, useCallback } from 'react';
-import { Settings, Lock, Eye, EyeOff, Check, AlertCircle, Clock, Shield, Server, RefreshCw, User, Building } from 'lucide-react';
+import { Settings, Lock, Eye, EyeOff, Check, AlertCircle, Clock, Shield, Server, RefreshCw, User, CalendarDays } from 'lucide-react';
 import { format } from 'date-fns';
+import { formatDateTimeShortWIB } from '../utils/timezone';
 import toast from 'react-hot-toast';
 import { useAuth } from '../contexts/AuthContext';
 import { useSSERefresh, SETTINGS_EVENTS } from '../contexts/SSEContext';
 
-const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:3012';
+const API_URL = import.meta.env.VITE_API_URL ?? 'http://localhost:3012';
 
 interface SystemSettings {
     id: string;
     cutoffHours: number;
     blacklistStrikes: number;
     blacklistDuration: number;
+    maxOrderDaysAhead: number;
     ntpEnabled: boolean;
     ntpServer: string;
     ntpTimezone: string;
@@ -63,6 +65,7 @@ export default function SettingsPage() {
     const [cutoffHours, setCutoffHours] = useState(6);
     const [blacklistStrikes, setBlacklistStrikes] = useState(3);
     const [blacklistDuration, setBlacklistDuration] = useState(7);
+    const [maxOrderDaysAhead, setMaxOrderDaysAhead] = useState(7);
 
     const getToken = () => localStorage.getItem('token');
 
@@ -104,6 +107,7 @@ export default function SettingsPage() {
                 setCutoffHours(data.cutoffHours || 6);
                 setBlacklistStrikes(data.blacklistStrikes || 3);
                 setBlacklistDuration(data.blacklistDuration || 7);
+                setMaxOrderDaysAhead(data.maxOrderDaysAhead || 7);
             }
 
             if (ntpRes.ok) {
@@ -219,6 +223,7 @@ export default function SettingsPage() {
                     cutoffHours,
                     blacklistStrikes,
                     blacklistDuration,
+                    maxOrderDaysAhead,
                 }),
             });
 
@@ -337,10 +342,9 @@ export default function SettingsPage() {
                     </div>
                     <div className="space-y-1">
                         <label className="text-caption text-dark-text-secondary uppercase tracking-wide">Role</label>
-                        <span className={`badge ${
-                            user?.role === 'ADMIN' ? 'badge-info' :
+                        <span className={`badge ${user?.role === 'ADMIN' ? 'badge-info' :
                             user?.role === 'CANTEEN' ? 'badge-warning' : 'badge-neutral'
-                        }`}>
+                            }`}>
                             {user?.role}
                         </span>
                     </div>
@@ -497,7 +501,7 @@ export default function SettingsPage() {
                                             </span>
                                             {timeInfo?.lastSync && (
                                                 <p className="text-caption text-dark-text-secondary">
-                                                    Terakhir sync: {format(new Date(timeInfo.lastSync), 'dd/MM/yyyy HH:mm')}
+                                                    Terakhir sync: {formatDateTimeShortWIB(timeInfo.lastSync)}
                                                 </p>
                                             )}
                                         </div>
@@ -629,6 +633,24 @@ export default function SettingsPage() {
                                             max={10}
                                             value={blacklistStrikes}
                                             onChange={(e) => setBlacklistStrikes(parseInt(e.target.value) || 1)}
+                                            className="input-field"
+                                        />
+                                    </div>
+
+                                    <div>
+                                        <label className="flex items-center gap-2 text-callout font-medium text-dark-text-secondary mb-2">
+                                            <CalendarDays className="w-4 h-4" />
+                                            Maksimal Hari Pemesanan di Muka
+                                        </label>
+                                        <p className="text-caption text-dark-text-secondary mb-2">
+                                            Berapa hari ke depan user dapat memesan makanan
+                                        </p>
+                                        <input
+                                            type="number"
+                                            min={1}
+                                            max={30}
+                                            value={maxOrderDaysAhead}
+                                            onChange={(e) => setMaxOrderDaysAhead(parseInt(e.target.value) || 7)}
                                             className="input-field"
                                         />
                                     </div>

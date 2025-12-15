@@ -1,4 +1,4 @@
-import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom';
+import { BrowserRouter, Routes, Route, Navigate, Outlet } from 'react-router-dom';
 import { Toaster } from 'react-hot-toast';
 import { AuthProvider, useAuth } from './contexts/AuthContext';
 import { SSEProvider } from './contexts/SSEContext';
@@ -17,12 +17,17 @@ import ExportPage from './pages/admin/ExportPage';
 import CalendarPage from './pages/admin/CalendarPage';
 import TimeSettingsPage from './pages/admin/TimeSettingsPage';
 import AuditLogPage from './pages/admin/AuditLogPage';
+import MessagesPage from './pages/admin/MessagesPage';
+import CostAnalysisPage from './pages/admin/CostAnalysisPage';
+import AnnouncementPage from './pages/admin/AnnouncementPage';
+import EmailSettingsPage from './pages/admin/EmailSettingsPage';
 import CheckInPage from './pages/canteen/CheckInPage';
 import AboutPage from './pages/AboutPage';
 
 // Layout
 import Layout from './components/Layout/Layout';
 import ForcePasswordChange from './components/ForcePasswordChange';
+import AnnouncementPopup from './components/AnnouncementPopup';
 
 // Protected Route Component
 const ProtectedRoute = ({ children, roles }: { children: React.ReactNode; roles?: string[] }) => {
@@ -53,126 +58,46 @@ const ProtectedRoute = ({ children, roles }: { children: React.ReactNode; roles?
 };
 
 function AppRoutes() {
-    const { user } = useAuth();
-
     return (
         <Routes>
             <Route path="/login" element={<LoginPage />} />
 
-            {/* User Routes */}
-            <Route path="/" element={
-                <ProtectedRoute>
-                    <Layout>
-                        <OrderPage />
-                    </Layout>
-                </ProtectedRoute>
-            } />
+            {/* Persistent Layout for all authenticated routes */}
+            <Route element={
+                <Layout>
+                    <Outlet />
+                </Layout>
+            }>
+                {/* User Routes */}
+                <Route element={<ProtectedRoute><Outlet /></ProtectedRoute>}>
+                    <Route path="/" element={<OrderPage />} />
+                    <Route path="/history" element={<HistoryPage />} />
+                    <Route path="/settings" element={<SettingsPage />} />
+                    <Route path="/about" element={<AboutPage />} />
+                </Route>
 
-            <Route path="/history" element={
-                <ProtectedRoute>
-                    <Layout>
-                        <HistoryPage />
-                    </Layout>
-                </ProtectedRoute>
-            } />
+                {/* Admin Routes */}
+                <Route element={<ProtectedRoute roles={['ADMIN']}><Outlet /></ProtectedRoute>}>
+                    <Route path="/admin/dashboard" element={<DashboardPage />} />
+                    <Route path="/admin/shifts" element={<ShiftConfigPage />} />
+                    <Route path="/admin/users" element={<UserManagementPage />} />
+                    <Route path="/admin/companies" element={<CompanyManagementPage />} />
+                    <Route path="/admin/blacklist" element={<BlacklistPage />} />
+                    <Route path="/admin/export" element={<ExportPage />} />
+                    <Route path="/admin/costs" element={<CostAnalysisPage />} />
+                    <Route path="/admin/announcements" element={<AnnouncementPage />} />
+                    <Route path="/admin/calendar" element={<CalendarPage />} />
+                    <Route path="/admin/time-settings" element={<TimeSettingsPage />} />
+                    <Route path="/admin/audit-log" element={<AuditLogPage />} />
+                    <Route path="/admin/messages" element={<MessagesPage />} />
+                    <Route path="/admin/email-settings" element={<EmailSettingsPage />} />
+                </Route>
 
-            <Route path="/settings" element={
-                <ProtectedRoute>
-                    <Layout>
-                        <SettingsPage />
-                    </Layout>
-                </ProtectedRoute>
-            } />
-
-            <Route path="/about" element={
-                <ProtectedRoute>
-                    <Layout>
-                        <AboutPage />
-                    </Layout>
-                </ProtectedRoute>
-            } />
-
-            {/* Admin Routes */}
-            <Route path="/admin/dashboard" element={
-                <ProtectedRoute roles={['ADMIN']}>
-                    <Layout>
-                        <DashboardPage />
-                    </Layout>
-                </ProtectedRoute>
-            } />
-
-            <Route path="/admin/shifts" element={
-                <ProtectedRoute roles={['ADMIN']}>
-                    <Layout>
-                        <ShiftConfigPage />
-                    </Layout>
-                </ProtectedRoute>
-            } />
-
-            <Route path="/admin/users" element={
-                <ProtectedRoute roles={['ADMIN']}>
-                    <Layout>
-                        <UserManagementPage />
-                    </Layout>
-                </ProtectedRoute>
-            } />
-
-            <Route path="/admin/companies" element={
-                <ProtectedRoute roles={['ADMIN']}>
-                    <Layout>
-                        <CompanyManagementPage />
-                    </Layout>
-                </ProtectedRoute>
-            } />
-
-            <Route path="/admin/blacklist" element={
-                <ProtectedRoute roles={['ADMIN']}>
-                    <Layout>
-                        <BlacklistPage />
-                    </Layout>
-                </ProtectedRoute>
-            } />
-
-            <Route path="/admin/export" element={
-                <ProtectedRoute roles={['ADMIN']}>
-                    <Layout>
-                        <ExportPage />
-                    </Layout>
-                </ProtectedRoute>
-            } />
-
-            <Route path="/admin/calendar" element={
-                <ProtectedRoute roles={['ADMIN']}>
-                    <Layout>
-                        <CalendarPage />
-                    </Layout>
-                </ProtectedRoute>
-            } />
-
-            <Route path="/admin/time-settings" element={
-                <ProtectedRoute roles={['ADMIN']}>
-                    <Layout>
-                        <TimeSettingsPage />
-                    </Layout>
-                </ProtectedRoute>
-            } />
-
-            <Route path="/admin/audit-log" element={
-                <ProtectedRoute roles={['ADMIN']}>
-                    <Layout>
-                        <AuditLogPage />
-                    </Layout>
-                </ProtectedRoute>
-            } />
-
-            {/* Canteen Routes */}
-            <Route path="/canteen/checkin" element={
-                <ProtectedRoute roles={['CANTEEN', 'ADMIN']}>
-                    <Layout>
-                        <CheckInPage />
-                    </Layout>
-                </ProtectedRoute>
-            } />
+                {/* Canteen Routes */}
+                <Route element={<ProtectedRoute roles={['CANTEEN', 'ADMIN']}><Outlet /></ProtectedRoute>}>
+                    <Route path="/canteen/checkin" element={<CheckInPage />} />
+                </Route>
+            </Route>
 
             {/* Fallback */}
             <Route path="*" element={<Navigate to="/" replace />} />
@@ -209,6 +134,7 @@ export default function App() {
                             },
                         }}
                     />
+                    <AnnouncementPopup />
                 </SSEProvider>
             </AuthProvider>
         </BrowserRouter>

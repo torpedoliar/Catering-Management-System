@@ -2,6 +2,89 @@
 
 All notable changes to Vibe Catering Management System will be documented in this file.
 
+## [1.4.0] - 2025-12-15
+
+### 📸 Check-in Photo Verification
+
+Update v1.4.0 memperkenalkan fitur pengambilan foto saat check-in untuk memastikan pengguna yang mengambil makanan sesuai dengan yang memesan.
+
+### ✨ New Features
+
+#### 📸 Photo Capture During Check-in
+- **Webcam Integration**: Kamera otomatis terbuka saat QR code di-scan
+- **User Photo Verification**: Tampilan foto profil user untuk perbandingan visual
+- **Photo Capture**: Staff kantin dapat mengambil foto saat check-in
+- **Image Compression**: Foto otomatis di-resize (400x400) dan compress (WebP 80%)
+- **Database Storage**: Foto check-in tersimpan di database untuk audit
+- **Toggle Setting**: Admin dapat on/off fitur foto check-in
+- **Settings UI**: Tombol toggle "Foto ON/OFF" di halaman check-in
+
+#### 💾 Backend Enhancements
+- **New Field**: Order model memiliki field `checkinPhoto`
+- **Settings**: Field `checkinPhotoEnabled` untuk kontrol feature
+- **Photo Upload API**: Check-in endpoint menerima multipart/form-data
+- **Sharp Integration**: Image processing dengan sharp library
+- **Storage**: Foto disimpan di `/uploads/checkins`
+
+### 🛠️ Improvements
+- **User Photo Feature**: User management sekarang mendukung upload foto profil
+- **Webcam Component**: Integrasi react-webcam untuk capture foto real-time
+- **FormData Submission**: Check-in API menggunakan FormData untuk support file upload
+
+### 🎨 UI/UX Updates
+- **Camera Modal**: Modal fullscreen untuk preview kamera dan user photo
+- **Settings Button**: Toggle button dengan visual feedback (green = ON, gray = OFF)
+- **User Photo Display**: Menampilkan foto profil user sebelum capture
+- **Responsive Camera**: Camera view dengan aspect ratio 4:3 dan overlay border
+
+---
+
+## [1.3.0] - 2025-12-11
+
+### 💰 Cost Management & Timezone Audit
+
+Update v1.3.0 menghadirkan fitur Cost Management dengan historical price tracking dan perbaikan menyeluruh untuk masalah timezone.
+
+### ✨ New Features
+
+#### 💰 Cost Management System
+- **Per-Shift Meal Pricing**: Admin dapat mengatur harga makanan per shift di Shift Config
+- **Historical Price Tracking**: Order menyimpan harga makanan saat pemesanan dibuat
+- **Cost Analysis Dashboard**: Halaman baru `/admin/costs` untuk analisis biaya
+  - Total Cost, Actual Cost, Waste Cost metrics
+  - Breakdown per Shift dan per Company
+  - Waste rate calculation
+- **Enhanced Excel Export**: 4-sheet report dengan kolom biaya (Harga Makanan, Biaya Aktual, Kerugian)
+
+#### 📊 Bulk Order Enhancement
+- **Multi-Date Selection**: User dapat memesan makanan untuk beberapa hari sekaligus
+- **Validation per Date**: Setiap tanggal divalidasi secara terpisah (cutoff, holiday, existing order)
+- **Result Summary**: Menampilkan hasil sukses dan gagal per tanggal
+
+### 🛠️ Bug Fixes
+
+#### 🕐 Timezone Audit (Critical)
+- **Problem**: `toISOString()` mengembalikan UTC date yang bisa berbeda dari local date di sekitar tengah malam
+- **Fixed Files**:
+  - `OrderPage.tsx` - 6 lokasi diperbaiki dengan `getLocalDateString()` helper
+  - `DashboardPage.tsx` - 6 lokasi diperbaiki dengan `getLocalDateString()` helper
+  - `AuditLogPage.tsx` - Timestamp display diperbaiki untuk WIB
+
+#### 📊 Dashboard Rekap per Perusahaan Fix
+- **Problem**: Company recap menampilkan data dari `todayOrders` yang hanya 10 item
+- **Solution**: Menggunakan `allFilteredOrders` dengan semua order dalam date range
+- **Additional Fix**: Filter cancelled orders dari company recap
+
+#### 📝 Audit Log Timestamp Fix
+- **Problem**: Timestamp ditampilkan dalam UTC, bukan WIB
+- **Solution**: Helper functions `formatWIBDate()` dan `formatWIBTime()` yang menghapus 'Z' suffix
+
+### 🎨 UI Improvements
+- **Dashboard**: "Performa per Shift" → "Pengambilan Makan per Shift"
+- **Cost Analysis Menu**: Menu baru "Analisis Biaya" di sidebar admin
+
+---
+
 ## [1.2.0] - 2025-12-08
 
 ### 🎨 UI/UX Overhaul: Modern Gradient Theme

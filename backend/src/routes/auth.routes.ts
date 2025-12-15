@@ -5,6 +5,7 @@ import { PrismaClient } from '@prisma/client';
 import { AuthRequest, authMiddleware } from '../middleware/auth.middleware';
 import { getNow } from '../services/time.service';
 import { logAuth, getRequestContext } from '../services/audit.service';
+import { rateLimiter } from '../services/rate-limiter.service';
 
 const router = Router();
 const prisma = new PrismaClient();
@@ -20,27 +21,70 @@ router.post('/login', async (req, res) => {
             return res.status(400).json({ error: 'External ID and password are required' });
         }
 
+        // Get client IP (consider X-Forwarded-For for proxies)
+        const clientIp = (req.headers['x-forwarded-for'] as string)?.split(',')[0]?.trim() || req.socket.remoteAddress || 'unknown';
+
+        // Check rate limit BEFORE database queries
+        const rateLimitCheck = await rateLimiter.checkRateLimit(externalId, clientIp);
+        if (!rateLimitCheck.allowed) {
+            console.log(`[RateLimit] Login blocked for ${externalId} from ${clientIp}: ${rateLimitCheck.reason}`);
+            return res.status(429).json({
+                error: rateLimitCheck.reason || 'Too many attempts',
+                remainingTime: rateLimitCheck.remainingTime,
+                retryAfter: rateLimitCheck.remainingTime
+            });
+        }
+
         const user = await prisma.user.findUnique({
             where: { externalId },
         });
 
         if (!user || !user.isActive) {
+            // Record failed attempt before logging
+            await rateLimiter.recordFailedAttempt(externalId, clientIp);
+
+            // Get current attempts for user feedback
+            const current = await rateLimiter.getCurrentAttempts(externalId, clientIp);
+            const attemptCount = Math.max(current.user, current.ip);
+            const remaining = await rateLimiter.getRemainingAttempts(externalId, clientIp);
+            const minRemaining = Math.min(remaining.user, remaining.ip);
+
             // Log failed login attempt
             await logAuth('LOGIN_FAILED', { externalId }, context, {
                 success: false,
                 errorMessage: !user ? 'User not found' : 'User inactive',
+                metadata: { ip: clientIp, attemptCount, remainingAttempts: minRemaining }
             });
-            return res.status(401).json({ error: 'Invalid credentials or user is inactive' });
+            return res.status(401).json({
+                error: 'Invalid credentials or user is inactive',
+                attemptCount,
+                remainingAttempts: minRemaining > 0 ? minRemaining : undefined
+            });
         }
 
         const isValid = await bcrypt.compare(password, user.password);
         if (!isValid) {
+            // Record failed attempt before logging
+            await rateLimiter.recordFailedAttempt(externalId, clientIp);
+
+            // Get current attempts and remaining for user feedback
+            const current = await rateLimiter.getCurrentAttempts(externalId, clientIp);
+            const attemptCount = Math.max(current.user, current.ip);
+            const remaining = await rateLimiter.getRemainingAttempts(externalId, clientIp);
+            const minRemaining = Math.min(remaining.user, remaining.ip);
+
             // Log failed login attempt
             await logAuth('LOGIN_FAILED', { id: user.id, name: user.name, externalId }, context, {
                 success: false,
                 errorMessage: 'Invalid password',
+                metadata: { ip: clientIp, attemptCount, remainingAttempts: minRemaining }
             });
-            return res.status(401).json({ error: 'Invalid credentials' });
+
+            return res.status(401).json({
+                error: 'Invalid credentials',
+                attemptCount,
+                remainingAttempts: minRemaining > 0 ? minRemaining : undefined
+            });
         }
 
         const token = jwt.sign(
@@ -48,6 +92,9 @@ router.post('/login', async (req, res) => {
             process.env.JWT_SECRET || 'default-secret',
             { expiresIn: '8h' }
         );
+
+        // Reset rate limit on successful login
+        await rateLimiter.resetAttempts(externalId, clientIp);
 
         // Log successful login
         await logAuth('LOGIN', { id: user.id, name: user.name, role: user.role, externalId: user.externalId }, context);

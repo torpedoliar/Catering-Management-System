@@ -2,7 +2,7 @@ import { createContext, useContext, useEffect, useState, ReactNode, useCallback,
 import { useAuth } from './AuthContext';
 import toast from 'react-hot-toast';
 
-const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:3012';
+const API_URL = import.meta.env.VITE_API_URL ?? 'http://localhost:3012';
 
 // Generate unique tab ID for this browser tab
 const TAB_ID = `tab_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
@@ -38,6 +38,9 @@ const ALL_EVENTS = [
     'settings:updated',
     'shift:updated',
     'holiday:updated',
+    'announcement:created',
+    'announcement:updated',
+    'announcement:deleted',
     'data:refresh',
 ];
 
@@ -310,4 +313,5 @@ export const USER_EVENTS = ['user:blacklisted', 'user:unblocked', 'user:strikes-
 export const SETTINGS_EVENTS = ['settings:updated'];
 export const SHIFT_EVENTS = ['shift:updated'];
 export const HOLIDAY_EVENTS = ['holiday:updated'];
-export const ALL_DATA_EVENTS = [...ORDER_EVENTS, ...USER_EVENTS, ...SETTINGS_EVENTS, ...SHIFT_EVENTS, ...HOLIDAY_EVENTS, 'data:refresh'];
+export const ANNOUNCEMENT_EVENTS = ['announcement:created', 'announcement:updated', 'announcement:deleted'];
+export const ALL_DATA_EVENTS = [...ORDER_EVENTS, ...USER_EVENTS, ...SETTINGS_EVENTS, ...SHIFT_EVENTS, ...HOLIDAY_EVENTS, ...ANNOUNCEMENT_EVENTS, 'data:refresh'];

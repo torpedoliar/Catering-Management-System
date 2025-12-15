@@ -1,5 +1,6 @@
 import express from 'express';
 import cors from 'cors';
+import path from 'path';
 import { PrismaClient } from '@prisma/client';
 import authRoutes from './routes/auth.routes';
 import userRoutes from './routes/user.routes';
@@ -12,9 +13,14 @@ import holidayRoutes from './routes/holiday.routes';
 import sseRoutes from './routes/sse.routes';
 import timeRoutes from './routes/time.routes';
 import auditRoutes from './routes/audit.routes';
+import messageRoutes from './routes/message.routes';
+import announcementRoutes from './routes/announcement.routes';
+import emailRoutes from './routes/email.routes';
+
 import { sseManager } from './controllers/sse.controller';
 import { startScheduler } from './services/scheduler';
 import { initNTPService, getNow } from './services/time.service';
+import { redisService } from './services/redis.service';
 
 const app = express();
 const prisma = new PrismaClient();
@@ -28,6 +34,10 @@ app.use(cors({
 }));
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
+app.use('/uploads', express.static(path.join(__dirname, '../uploads')));
+
+// Trust proxy for proper IP detection (behind reverse proxy/load balancer)
+app.set('trust proxy', true);
 
 // Health check
 app.get('/api/health', (req, res) => {
@@ -46,6 +56,10 @@ app.use('/api/holidays', holidayRoutes);
 app.use('/api/sse', sseRoutes);
 app.use('/api/time', timeRoutes);
 app.use('/api/audit', auditRoutes);
+app.use('/api/messages', messageRoutes);
+app.use('/api/announcements', announcementRoutes);
+app.use('/api/email', emailRoutes);
+
 
 // Error handling middleware
 app.use((err: any, req: express.Request, res: express.Response, next: express.NextFunction) => {
@@ -59,6 +73,7 @@ app.use((err: any, req: express.Request, res: express.Response, next: express.Ne
 // Graceful shutdown
 process.on('SIGTERM', async () => {
     console.log('SIGTERM received, shutting down...');
+    await redisService.disconnect();
     await prisma.$disconnect();
     process.exit(0);
 });
@@ -66,6 +81,9 @@ process.on('SIGTERM', async () => {
 app.listen(PORT, async () => {
     console.log(`🚀 Catering API running on http://localhost:${PORT}`);
     console.log(`📡 SSE endpoint: http://localhost:${PORT}/api/sse`);
+
+    // Initialize Redis
+    await redisService.connect();
 
     // Initialize NTP service
     await initNTPService();

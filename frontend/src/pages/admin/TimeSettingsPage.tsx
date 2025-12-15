@@ -1,8 +1,9 @@
 import { useState, useEffect } from 'react';
-import { format } from 'date-fns';
+
+import { formatDateTimeShortWIB } from '../../utils/timezone';
 import toast from 'react-hot-toast';
 
-const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:3012/api';
+const API_URL = import.meta.env.VITE_API_URL ?? 'http://localhost:3012';
 
 interface NTPSettings {
     ntpEnabled: boolean;
@@ -15,6 +16,9 @@ interface NTPSettings {
 
 interface TimeInfo {
     serverTime: string;
+    formattedTime: string;
+    formattedDate: string;
+    timestamp: number;
     timezone: string;
     ntpEnabled: boolean;
     ntpServer: string;
@@ -36,7 +40,8 @@ export default function TimeSettingsPage() {
     const [loading, setLoading] = useState(true);
     const [saving, setSaving] = useState(false);
     const [syncing, setSyncing] = useState(false);
-    const [currentTime, setCurrentTime] = useState<Date>(new Date());
+    const [currentTime, setCurrentTime] = useState<string>('');
+    const [currentDate, setCurrentDate] = useState<string>('');
 
     const getToken = () => localStorage.getItem('token');
 
@@ -46,10 +51,10 @@ export default function TimeSettingsPage() {
             const headers = { Authorization: `Bearer ${token}` };
 
             const [settingsRes, timeRes, tzRes, serversRes] = await Promise.all([
-                fetch(`${API_URL}/time/ntp`, { headers }),
-                fetch(`${API_URL}/time/info`, { headers }),
-                fetch(`${API_URL}/time/timezones`, { headers }),
-                fetch(`${API_URL}/time/ntp-servers`, { headers }),
+                fetch(`${API_URL}/api/time/ntp`, { headers }),
+                fetch(`${API_URL}/api/time/info`, { headers }),
+                fetch(`${API_URL}/api/time/timezones`, { headers }),
+                fetch(`${API_URL}/api/time/ntp-servers`, { headers }),
             ]);
 
             if (settingsRes.ok) {
@@ -58,7 +63,8 @@ export default function TimeSettingsPage() {
             if (timeRes.ok) {
                 const info = await timeRes.json();
                 setTimeInfo(info);
-                setCurrentTime(new Date(info.serverTime));
+                setCurrentTime(info.formattedTime || '');
+                setCurrentDate(info.formattedDate || '');
             }
             if (tzRes.ok) {
                 setTimezones(await tzRes.json());
@@ -80,16 +86,41 @@ export default function TimeSettingsPage() {
 
     useEffect(() => {
         const interval = setInterval(() => {
-            setCurrentTime((prev) => new Date(prev.getTime() + 1000));
+            // Increment the time string by 1 second
+            if (currentTime) {
+                const parts = currentTime.split(':');
+                if (parts.length === 3) {
+                    let hours = parseInt(parts[0], 10);
+                    let minutes = parseInt(parts[1], 10);
+                    let seconds = parseInt(parts[2], 10);
+
+                    seconds++;
+                    if (seconds >= 60) {
+                        seconds = 0;
+                        minutes++;
+                    }
+                    if (minutes >= 60) {
+                        minutes = 0;
+                        hours++;
+                    }
+                    if (hours >= 24) {
+                        hours = 0;
+                    }
+
+                    setCurrentTime(
+                        `${hours.toString().padStart(2, '0')}:${minutes.toString().padStart(2, '0')}:${seconds.toString().padStart(2, '0')}`
+                    );
+                }
+            }
         }, 1000);
         return () => clearInterval(interval);
-    }, []);
+    }, [currentTime]);
 
     const updateSettings = async (updates: Partial<NTPSettings>) => {
         setSaving(true);
         try {
             const token = getToken();
-            const response = await fetch(`${API_URL}/time/ntp`, {
+            const response = await fetch(`${API_URL}/api/time/ntp`, {
                 method: 'PUT',
                 headers: {
                     'Content-Type': 'application/json',
@@ -118,7 +149,7 @@ export default function TimeSettingsPage() {
         setSyncing(true);
         try {
             const token = getToken();
-            const response = await fetch(`${API_URL}/time/ntp/sync`, {
+            const response = await fetch(`${API_URL}/api/time/ntp/sync`, {
                 method: 'POST',
                 headers: { Authorization: `Bearer ${token}` },
             });
@@ -157,29 +188,27 @@ export default function TimeSettingsPage() {
                     <div>
                         <h2 className="text-lg font-semibold text-cyan-400 mb-2">Waktu Server Saat Ini</h2>
                         <p className="text-4xl font-mono text-white">
-                            {format(currentTime, 'HH:mm:ss')}
+                            {currentTime || '--:--:--'}
                         </p>
                         <p className="text-lg text-slate-300 mt-1">
-                            {format(currentTime, 'EEEE, dd MMMM yyyy')}
+                            {currentDate || '----/--/--'}
                         </p>
                         <p className="text-sm text-slate-400 mt-2">
                             Timezone: {timeInfo?.timezone || 'Asia/Jakarta'}
                         </p>
                     </div>
                     <div className="text-right">
-                        <div className={`inline-flex items-center px-3 py-1 rounded-full text-sm ${
-                            timeInfo?.isSynced 
-                                ? 'bg-green-500/20 text-green-400 border border-green-500/30'
-                                : 'bg-yellow-500/20 text-yellow-400 border border-yellow-500/30'
-                        }`}>
-                            <span className={`w-2 h-2 rounded-full mr-2 ${
-                                timeInfo?.isSynced ? 'bg-green-400' : 'bg-yellow-400'
-                            }`}></span>
+                        <div className={`inline-flex items-center px-3 py-1 rounded-full text-sm ${timeInfo?.isSynced
+                            ? 'bg-green-500/20 text-green-400 border border-green-500/30'
+                            : 'bg-yellow-500/20 text-yellow-400 border border-yellow-500/30'
+                            }`}>
+                            <span className={`w-2 h-2 rounded-full mr-2 ${timeInfo?.isSynced ? 'bg-green-400' : 'bg-yellow-400'
+                                }`}></span>
                             {timeInfo?.isSynced ? 'Tersinkronisasi' : 'Belum Sync'}
                         </div>
                         {timeInfo?.lastSync && (
                             <p className="text-xs text-slate-400 mt-2">
-                                Terakhir sync: {format(new Date(timeInfo.lastSync), 'dd/MM/yyyy HH:mm:ss')}
+                                Terakhir sync: {formatDateTimeShortWIB(timeInfo.lastSync)}
                             </p>
                         )}
                         {timeInfo?.offset !== undefined && timeInfo.offset !== 0 && (
@@ -208,14 +237,12 @@ export default function TimeSettingsPage() {
                         <button
                             onClick={() => updateSettings({ ntpEnabled: !settings?.ntpEnabled })}
                             disabled={saving}
-                            className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors ${
-                                settings?.ntpEnabled ? 'bg-cyan-600' : 'bg-slate-600'
-                            }`}
+                            className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors ${settings?.ntpEnabled ? 'bg-cyan-600' : 'bg-slate-600'
+                                }`}
                         >
                             <span
-                                className={`inline-block h-4 w-4 transform rounded-full bg-white transition-transform ${
-                                    settings?.ntpEnabled ? 'translate-x-6' : 'translate-x-1'
-                                }`}
+                                className={`inline-block h-4 w-4 transform rounded-full bg-white transition-transform ${settings?.ntpEnabled ? 'translate-x-6' : 'translate-x-1'
+                                    }`}
                             />
                         </button>
                     </div>
@@ -311,7 +338,7 @@ export default function TimeSettingsPage() {
                     <div>
                         <h3 className="font-medium text-blue-400">Tentang Sinkronisasi Waktu</h3>
                         <p className="text-sm text-slate-300 mt-1">
-                            Pengaturan NTP memastikan waktu server selalu akurat dan konsisten. 
+                            Pengaturan NTP memastikan waktu server selalu akurat dan konsisten.
                             Waktu yang tersinkronisasi digunakan untuk:
                         </p>
                         <ul className="text-sm text-slate-400 mt-2 list-disc list-inside space-y-1">

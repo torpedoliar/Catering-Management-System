@@ -5,12 +5,12 @@ export default function AboutPage() {
         <div className="max-w-4xl mx-auto space-y-6 animate-fade-in">
             {/* Header */}
             <div className="card py-12 text-center">
-                <div className="w-20 h-20 mx-auto mb-6 rounded-apple-xl bg-apple-blue flex items-center justify-center shadow-apple-lg">
+                <div className="w-20 h-20 mx-auto mb-6 rounded-2xl bg-gradient-to-br from-orange-400 to-orange-600 flex items-center justify-center shadow-lg">
                     <FileText className="w-10 h-10 text-white" />
                 </div>
-                <h1 className="text-title-1 text-white mb-2">Catering Management System</h1>
-                <p className="text-title-3 text-apple-blue mb-4">Version 1.2</p>
-                <p className="text-body text-dark-text-secondary max-w-2xl mx-auto">
+                <h1 className="text-3xl font-bold text-[#1a1f37] mb-2">Catering Management System</h1>
+                <p className="text-lg font-semibold text-orange-500 mb-4">Version 1.4.0</p>
+                <p className="text-slate-500 max-w-2xl mx-auto">
                     Sistem manajemen pemesanan katering yang modern dan efisien dengan fitur multi-shift,
                     multi-day ordering, QR code check-in, dan kontrol administratif yang lengkap.
                 </p>
@@ -19,12 +19,12 @@ export default function AboutPage() {
             {/* Key Features */}
             <div className="card">
                 <div className="flex items-center gap-3 mb-6">
-                    <div className="stat-icon bg-apple-green/15">
-                        <CheckCircle className="w-6 h-6 text-apple-green" />
+                    <div className="w-10 h-10 rounded-xl bg-emerald-50 flex items-center justify-center">
+                        <CheckCircle className="w-6 h-6 text-emerald-500" />
                     </div>
-                    <h2 className="text-title-2 text-white">Fitur Utama</h2>
+                    <h2 className="text-xl font-bold text-[#1a1f37]">Fitur Utama</h2>
                 </div>
-                
+
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                     <FeatureCard
                         icon={<Calendar className="w-5 h-5" />}
@@ -43,6 +43,12 @@ export default function AboutPage() {
                         color="green"
                         title="QR Code Check-in"
                         description="Sistem verifikasi pengambilan makanan menggunakan QR code unik"
+                    />
+                    <FeatureCard
+                        icon={<Users className="w-5 h-5" />}
+                        color="indigo"
+                        title="Photo Check-in"
+                        description="Capture foto saat check-in dengan webcam untuk verifikasi identitas"
                     />
                     <FeatureCard
                         icon={<Building className="w-5 h-5" />}
@@ -80,12 +86,12 @@ export default function AboutPage() {
             {/* User Features */}
             <div className="card">
                 <div className="flex items-center gap-3 mb-6">
-                    <div className="stat-icon bg-apple-blue/15">
-                        <Users className="w-6 h-6 text-apple-blue" />
+                    <div className="w-10 h-10 rounded-xl bg-blue-50 flex items-center justify-center">
+                        <Users className="w-6 h-6 text-blue-500" />
                     </div>
-                    <h2 className="text-title-2 text-white">Fitur Pengguna</h2>
+                    <h2 className="text-xl font-bold text-[#1a1f37]">Fitur Pengguna</h2>
                 </div>
-                
+
                 <div className="space-y-3">
                     {[
                         'Pemesanan katering dengan pemilihan shift dan tanggal',
@@ -95,9 +101,9 @@ export default function AboutPage() {
                         'Notifikasi real-time untuk perubahan status pesanan',
                         'Wajib ganti password untuk pengguna baru',
                     ].map((item, index) => (
-                        <div key={index} className="flex items-center gap-3 p-3 rounded-apple bg-dark-bg-tertiary">
-                            <CheckCircle className="w-5 h-5 text-apple-green flex-shrink-0" />
-                            <span className="text-body text-white">{item}</span>
+                        <div key={index} className="flex items-center gap-3 p-3 rounded-xl bg-slate-50">
+                            <CheckCircle className="w-5 h-5 text-emerald-500 flex-shrink-0" />
+                            <span className="text-slate-700">{item}</span>
                         </div>
                     ))}
                 </div>
@@ -106,46 +112,46 @@ export default function AboutPage() {
             {/* Admin Features */}
             <div className="card">
                 <div className="flex items-center gap-3 mb-6">
-                    <div className="stat-icon bg-apple-purple/15">
-                        <Shield className="w-6 h-6 text-apple-purple" />
+                    <div className="w-10 h-10 rounded-xl bg-purple-50 flex items-center justify-center">
+                        <Shield className="w-6 h-6 text-purple-500" />
                     </div>
-                    <h2 className="text-title-2 text-white">Fitur Administrator</h2>
+                    <h2 className="text-xl font-bold text-[#1a1f37]">Fitur Administrator</h2>
                 </div>
-                
+
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
                     <div className="space-y-3">
-                        <h3 className="text-body font-semibold text-apple-blue">Manajemen Pengguna</h3>
-                        <ul className="space-y-2 text-callout text-dark-text-secondary">
-                            <li className="flex items-center gap-2"><span className="w-1.5 h-1.5 rounded-full bg-apple-blue" /> Import/Export pengguna via Excel</li>
-                            <li className="flex items-center gap-2"><span className="w-1.5 h-1.5 rounded-full bg-apple-blue" /> Reset password dengan konfirmasi admin</li>
-                            <li className="flex items-center gap-2"><span className="w-1.5 h-1.5 rounded-full bg-apple-blue" /> Manajemen strike dan blacklist</li>
-                            <li className="flex items-center gap-2"><span className="w-1.5 h-1.5 rounded-full bg-apple-blue" /> Audit log aktivitas pengguna</li>
+                        <h3 className="font-semibold text-blue-600">Manajemen Pengguna</h3>
+                        <ul className="space-y-2 text-sm text-slate-500">
+                            <li className="flex items-center gap-2"><span className="w-1.5 h-1.5 rounded-full bg-blue-500" /> Import/Export pengguna via Excel</li>
+                            <li className="flex items-center gap-2"><span className="w-1.5 h-1.5 rounded-full bg-blue-500" /> Reset password dengan konfirmasi admin</li>
+                            <li className="flex items-center gap-2"><span className="w-1.5 h-1.5 rounded-full bg-blue-500" /> Manajemen strike dan blacklist</li>
+                            <li className="flex items-center gap-2"><span className="w-1.5 h-1.5 rounded-full bg-blue-500" /> Audit log aktivitas pengguna</li>
                         </ul>
                     </div>
                     <div className="space-y-3">
-                        <h3 className="text-body font-semibold text-apple-green">Konfigurasi Sistem</h3>
-                        <ul className="space-y-2 text-callout text-dark-text-secondary">
-                            <li className="flex items-center gap-2"><span className="w-1.5 h-1.5 rounded-full bg-apple-green" /> Pengaturan shift dan waktu cutoff</li>
-                            <li className="flex items-center gap-2"><span className="w-1.5 h-1.5 rounded-full bg-apple-green" /> Konfigurasi blacklist (strikes & durasi)</li>
-                            <li className="flex items-center gap-2"><span className="w-1.5 h-1.5 rounded-full bg-apple-green" /> Batas maksimal hari order ke depan</li>
-                            <li className="flex items-center gap-2"><span className="w-1.5 h-1.5 rounded-full bg-apple-green" /> Sinkronisasi waktu NTP</li>
+                        <h3 className="font-semibold text-emerald-600">Konfigurasi Sistem</h3>
+                        <ul className="space-y-2 text-sm text-slate-500">
+                            <li className="flex items-center gap-2"><span className="w-1.5 h-1.5 rounded-full bg-emerald-500" /> Pengaturan shift dan waktu cutoff</li>
+                            <li className="flex items-center gap-2"><span className="w-1.5 h-1.5 rounded-full bg-emerald-500" /> Konfigurasi blacklist (strikes & durasi)</li>
+                            <li className="flex items-center gap-2"><span className="w-1.5 h-1.5 rounded-full bg-emerald-500" /> Batas maksimal hari order ke depan</li>
+                            <li className="flex items-center gap-2"><span className="w-1.5 h-1.5 rounded-full bg-emerald-500" /> Sinkronisasi waktu NTP</li>
                         </ul>
                     </div>
                     <div className="space-y-3">
-                        <h3 className="text-body font-semibold text-apple-orange">Struktur Organisasi</h3>
-                        <ul className="space-y-2 text-callout text-dark-text-secondary">
-                            <li className="flex items-center gap-2"><span className="w-1.5 h-1.5 rounded-full bg-apple-orange" /> Manajemen Company/Division/Department</li>
-                            <li className="flex items-center gap-2"><span className="w-1.5 h-1.5 rounded-full bg-apple-orange" /> Konfigurasi allowed shifts per department</li>
-                            <li className="flex items-center gap-2"><span className="w-1.5 h-1.5 rounded-full bg-apple-orange" /> Import otomatis dari data pengguna</li>
+                        <h3 className="font-semibold text-orange-600">Struktur Organisasi</h3>
+                        <ul className="space-y-2 text-sm text-slate-500">
+                            <li className="flex items-center gap-2"><span className="w-1.5 h-1.5 rounded-full bg-orange-500" /> Manajemen Company/Division/Department</li>
+                            <li className="flex items-center gap-2"><span className="w-1.5 h-1.5 rounded-full bg-orange-500" /> Konfigurasi allowed shifts per department</li>
+                            <li className="flex items-center gap-2"><span className="w-1.5 h-1.5 rounded-full bg-orange-500" /> Import otomatis dari data pengguna</li>
                         </ul>
                     </div>
                     <div className="space-y-3">
-                        <h3 className="text-body font-semibold text-apple-purple">Operasional</h3>
-                        <ul className="space-y-2 text-callout text-dark-text-secondary">
-                            <li className="flex items-center gap-2"><span className="w-1.5 h-1.5 rounded-full bg-apple-purple" /> Check-in manual dan QR scanner</li>
-                            <li className="flex items-center gap-2"><span className="w-1.5 h-1.5 rounded-full bg-apple-purple" /> Dashboard statistik real-time</li>
-                            <li className="flex items-center gap-2"><span className="w-1.5 h-1.5 rounded-full bg-apple-purple" /> Export transaksi ke Excel</li>
-                            <li className="flex items-center gap-2"><span className="w-1.5 h-1.5 rounded-full bg-apple-purple" /> Manajemen hari libur</li>
+                        <h3 className="font-semibold text-purple-600">Operasional</h3>
+                        <ul className="space-y-2 text-sm text-slate-500">
+                            <li className="flex items-center gap-2"><span className="w-1.5 h-1.5 rounded-full bg-purple-500" /> Check-in manual dan QR scanner</li>
+                            <li className="flex items-center gap-2"><span className="w-1.5 h-1.5 rounded-full bg-purple-500" /> Dashboard statistik real-time</li>
+                            <li className="flex items-center gap-2"><span className="w-1.5 h-1.5 rounded-full bg-purple-500" /> Export transaksi ke Excel</li>
+                            <li className="flex items-center gap-2"><span className="w-1.5 h-1.5 rounded-full bg-purple-500" /> Manajemen hari libur</li>
                         </ul>
                     </div>
                 </div>
@@ -154,16 +160,16 @@ export default function AboutPage() {
             {/* Technical Info */}
             <div className="card">
                 <div className="flex items-center gap-3 mb-6">
-                    <div className="stat-icon bg-dark-bg-tertiary">
-                        <Settings className="w-6 h-6 text-dark-text-secondary" />
+                    <div className="w-10 h-10 rounded-xl bg-slate-100 flex items-center justify-center">
+                        <Settings className="w-6 h-6 text-slate-500" />
                     </div>
-                    <h2 className="text-title-2 text-white">Informasi Teknis</h2>
+                    <h2 className="text-xl font-bold text-[#1a1f37]">Informasi Teknis</h2>
                 </div>
-                
+
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                    <div className="p-4 rounded-apple bg-dark-bg-tertiary">
-                        <h3 className="text-body font-semibold text-white mb-3">Backend</h3>
-                        <ul className="space-y-2 text-callout text-dark-text-secondary">
+                    <div className="p-4 rounded-xl bg-slate-50">
+                        <h3 className="font-semibold text-[#1a1f37] mb-3">Backend</h3>
+                        <ul className="space-y-2 text-sm text-slate-500">
                             <li>Node.js + Express</li>
                             <li>PostgreSQL Database</li>
                             <li>Prisma ORM</li>
@@ -171,9 +177,9 @@ export default function AboutPage() {
                             <li>Server-Sent Events (SSE)</li>
                         </ul>
                     </div>
-                    <div className="p-4 rounded-apple bg-dark-bg-tertiary">
-                        <h3 className="text-body font-semibold text-white mb-3">Frontend</h3>
-                        <ul className="space-y-2 text-callout text-dark-text-secondary">
+                    <div className="p-4 rounded-xl bg-slate-50">
+                        <h3 className="font-semibold text-[#1a1f37] mb-3">Frontend</h3>
+                        <ul className="space-y-2 text-sm text-slate-500">
                             <li>React + TypeScript</li>
                             <li>Vite Build Tool</li>
                             <li>Tailwind CSS</li>
@@ -187,35 +193,35 @@ export default function AboutPage() {
             {/* Developer Info */}
             <div className="card">
                 <div className="flex items-center gap-3 mb-6">
-                    <div className="stat-icon bg-apple-teal/15">
-                        <Users className="w-6 h-6 text-apple-teal" />
+                    <div className="w-10 h-10 rounded-xl bg-teal-50 flex items-center justify-center">
+                        <Users className="w-6 h-6 text-teal-500" />
                     </div>
-                    <h2 className="text-title-2 text-white">Pengembang</h2>
+                    <h2 className="text-xl font-bold text-[#1a1f37]">Pengembang</h2>
                 </div>
-                
-                <div className="flex flex-col items-center text-center p-6 rounded-apple bg-dark-bg-tertiary">
-                    <div className="w-16 h-16 rounded-full bg-gradient-to-br from-apple-blue to-apple-purple flex items-center justify-center mb-4">
+
+                <div className="flex flex-col items-center text-center p-6 rounded-xl bg-slate-50">
+                    <div className="w-16 h-16 rounded-full bg-gradient-to-br from-orange-400 to-orange-600 flex items-center justify-center mb-4">
                         <span className="text-2xl font-bold text-white">YO</span>
                     </div>
-                    <h3 className="text-title-3 text-white mb-2">Yohanes Octavian Rizky</h3>
-                    <p className="text-body text-dark-text-secondary mb-4 italic">"Peningkatan kecil setiap hari pada akhirnya menghasilkan hasil yang besar."</p>
-                    
+                    <h3 className="text-lg font-semibold text-[#1a1f37] mb-2">Yohanes Octavian Rizky</h3>
+                    <p className="text-slate-500 mb-4 italic">"Peningkatan kecil setiap hari pada akhirnya menghasilkan hasil yang besar."</p>
+
                     <div className="flex flex-col sm:flex-row gap-3">
-                        <a 
-                            href="https://github.com/torpedoliar/" 
-                            target="_blank" 
+                        <a
+                            href="https://github.com/torpedoliar/"
+                            target="_blank"
                             rel="noopener noreferrer"
-                            className="flex items-center gap-2 px-4 py-2 rounded-apple bg-dark-bg-secondary hover:bg-white/10 transition-colors"
+                            className="flex items-center gap-2 px-4 py-2 rounded-xl bg-slate-200 hover:bg-slate-300 transition-colors"
                         >
-                            <Github className="w-5 h-5 text-white" />
-                            <span className="text-callout text-white">github.com/torpedoliar</span>
+                            <Github className="w-5 h-5 text-slate-700" />
+                            <span className="text-sm text-slate-700">github.com/torpedoliar</span>
                         </a>
-                        <a 
+                        <a
                             href="mailto:yohanesorizky@gmail.com"
-                            className="flex items-center gap-2 px-4 py-2 rounded-apple bg-dark-bg-secondary hover:bg-white/10 transition-colors"
+                            className="flex items-center gap-2 px-4 py-2 rounded-xl bg-slate-200 hover:bg-slate-300 transition-colors"
                         >
-                            <Mail className="w-5 h-5 text-apple-blue" />
-                            <span className="text-callout text-white">yohanesorizky@gmail.com</span>
+                            <Mail className="w-5 h-5 text-orange-500" />
+                            <span className="text-sm text-slate-700">yohanesorizky@gmail.com</span>
                         </a>
                     </div>
                 </div>
@@ -223,38 +229,38 @@ export default function AboutPage() {
 
             {/* Footer */}
             <div className="text-center py-6">
-                <p className="text-callout text-dark-text-secondary">© 2026 Catering Management System</p>
-                <p className="text-caption text-dark-text-secondary mt-1">Developed with care for efficient catering operations</p>
+                <p className="text-sm text-slate-500">© 2026 Catering Management System</p>
+                <p className="text-xs text-slate-400 mt-1">Developed with care for efficient catering operations</p>
             </div>
         </div>
     );
 }
 
-function FeatureCard({ icon, color, title, description }: { 
-    icon: React.ReactNode; 
+function FeatureCard({ icon, color, title, description }: {
+    icon: React.ReactNode;
     color: 'blue' | 'green' | 'orange' | 'purple' | 'teal' | 'red' | 'indigo' | 'pink';
-    title: string; 
-    description: string 
+    title: string;
+    description: string
 }) {
     const colorClasses = {
-        blue: 'bg-apple-blue/15 text-apple-blue',
-        green: 'bg-apple-green/15 text-apple-green',
-        orange: 'bg-apple-orange/15 text-apple-orange',
-        purple: 'bg-apple-purple/15 text-apple-purple',
-        teal: 'bg-apple-teal/15 text-apple-teal',
-        red: 'bg-apple-red/15 text-apple-red',
-        indigo: 'bg-apple-indigo/15 text-apple-indigo',
-        pink: 'bg-apple-pink/15 text-apple-pink',
+        blue: 'bg-blue-50 text-blue-500',
+        green: 'bg-emerald-50 text-emerald-500',
+        orange: 'bg-orange-50 text-orange-500',
+        purple: 'bg-purple-50 text-purple-500',
+        teal: 'bg-teal-50 text-teal-500',
+        red: 'bg-red-50 text-red-500',
+        indigo: 'bg-indigo-50 text-indigo-500',
+        pink: 'bg-pink-50 text-pink-500',
     };
 
     return (
-        <div className="flex gap-4 p-4 rounded-apple bg-dark-bg-tertiary border border-white/5 hover:border-white/10 transition-colors">
-            <div className={`flex-shrink-0 w-10 h-10 rounded-apple-sm flex items-center justify-center ${colorClasses[color]}`}>
+        <div className="flex gap-4 p-4 rounded-xl bg-slate-50 border border-slate-100 hover:border-slate-200 transition-colors">
+            <div className={`flex-shrink-0 w-10 h-10 rounded-xl flex items-center justify-center ${colorClasses[color]}`}>
                 {icon}
             </div>
             <div>
-                <h3 className="text-body font-semibold text-white mb-1">{title}</h3>
-                <p className="text-callout text-dark-text-secondary">{description}</p>
+                <h3 className="font-semibold text-[#1a1f37] mb-1">{title}</h3>
+                <p className="text-sm text-slate-500">{description}</p>
             </div>
         </div>
     );

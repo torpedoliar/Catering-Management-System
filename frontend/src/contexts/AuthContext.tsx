@@ -1,7 +1,7 @@
 import { createContext, useContext, useState, useEffect, ReactNode, useCallback } from 'react';
 import axios from 'axios';
 
-const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:3012';
+const API_URL = import.meta.env.VITE_API_URL ?? 'http://localhost:3012';
 
 // Create axios instance with interceptor
 const api = axios.create({
@@ -105,6 +105,9 @@ export function AuthProvider({ children }: { children: ReactNode }) {
             console.error('Logout API error:', error);
         } finally {
             localStorage.removeItem('token');
+            // Clear announcement session tracking so popups show on next login
+            sessionStorage.removeItem('announcementsShown');
+            sessionStorage.removeItem('dismissedAnnouncements');
             setToken(null);
             setUser(null);
         }

@@ -3,13 +3,23 @@ import { PrismaClient } from '@prisma/client';
 import bcrypt from 'bcryptjs';
 import multer from 'multer';
 import ExcelJS from 'exceljs';
+import sharp from 'sharp';
+import fs from 'fs';
+import path from 'path';
 import { AuthRequest, authMiddleware, adminMiddleware } from '../middleware/auth.middleware';
 import { ErrorMessages } from '../utils/errorMessages';
 import { logUserManagement, logDataOperation, getRequestContext } from '../services/audit.service';
 
 const router = Router();
 const prisma = new PrismaClient();
-const upload = multer({ storage: multer.memoryStorage() });
+const storage = multer.memoryStorage();
+const upload = multer({ storage });
+
+// Ensure uploads directory exists
+const uploadDir = path.join(__dirname, '../../uploads/users');
+if (!fs.existsSync(uploadDir)) {
+    fs.mkdirSync(uploadDir, { recursive: true });
+}
 
 // Get all users (Admin only)
 router.get('/', authMiddleware, adminMiddleware, async (req: AuthRequest, res: Response) => {
@@ -50,6 +60,7 @@ router.get('/', authMiddleware, adminMiddleware, async (req: AuthRequest, res: R
                     noShowCount: true,
                     isActive: true,
                     createdAt: true,
+                    photo: true,
                     blacklists: {
                         where: { isActive: true },
                         select: { id: true, endDate: true },
@@ -110,7 +121,7 @@ router.get('/:id', authMiddleware, async (req: AuthRequest, res: Response) => {
 });
 
 // Create user (Admin only)
-router.post('/', authMiddleware, adminMiddleware, async (req: AuthRequest, res: Response) => {
+router.post('/', authMiddleware, adminMiddleware, upload.single('photo'), async (req: AuthRequest, res: Response) => {
     try {
         const { externalId, name, email, password, company, division, department, departmentId, role } = req.body;
 
@@ -140,6 +151,19 @@ router.post('/', authMiddleware, adminMiddleware, async (req: AuthRequest, res: 
             }
         }
 
+        let photoUrl = undefined;
+        if (req.file) {
+            const filename = `user-${externalId}-${Date.now()}.webp`;
+            const filepath = path.join(uploadDir, filename);
+
+            await sharp(req.file.buffer)
+                .resize(300, 300, { fit: 'cover' })
+                .webp({ quality: 80 })
+                .toFile(filepath);
+
+            photoUrl = `/uploads/users/${filename}`;
+        }
+
         const hashedPassword = await bcrypt.hash(password || 'default123', 10);
 
         const user = await prisma.user.create({
@@ -153,6 +177,7 @@ router.post('/', authMiddleware, adminMiddleware, async (req: AuthRequest, res: 
                 department: departmentName,
                 departmentId: departmentId || null,
                 role: role || 'USER',
+                photo: photoUrl,
             },
         });
 
@@ -169,10 +194,23 @@ router.post('/', authMiddleware, adminMiddleware, async (req: AuthRequest, res: 
     }
 });
 
-// Update user (Admin only)
-router.put('/:id', authMiddleware, adminMiddleware, async (req: AuthRequest, res: Response) => {
+// Update user (Admin only) - Modified to handle file upload
+router.put('/:id', authMiddleware, adminMiddleware, upload.single('photo'), async (req: AuthRequest, res: Response) => {
     try {
         const { name, email, company, division, department, departmentId, role, isActive } = req.body;
+
+        let photoUrl = undefined;
+        if (req.file) {
+            const filename = `user-${req.params.id}-${Date.now()}.webp`;
+            const filepath = path.join(uploadDir, filename);
+
+            await sharp(req.file.buffer)
+                .resize(300, 300, { fit: 'cover' })
+                .webp({ quality: 80 })
+                .toFile(filepath);
+
+            photoUrl = `/uploads/users/${filename}`;
+        }
 
         // If departmentId is provided, get the department details to auto-populate legacy fields
         let updateData: any = {
@@ -180,6 +218,7 @@ router.put('/:id', authMiddleware, adminMiddleware, async (req: AuthRequest, res
             ...(email !== undefined && { email }),
             ...(role && { role }),
             ...(isActive !== undefined && { isActive }),
+            ...(photoUrl && { photo: photoUrl }),
         };
 
         if (departmentId !== undefined) {
@@ -215,10 +254,22 @@ router.put('/:id', authMiddleware, adminMiddleware, async (req: AuthRequest, res
         }
 
         // Get old user data for audit
-        const oldUser = await prisma.user.findUnique({ 
+        const oldUser = await prisma.user.findUnique({
             where: { id: req.params.id },
-            select: { id: true, externalId: true, name: true, email: true, company: true, division: true, department: true, role: true, isActive: true }
+            select: { id: true, externalId: true, name: true, email: true, company: true, division: true, department: true, role: true, isActive: true, photo: true }
         });
+
+        // Delete old photo if new one uploaded
+        if (photoUrl && oldUser?.photo) {
+            try {
+                const oldPhotoPath = path.join(__dirname, '../../', oldUser.photo);
+                if (fs.existsSync(oldPhotoPath)) {
+                    fs.unlinkSync(oldPhotoPath);
+                }
+            } catch (err) {
+                console.error('Failed to delete old photo:', err);
+            }
+        }
 
         const user = await prisma.user.update({
             where: { id: req.params.id },
@@ -235,6 +286,8 @@ router.put('/:id', authMiddleware, adminMiddleware, async (req: AuthRequest, res
     }
 });
 
+import { OrderService } from '../services/order.service';
+
 // Delete user (Admin only)
 router.delete('/:id', authMiddleware, adminMiddleware, async (req: AuthRequest, res: Response) => {
     try {
@@ -245,6 +298,10 @@ router.delete('/:id', authMiddleware, adminMiddleware, async (req: AuthRequest, 
         if (!user) {
             return res.status(404).json({ error: ErrorMessages.USER_NOT_FOUND });
         }
+
+        // Auto-cancel all pending orders for this user BEFORE deleting
+        // This ensures food is not prepared for a deleted user
+        await OrderService.cancelUserOrders(user.id, 'User dihapus dari sistem oleh Admin');
 
         const timestamp = new Date().getTime();
         const deletedExternalId = `${user.externalId}_deleted_${timestamp}`;
@@ -402,11 +459,13 @@ router.get('/export/template', authMiddleware, adminMiddleware, async (req: Auth
 
 // Reset user password (Admin only)
 router.post('/:id/reset-password', authMiddleware, adminMiddleware, async (req: AuthRequest, res: Response) => {
+    const context = getRequestContext(req);
     try {
-        const { newPassword } = req.body;
+        const { newPassword, reason } = req.body;
 
         const user = await prisma.user.findUnique({
             where: { id: req.params.id },
+            select: { id: true, externalId: true, name: true, email: true, role: true }
         });
 
         if (!user) {
@@ -423,6 +482,18 @@ router.post('/:id/reset-password', authMiddleware, adminMiddleware, async (req: 
                 password: hashedPassword,
                 mustChangePassword: true,
             },
+        });
+
+        // Log audit for password reset by admin
+        await logUserManagement('UPDATE', req.user || null, user, context, {
+            metadata: {
+                action: 'PASSWORD_RESET_BY_ADMIN',
+                targetUserId: user.id,
+                targetUserName: user.name,
+                targetExternalId: user.externalId,
+                reason: reason?.trim() || 'No reason provided',
+                requiresChange: true,
+            }
         });
 
         res.json({

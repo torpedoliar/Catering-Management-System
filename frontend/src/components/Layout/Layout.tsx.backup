@@ -26,9 +26,7 @@ import {
     DollarSign,
     Bell,
     Mail,
-    Timer,
-    ChevronDown,
-    ChevronRight
+    Timer
 } from 'lucide-react';
 
 interface LayoutProps {
@@ -40,9 +38,6 @@ export default function Layout({ children }: LayoutProps) {
     const { isConnected } = useSSE();
     const location = useLocation();
     const [sidebarOpen, setSidebarOpen] = useState(false);
-    const [userExpanded, setUserExpanded] = useState(true);
-    const [adminExpanded, setAdminExpanded] = useState(false);
-    const [canteenExpanded, setCanteenExpanded] = useState(true);
 
     const isActive = (path: string) => location.pathname === path;
 
@@ -59,40 +54,34 @@ export default function Layout({ children }: LayoutProps) {
     ];
 
     const adminLinks = [
-        // Daily/Most Frequent
         { path: '/admin/dashboard', icon: LayoutDashboard, label: 'Dashboard' },
         { path: '/admin/calendar', icon: Calendar, label: 'Kalender' },
+        { path: '/admin/shifts', icon: Clock, label: 'Konfigurasi Shift' },
         { path: '/admin/users', icon: Users, label: 'Pengguna' },
         { path: '/admin/companies', icon: Building2, label: 'Perusahaan' },
-        // Regular Use
-        { path: '/admin/announcements', icon: Bell, label: 'Pengumuman' },
-        { path: '/admin/messages', icon: MessageSquare, label: 'Pesan' },
-        { path: '/admin/export', icon: FileSpreadsheet, label: 'Ekspor' },
-        // Occasional
         { path: '/admin/blacklist', icon: Ban, label: 'Blacklist' },
-        { path: '/admin/audit-log', icon: ScrollText, label: 'Log Audit' },
+        { path: '/admin/messages', icon: MessageSquare, label: 'Pesan' },
+        { path: '/admin/announcements', icon: Bell, label: 'Pengumuman' },
+        { path: '/admin/export', icon: FileSpreadsheet, label: 'Ekspor' },
         { path: '/admin/costs', icon: DollarSign, label: 'Analisis Biaya' },
-        // Configuration (Rare)
-        { path: '/admin/shifts', icon: Clock, label: 'Konfigurasi Shift' },
+        { path: '/admin/audit-log', icon: ScrollText, label: 'Log Audit' },
         { path: '/admin/time-settings', icon: Timer, label: 'Pengaturan Waktu' },
-        { path: '/admin/email-settings', icon: Mail, label: 'Email Settings' },
+        { path: '/admin/settings/email', icon: Mail, label: 'Email Settings' },
     ];
 
     const canteenLinks = [
         { path: '/canteen/checkin', icon: ScanLine, label: 'Check-in' },
     ];
 
-    // Icon color mapping - glassmorphism style for dark theme
+    // Icon color mapping
     const getIconColor = (index: number) => {
         const colors = [
-            'sidebar-icon sidebar-icon-orange',
-            'sidebar-icon sidebar-icon-purple',
-            'sidebar-icon sidebar-icon-teal',
-            'sidebar-icon sidebar-icon-amber',
-            'sidebar-icon sidebar-icon-pink',
-            'sidebar-icon sidebar-icon-blue',
-            'sidebar-icon sidebar-icon-emerald',
-            'sidebar-icon sidebar-icon-cyan',
+            'bg-orange-500/15 text-orange-500',
+            'bg-purple-500/15 text-purple-500',
+            'bg-teal-500/15 text-teal-500',
+            'bg-yellow-500/15 text-yellow-500',
+            'bg-pink-500/15 text-pink-500',
+            'bg-blue-500/15 text-blue-500',
         ];
         return colors[index % colors.length];
     };
@@ -101,7 +90,9 @@ export default function Layout({ children }: LayoutProps) {
         <Link
             to={path}
             onClick={() => setSidebarOpen(false)}
-            className={`flex items-center gap-3 px-3 py-2.5 rounded-xl transition-all duration-200 sidebar-item ${isActive(path) ? 'active' : ''
+            className={`flex items-center gap-3 px-3 py-2.5 rounded-xl transition-all duration-200 ${isActive(path)
+                ? 'bg-orange-500/15 text-white'
+                : 'text-slate-400 hover:text-white hover:bg-white/5'
                 }`}
         >
             <div className={`w-8 h-8 rounded-lg flex items-center justify-center transition-all ${isActive(path) ? 'bg-orange-500 text-white' : getIconColor(colorIndex)
@@ -124,8 +115,8 @@ export default function Layout({ children }: LayoutProps) {
                         <UtensilsCrossed className="w-5 h-5 text-white" />
                     </div>
                     <div>
-                        <h1 className="text-lg font-bold bg-gradient-to-r from-orange-400 to-amber-300 bg-clip-text text-transparent">Catering</h1>
-                        <p className="text-xs text-slate-400">Management System</p>
+                        <h1 className="text-lg font-bold text-white">Catering</h1>
+                        <p className="text-xs text-slate-500">Management System</p>
                     </div>
                 </div>
                 <button
@@ -139,66 +130,36 @@ export default function Layout({ children }: LayoutProps) {
             {/* Navigation */}
             <nav className="flex-1 p-3 space-y-1 overflow-y-auto">
                 {/* User section */}
-                <div className="mb-3">
-                    <div
-                        onClick={() => setUserExpanded(!userExpanded)}
-                        className="flex items-center justify-between px-3 py-2.5 cursor-pointer rounded-xl transition-all duration-200 mb-2 bg-white/[0.03] border border-white/[0.05] backdrop-blur-sm hover:bg-white/[0.08] hover:border-white/[0.1]"
-                    >
-                        <p className="text-[10px] font-semibold text-orange-400 uppercase tracking-wider">
-                            Menu
-                        </p>
-                        {userExpanded ? <ChevronDown className="w-3.5 h-3.5 text-slate-400" /> : <ChevronRight className="w-3.5 h-3.5 text-slate-400" />}
-                    </div>
-                    {userExpanded && (
-                        <div className="space-y-2">
-                            {userLinks.map((link, index) => (
-                                <NavLink key={link.path} {...link} colorIndex={index} />
-                            ))}
-                        </div>
-                    )}
+                <div className="mb-4 bg-white/5 rounded-xl p-2">
+                    <p className="text-[10px] font-semibold text-slate-400 uppercase tracking-wider mb-2 px-3">
+                        Menu
+                    </p>
+                    {userLinks.map((link, index) => (
+                        <NavLink key={link.path} {...link} colorIndex={index} />
+                    ))}
                 </div>
 
                 {/* Canteen section */}
                 {(user?.role === 'CANTEEN' || user?.role === 'ADMIN') && (
-                    <div className="mb-3">
-                        <div
-                            onClick={() => setCanteenExpanded(!canteenExpanded)}
-                            className="flex items-center justify-between px-3 py-2.5 cursor-pointer rounded-xl transition-all duration-200 mb-2 bg-white/[0.03] border border-white/[0.05] backdrop-blur-sm hover:bg-white/[0.08] hover:border-white/[0.1]"
-                        >
-                            <p className="text-[10px] font-semibold text-orange-400 uppercase tracking-wider">
-                                Canteen
-                            </p>
-                            {canteenExpanded ? <ChevronDown className="w-3.5 h-3.5 text-slate-400" /> : <ChevronRight className="w-3.5 h-3.5 text-slate-400" />}
-                        </div>
-                        {canteenExpanded && (
-                            <div className="space-y-2">
-                                {canteenLinks.map((link, index) => (
-                                    <NavLink key={link.path} {...link} colorIndex={index + 4} />
-                                ))}
-                            </div>
-                        )}
+                    <div className="mb-4 bg-white/5 rounded-xl p-2">
+                        <p className="text-[10px] font-semibold text-slate-400 uppercase tracking-wider mb-2 px-3">
+                            Canteen
+                        </p>
+                        {canteenLinks.map((link, index) => (
+                            <NavLink key={link.path} {...link} colorIndex={index + 4} />
+                        ))}
                     </div>
                 )}
 
                 {/* Admin section */}
                 {user?.role === 'ADMIN' && (
-                    <div className="mb-3">
-                        <div
-                            onClick={() => setAdminExpanded(!adminExpanded)}
-                            className="flex items-center justify-between px-3 py-2.5 cursor-pointer rounded-xl transition-all duration-200 mb-2 bg-white/[0.03] border border-white/[0.05] backdrop-blur-sm hover:bg-white/[0.08] hover:border-white/[0.1]"
-                        >
-                            <p className="text-[10px] font-semibold text-orange-400 uppercase tracking-wider">
-                                Administration
-                            </p>
-                            {adminExpanded ? <ChevronDown className="w-3.5 h-3.5 text-slate-400" /> : <ChevronRight className="w-3.5 h-3.5 text-slate-400" />}
-                        </div>
-                        {adminExpanded && (
-                            <div className="space-y-2">
-                                {adminLinks.map((link, index) => (
-                                    <NavLink key={link.path} {...link} colorIndex={index} />
-                                ))}
-                            </div>
-                        )}
+                    <div className="mb-4 bg-white/5 rounded-xl p-2">
+                        <p className="text-[10px] font-semibold text-slate-400 uppercase tracking-wider mb-2 px-3">
+                            Administration
+                        </p>
+                        {adminLinks.map((link, index) => (
+                            <NavLink key={link.path} {...link} colorIndex={index} />
+                        ))}
                     </div>
                 )}
             </nav>
