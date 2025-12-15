@@ -1,5 +1,6 @@
 import express from 'express';
 import cors from 'cors';
+import compression from 'compression';
 import path from 'path';
 import { PrismaClient } from '@prisma/client';
 import authRoutes from './routes/auth.routes';
@@ -21,6 +22,7 @@ import { sseManager } from './controllers/sse.controller';
 import { startScheduler } from './services/scheduler';
 import { initNTPService, getNow } from './services/time.service';
 import { redisService } from './services/redis.service';
+import { cacheService } from './services/cache.service';
 
 const app = express();
 const prisma = new PrismaClient();
@@ -32,6 +34,7 @@ app.use(cors({
     credentials: true,
     exposedHeaders: ['Content-Disposition', 'Content-Length', 'Content-Type'],
 }));
+app.use(compression()); // Enable gzip compression
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
 app.use('/uploads', express.static(path.join(__dirname, '../uploads')));
@@ -84,6 +87,9 @@ app.listen(PORT, async () => {
 
     // Initialize Redis
     await redisService.connect();
+
+    // Initialize Cache Service
+    await cacheService.connect();
 
     // Initialize NTP service
     await initNTPService();

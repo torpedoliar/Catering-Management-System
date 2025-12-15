@@ -4,6 +4,7 @@ import { AuthRequest, authMiddleware, adminMiddleware } from '../middleware/auth
 import { sseManager } from '../controllers/sse.controller';
 import { getNow } from '../services/time.service';
 import { ErrorMessages } from '../utils/errorMessages';
+import { cacheService, CACHE_KEYS, CACHE_TTL } from '../services/cache.service';
 import { logSettings, getRequestContext } from '../services/audit.service';
 
 import { OrderService } from '../services/order.service';
@@ -12,24 +13,32 @@ import { getToday } from '../services/time.service';
 const router = Router();
 const prisma = new PrismaClient();
 
-// Get settings
+// Get settings (with caching)
 router.get('/', authMiddleware, async (req: AuthRequest, res: Response) => {
     try {
-        let settings = await prisma.settings.findUnique({
-            where: { id: 'default' },
-        });
+        const settings = await cacheService.getOrSet(
+            CACHE_KEYS.SETTINGS,
+            async () => {
+                let settings = await prisma.settings.findUnique({
+                    where: { id: 'default' },
+                });
 
-        if (!settings) {
-            settings = await prisma.settings.create({
-                data: {
-                    id: 'default',
-                    cutoffHours: 6,
-                    blacklistStrikes: 3,
-                    blacklistDuration: 7,
-                    maxOrderDaysAhead: 7,
-                },
-            });
-        }
+                if (!settings) {
+                    settings = await prisma.settings.create({
+                        data: {
+                            id: 'default',
+                            cutoffHours: 6,
+                            blacklistStrikes: 3,
+                            blacklistDuration: 7,
+                            maxOrderDaysAhead: 7,
+                        },
+                    });
+                }
+
+                return settings;
+            },
+            { ttl: CACHE_TTL.SETTINGS }
+        );
 
         res.json(settings);
     } catch (error) {
@@ -95,6 +104,9 @@ router.put('/', authMiddleware, adminMiddleware, async (req: AuthRequest, res: R
 
         // Log audit
         await logSettings(req.user || null, oldSettings, settings, getRequestContext(req), { settingsType: 'System Settings' });
+
+        // Invalidate settings cache
+        await cacheService.delete(CACHE_KEYS.SETTINGS);
 
         // Broadcast settings update to all clients
         sseManager.broadcast('settings:updated', {

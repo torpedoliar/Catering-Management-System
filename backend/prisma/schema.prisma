@@ -118,6 +118,8 @@ model User {
   @@index([name])
   @@index([company])
   @@index([departmentId])
+  // Composite indexes
+  @@index([isActive, role])  // Active users by role query
 }
 
 model Shift {
@@ -167,6 +169,10 @@ model Order {
   @@index([status])
   @@index([qrCode])
   @@index([checkedInById])
+  // Composite indexes for common query patterns
+  @@index([orderDate, status])         // Dashboard filtering by date and status
+  @@index([userId, orderDate])         // User's orders by date
+  @@index([shiftId, orderDate, status]) // Shift orders on specific date
 }
 
 model Blacklist {
@@ -183,6 +189,8 @@ model Blacklist {
 
   @@index([userId])
   @@index([isActive])
+  // Composite index for checking active blacklists
+  @@index([userId, isActive, endDate])
 }
 
 model Settings {
@@ -295,6 +303,8 @@ model AuditLog {
   @@index([entity])
   @@index([entityId])
   @@index([success])
+  // Composite index for audit queries
+  @@index([timestamp, entity])  // Common audit log filtering
 }
 
 // Holiday calendar for blocking food orders on specific dates

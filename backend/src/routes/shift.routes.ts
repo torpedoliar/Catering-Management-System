@@ -4,43 +4,54 @@ import { AuthRequest, authMiddleware, adminMiddleware } from '../middleware/auth
 import { getNow, isPastCutoff, getTimezone } from '../services/time.service';
 import { sseManager } from '../controllers/sse.controller';
 import { ErrorMessages } from '../utils/errorMessages';
+import { cacheService, CACHE_KEYS, CACHE_TTL } from '../services/cache.service';
 import { logShift, getRequestContext } from '../services/audit.service';
 
 const router = Router();
 const prisma = new PrismaClient();
 
-// Get all shifts
+// Get all shifts (with caching)
 router.get('/', authMiddleware, async (req: AuthRequest, res: Response) => {
     try {
         const includeInactive = req.query.includeInactive === 'true';
+        const cacheKey = includeInactive ? `${CACHE_KEYS.SHIFTS}:all` : CACHE_KEYS.SHIFTS;
 
-        const shifts = await prisma.shift.findMany({
-            where: includeInactive ? {} : { isActive: true },
-            orderBy: { name: 'asc' },
-        });
+        // Try cache first (only for active shifts)
+        const result = await cacheService.getOrSet(
+            cacheKey,
+            async () => {
+                const shifts = await prisma.shift.findMany({
+                    where: includeInactive ? {} : { isActive: true },
+                    orderBy: { name: 'asc' },
+                });
 
-        // Add cutoff validation info
-        const settings = await prisma.settings.findUnique({ where: { id: 'default' } });
-        const cutoffHours = settings?.cutoffHours || 6;
-        const now = getNow();
-        const timezone = getTimezone();
+                // Add cutoff validation info
+                const settings = await prisma.settings.findUnique({ where: { id: 'default' } });
+                const cutoffHours = settings?.cutoffHours || 6;
+                const now = getNow();
+                const timezone = getTimezone();
 
-        console.log(`[Shifts] Current time: ${now.toISOString()}, Timezone: ${timezone}, Cutoff hours: ${cutoffHours}`);
+                console.log(`[Shifts] Current time: ${now.toISOString()}, Timezone: ${timezone}, Cutoff hours: ${cutoffHours}`);
 
-        const shiftsWithCutoff = shifts.map((shift) => {
-            const cutoffInfo = isPastCutoff(shift.startTime, cutoffHours);
+                const shiftsWithCutoff = shifts.map((shift) => {
+                    const cutoffInfo = isPastCutoff(shift.startTime, cutoffHours);
 
-            console.log(`[Shifts] ${shift.name}: Start=${shift.startTime}, Cutoff=${cutoffInfo.cutoffTime.toTimeString()}, Now=${cutoffInfo.now.toTimeString()}, IsPast=${cutoffInfo.isPast}`);
+                    console.log(`[Shifts] ${shift.name}: Start=${shift.startTime}, Cutoff=${cutoffInfo.cutoffTime.toTimeString()}, Now=${cutoffInfo.now.toTimeString()}, IsPast=${cutoffInfo.isPast}`);
 
-            return {
-                ...shift,
-                canOrder: shift.isActive && !cutoffInfo.isPast,
-                cutoffTime: cutoffInfo.cutoffTime.toISOString(),
-                minutesUntilCutoff: cutoffInfo.minutesUntilCutoff,
-            };
-        });
+                    return {
+                        ...shift,
+                        canOrder: shift.isActive && !cutoffInfo.isPast,
+                        cutoffTime: cutoffInfo.cutoffTime.toISOString(),
+                        minutesUntilCutoff: cutoffInfo.minutesUntilCutoff,
+                    };
+                });
 
-        res.json({ shifts: shiftsWithCutoff, cutoffHours, serverTime: now.toISOString(), timezone });
+                return { shifts: shiftsWithCutoff, cutoffHours, serverTime: now.toISOString(), timezone };
+            },
+            { ttl: CACHE_TTL.SHIFTS }
+        );
+
+        res.json(result);
     } catch (error) {
         console.error('Get shifts error:', error);
         res.status(500).json({ error: ErrorMessages.SERVER_ERROR });
@@ -230,6 +241,9 @@ router.post('/', authMiddleware, adminMiddleware, async (req: AuthRequest, res: 
         // Log audit
         await logShift('CREATE', req.user || null, shift, getRequestContext(req));
 
+        // Invalidate cache
+        await cacheService.delete(`${CACHE_KEYS.SHIFTS}*`);
+
         // Broadcast shift created
         sseManager.broadcast('shift:updated', {
             action: 'created',
@@ -278,6 +292,9 @@ router.put('/:id', authMiddleware, adminMiddleware, async (req: AuthRequest, res
         // Log audit
         await logShift('UPDATE', req.user || null, shift, getRequestContext(req), { oldValue: oldShift });
 
+        // Invalidate cache
+        await cacheService.delete(`${CACHE_KEYS.SHIFTS}*`);
+
         // Broadcast shift updated
         sseManager.broadcast('shift:updated', {
             action: 'updated',
@@ -302,6 +319,9 @@ router.delete('/:id', authMiddleware, adminMiddleware, async (req: AuthRequest, 
 
         // Log audit
         await logShift('DELETE', req.user || null, shift, getRequestContext(req));
+
+        // Invalidate cache
+        await cacheService.delete(`${CACHE_KEYS.SHIFTS}*`);
 
         // Broadcast shift deleted/deactivated
         sseManager.broadcast('shift:updated', {

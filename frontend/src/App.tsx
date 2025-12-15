@@ -1,29 +1,32 @@
 import { BrowserRouter, Routes, Route, Navigate, Outlet } from 'react-router-dom';
+import { lazy, Suspense } from 'react';
 import { Toaster } from 'react-hot-toast';
 import { AuthProvider, useAuth } from './contexts/AuthContext';
 import { SSEProvider } from './contexts/SSEContext';
 
-// Pages
+// Eager loaded pages (need to be available immediately)
 import LoginPage from './pages/LoginPage';
 import OrderPage from './pages/OrderPage';
 import HistoryPage from './pages/HistoryPage';
 import SettingsPage from './pages/SettingsPage';
-import DashboardPage from './pages/admin/DashboardPage';
-import ShiftConfigPage from './pages/admin/ShiftConfigPage';
-import UserManagementPage from './pages/admin/UserManagementPage';
-import CompanyManagementPage from './pages/admin/CompanyManagementPage';
-import BlacklistPage from './pages/admin/BlacklistPage';
-import ExportPage from './pages/admin/ExportPage';
-import CalendarPage from './pages/admin/CalendarPage';
-import TimeSettingsPage from './pages/admin/TimeSettingsPage';
-import AuditLogPage from './pages/admin/AuditLogPage';
-import MessagesPage from './pages/admin/MessagesPage';
-import CostAnalysisPage from './pages/admin/CostAnalysisPage';
-import AnnouncementPage from './pages/admin/AnnouncementPage';
-import EmailSettingsPage from './pages/admin/EmailSettingsPage';
-import OrderListPage from './pages/admin/OrderListPage';
-import CheckInPage from './pages/canteen/CheckInPage';
 import AboutPage from './pages/AboutPage';
+
+// Lazy loaded admin pages (code splitting for better performance)
+const DashboardPage = lazy(() => import('./pages/admin/DashboardPage'));
+const ShiftConfigPage = lazy(() => import('./pages/admin/ShiftConfigPage'));
+const UserManagementPage = lazy(() => import('./pages/admin/UserManagementPage'));
+const CompanyManagementPage = lazy(() => import('./pages/admin/CompanyManagementPage'));
+const BlacklistPage = lazy(() => import('./pages/admin/BlacklistPage'));
+const ExportPage = lazy(() => import('./pages/admin/ExportPage'));
+const CalendarPage = lazy(() => import('./pages/admin/CalendarPage'));
+const TimeSettingsPage = lazy(() => import('./pages/admin/TimeSettingsPage'));
+const AuditLogPage = lazy(() => import('./pages/admin/AuditLogPage'));
+const MessagesPage = lazy(() => import('./pages/admin/MessagesPage'));
+const CostAnalysisPage = lazy(() => import('./pages/admin/CostAnalysisPage'));
+const AnnouncementPage = lazy(() => import('./pages/admin/AnnouncementPage'));
+const EmailSettingsPage = lazy(() => import('./pages/admin/EmailSettingsPage'));
+const OrderListPage = lazy(() => import('./pages/admin/OrderListPage'));
+const CheckInPage = lazy(() => import('./pages/canteen/CheckInPage'));
 
 // Layout
 import Layout from './components/Layout/Layout';
