@@ -1,5 +1,5 @@
 import { Request, Response, NextFunction } from 'express';
-import { ZodSchema } from 'zod';
+import { ZodSchema, ZodIssue } from 'zod';
 import { ErrorMessages } from '../utils/errorMessages';
 
 /**
@@ -11,7 +11,7 @@ export const validate = (schema: ZodSchema) => {
         const result = schema.safeParse(req.body);
 
         if (!result.success) {
-            const errors = result.error.issues.map(issue => ({
+            const errors = result.error.issues.map((issue: ZodIssue) => ({
                 field: issue.path.join('.'),
                 message: issue.message,
             }));
@@ -38,7 +38,7 @@ export const validateQuery = (schema: ZodSchema) => {
         const result = schema.safeParse(req.query);
 
         if (!result.success) {
-            const errors = result.error.issues.map(issue => ({
+            const errors = result.error.issues.map((issue: ZodIssue) => ({
                 field: issue.path.join('.'),
                 message: issue.message,
             }));
