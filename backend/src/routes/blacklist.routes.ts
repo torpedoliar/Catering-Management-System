@@ -1,15 +1,14 @@
 import { Router, Response } from 'express';
 import bcrypt from 'bcryptjs';
-import { PrismaClient } from '@prisma/client';
 import { AuthRequest, authMiddleware, adminMiddleware } from '../middleware/auth.middleware';
 import { sseManager } from '../controllers/sse.controller';
 import { getNow } from '../services/time.service';
 import { logBlacklist, getRequestContext } from '../services/audit.service';
 import { cancelOrdersForBlacklistedUser } from '../services/noshow.service';
 import { ErrorMessages } from '../utils/errorMessages';
+import { prisma } from '../lib/prisma';
 
 const router = Router();
-const prisma = new PrismaClient();
 
 // Get all blacklisted users (Admin only)
 router.get('/', authMiddleware, adminMiddleware, async (req: AuthRequest, res: Response) => {

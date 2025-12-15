@@ -2,7 +2,6 @@ import express from 'express';
 import cors from 'cors';
 import compression from 'compression';
 import path from 'path';
-import { PrismaClient } from '@prisma/client';
 import authRoutes from './routes/auth.routes';
 import userRoutes from './routes/user.routes';
 import orderRoutes from './routes/order.routes';
@@ -23,9 +22,9 @@ import { startScheduler } from './services/scheduler';
 import { initNTPService, getNow } from './services/time.service';
 import { redisService } from './services/redis.service';
 import { cacheService } from './services/cache.service';
+import { prisma } from './lib/prisma';
 
 const app = express();
-const prisma = new PrismaClient();
 const PORT = process.env.PORT || 3012;
 
 // Middleware

@@ -1,9 +1,7 @@
 import { Response, NextFunction } from 'express';
-import { PrismaClient } from '@prisma/client';
 import { AuthRequest } from './auth.middleware';
 import { getNow } from '../services/time.service';
-
-const prisma = new PrismaClient();
+import { prisma } from '../lib/prisma';
 
 export const blacklistMiddleware = async (req: AuthRequest, res: Response, next: NextFunction) => {
     try {

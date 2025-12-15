@@ -1,9 +1,8 @@
-import { PrismaClient, AuditAction } from '@prisma/client';
+import { AuditAction } from '@prisma/client';
 import { sseManager } from '../controllers/sse.controller';
 import { getNow, getToday } from './time.service';
 import { createAuditLog } from './audit.service';
-
-const prisma = new PrismaClient();
+import { prisma } from '../lib/prisma';
 
 /**
  * Service to handle complex order operations

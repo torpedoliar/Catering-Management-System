@@ -1,11 +1,10 @@
-import { PrismaClient } from '@prisma/client';
 import { exec } from 'child_process';
 import { promisify } from 'util';
 import https from 'https';
 import http from 'http';
+import { prisma } from '../lib/prisma';
 
 const execAsync = promisify(exec);
-const prisma = new PrismaClient();
 
 interface NTPSettings {
     ntpEnabled: boolean;
@@ -74,11 +73,11 @@ export function getNow(): Date {
     const now = new Date();
     // Apply NTP offset
     const adjustedTime = new Date(now.getTime() + cachedOffset);
-    
+
     // Convert UTC to configured timezone
     const utcTime = adjustedTime.getTime() + (adjustedTime.getTimezoneOffset() * 60 * 1000);
     const tzOffset = getTimezoneOffset(cachedTimezone);
-    
+
     return new Date(utcTime + tzOffset);
 }
 
@@ -125,7 +124,7 @@ export function isPastCutoff(shiftStartTime: string, cutoffHours: number): { isP
     const shiftStart = getTimeToday(shiftStartTime);
     const cutoffTime = new Date(shiftStart.getTime() - (cutoffHours * 60 * 60 * 1000));
     const minutesUntilCutoff = Math.max(0, Math.floor((cutoffTime.getTime() - now.getTime()) / 60000));
-    
+
     return {
         isPast: now >= cutoffTime,
         cutoffTime,
@@ -141,24 +140,24 @@ export function isPastCutoff(shiftStartTime: string, cutoffHours: number): { isP
  */
 export function isPastCutoffForDate(orderDate: Date, shiftStartTime: string, cutoffHours: number): { isPast: boolean; cutoffTime: Date; shiftStart: Date; now: Date; minutesUntilCutoff: number } {
     const now = getNow();
-    
+
     // Parse order date (normalize to start of day)
     const orderDay = new Date(orderDate);
     orderDay.setHours(0, 0, 0, 0);
-    
+
     // Parse shift start time
     const [hours, minutes] = shiftStartTime.split(':').map(Number);
-    
+
     // Create shift start time on the order date
     const shiftStart = new Date(orderDay);
     shiftStart.setHours(hours, minutes, 0, 0);
-    
+
     // Calculate cutoff time (X hours before shift start)
     const cutoffTime = new Date(shiftStart.getTime() - (cutoffHours * 60 * 60 * 1000));
-    
+
     // Calculate minutes until cutoff
     const minutesUntilCutoff = Math.max(0, Math.floor((cutoffTime.getTime() - now.getTime()) / 60000));
-    
+
     return {
         isPast: now >= cutoffTime,
         cutoffTime,
@@ -173,14 +172,14 @@ export function isPastCutoffForDate(orderDate: Date, shiftStartTime: string, cut
  */
 async function queryNTPServer(server: string): Promise<number> {
     const isWindows = process.platform === 'win32';
-    
+
     try {
         if (isWindows) {
             // Use w32tm on Windows
             const { stdout } = await execAsync(`w32tm /stripchart /computer:${server} /dataonly /samples:1`, {
                 timeout: 10000
             });
-            
+
             // Parse the offset from output (format: "time, offset")
             const lines = stdout.split('\n').filter(line => line.includes(','));
             if (lines.length > 0) {
@@ -196,7 +195,7 @@ async function queryNTPServer(server: string): Promise<number> {
                 { cmd: `ntpdate -q ${server}`, regex: /offset\s+([+-]?\d+\.?\d+)/ },
                 { cmd: `ntpd -q -n -d ${server}`, regex: /offset\s+([+-]?\d+\.?\d+)/ },
             ];
-            
+
             for (const { cmd, regex } of commands) {
                 try {
                     const { stdout } = await execAsync(cmd, { timeout: 15000 });
@@ -212,7 +211,7 @@ async function queryNTPServer(server: string): Promise<number> {
     } catch (error) {
         console.log(`[NTP] Query to ${server} failed:`, error instanceof Error ? error.message : error);
     }
-    
+
     return 0;
 }
 
@@ -243,11 +242,13 @@ async function queryHTTPTime(): Promise<number> {
         // Use UTC endpoints to avoid timezone confusion
         { url: 'http://worldtimeapi.org/api/timezone/Etc/UTC', parser: (data: any) => data.unixtime * 1000 },
         { url: 'https://worldtimeapi.org/api/timezone/Etc/UTC', parser: (data: any) => data.unixtime * 1000 },
-        { url: 'https://timeapi.io/api/Time/current/zone?timeZone=UTC', parser: (data: any) => {
-            // timeapi returns local time without TZ, so we need to parse it as UTC
-            const dt = data.dateTime; // "2025-12-06T02:45:00"
-            return new Date(dt + 'Z').getTime();
-        }},
+        {
+            url: 'https://timeapi.io/api/Time/current/zone?timeZone=UTC', parser: (data: any) => {
+                // timeapi returns local time without TZ, so we need to parse it as UTC
+                const dt = data.dateTime; // "2025-12-06T02:45:00"
+                return new Date(dt + 'Z').getTime();
+            }
+        },
     ];
 
     for (const api of apis) {
@@ -256,10 +257,10 @@ async function queryHTTPTime(): Promise<number> {
             const response = await httpGet(api.url);
             const endTime = Date.now();
             const latency = (endTime - startTime) / 2;
-            
+
             const data = JSON.parse(response);
             const serverTime = api.parser(data);
-            
+
             if (!isNaN(serverTime)) {
                 const localTime = Date.now();
                 const offset = serverTime - localTime + latency;
@@ -270,7 +271,7 @@ async function queryHTTPTime(): Promise<number> {
             console.log(`[NTP] HTTP time query failed for ${api.url}:`, error instanceof Error ? error.message : error);
         }
     }
-    
+
     console.log('[NTP] All HTTP time APIs failed, using system time');
     return 0;
 }
@@ -283,27 +284,27 @@ export async function syncNTP(): Promise<{ success: boolean; offset: number; err
         const settings = await prisma.settings.findUnique({
             where: { id: 'default' }
         });
-        
+
         if (!settings?.ntpEnabled) {
             console.log('[NTP] NTP sync is disabled');
             return { success: true, offset: 0 };
         }
-        
+
         const server = settings.ntpServer || 'pool.ntp.org';
         console.log(`[NTP] Syncing with ${server}...`);
-        
+
         // Try NTP query first
         let offset = await queryNTPServer(server);
-        
+
         // If NTP query failed, try HTTP fallback
         if (offset === 0) {
             console.log('[NTP] Falling back to HTTP time API...');
             offset = await queryHTTPTime();
         }
-        
+
         cachedOffset = offset;
         lastSyncTime = new Date();
-        
+
         // Update settings with sync info
         await prisma.settings.update({
             where: { id: 'default' },
@@ -312,10 +313,10 @@ export async function syncNTP(): Promise<{ success: boolean; offset: number; err
                 ntpLastSync: lastSyncTime
             }
         });
-        
+
         console.log(`[NTP] Sync complete. Offset: ${offset}ms`);
         return { success: true, offset };
-        
+
     } catch (error) {
         const message = error instanceof Error ? error.message : 'Unknown error';
         console.error('[NTP] Sync failed:', message);
@@ -339,19 +340,19 @@ export async function initNTPService(): Promise<void> {
         const settings = await prisma.settings.findUnique({
             where: { id: 'default' }
         });
-        
+
         if (settings) {
             cachedOffset = settings.ntpOffset || 0;
             cachedTimezone = settings.ntpTimezone || 'Asia/Jakarta';
             lastSyncTime = settings.ntpLastSync;
-            
+
             console.log(`[NTP] Using timezone: ${cachedTimezone}`);
-            
+
             if (settings.ntpEnabled) {
                 // Wait for network to be ready (especially in Docker)
                 console.log('[NTP] Waiting for network...');
                 await delay(3000);
-                
+
                 // Initial sync with retry
                 let syncSuccess = false;
                 for (let attempt = 1; attempt <= 3; attempt++) {
@@ -365,16 +366,16 @@ export async function initNTPService(): Promise<void> {
                         await delay(2000);
                     }
                 }
-                
+
                 if (!syncSuccess) {
                     console.log('[NTP] Initial sync failed, will retry on next scheduled interval');
                 }
-                
+
                 // Schedule periodic sync
                 startNTPScheduler(settings.ntpSyncInterval);
             }
         }
-        
+
         console.log('[NTP] Service initialized');
     } catch (error) {
         console.error('[NTP] Failed to initialize:', error);
@@ -388,11 +389,11 @@ export function startNTPScheduler(intervalSeconds: number): void {
     if (syncInterval) {
         clearInterval(syncInterval);
     }
-    
+
     syncInterval = setInterval(async () => {
         await syncNTP();
     }, intervalSeconds * 1000);
-    
+
     console.log(`[NTP] Scheduler started (interval: ${intervalSeconds}s)`);
 }
 
@@ -414,7 +415,7 @@ export async function getNTPSettings(): Promise<NTPSettings> {
     const settings = await prisma.settings.findUnique({
         where: { id: 'default' }
     });
-    
+
     return {
         ntpEnabled: settings?.ntpEnabled ?? true,
         ntpServer: settings?.ntpServer ?? 'pool.ntp.org',
@@ -445,18 +446,18 @@ export async function updateNTPSettings(data: Partial<NTPSettings>): Promise<NTP
             ntpSyncInterval: data.ntpSyncInterval ?? 3600
         }
     });
-    
+
     // Update cached timezone if changed
     if (data.ntpTimezone) {
         cachedTimezone = data.ntpTimezone;
         console.log(`[NTP] Timezone updated to: ${cachedTimezone}`);
     }
-    
+
     // Update scheduler if interval changed
     if (data.ntpSyncInterval && settings.ntpEnabled) {
         startNTPScheduler(data.ntpSyncInterval);
     }
-    
+
     // Stop/start based on enabled state
     if (data.ntpEnabled === false) {
         stopNTPScheduler();
@@ -465,7 +466,7 @@ export async function updateNTPSettings(data: Partial<NTPSettings>): Promise<NTP
         await syncNTP();
         startNTPScheduler(settings.ntpSyncInterval);
     }
-    
+
     return {
         ntpEnabled: settings.ntpEnabled,
         ntpServer: settings.ntpServer,
@@ -482,18 +483,18 @@ export async function updateNTPSettings(data: Partial<NTPSettings>): Promise<NTP
 export async function getTimeInfo(): Promise<TimeInfo> {
     const settings = await getNTPSettings();
     const now = getNow();
-    
+
     // Format time components for display (already in configured timezone)
     const hours = now.getHours().toString().padStart(2, '0');
     const minutes = now.getMinutes().toString().padStart(2, '0');
     const seconds = now.getSeconds().toString().padStart(2, '0');
     const formattedTime = `${hours}:${minutes}:${seconds}`;
-    
+
     const year = now.getFullYear();
     const month = (now.getMonth() + 1).toString().padStart(2, '0');
     const day = now.getDate().toString().padStart(2, '0');
     const formattedDate = `${year}-${month}-${day}`;
-    
+
     return {
         serverTime: now.toISOString(),
         formattedTime,

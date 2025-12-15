@@ -1,14 +1,13 @@
 import { Router, Response } from 'express';
-import { PrismaClient } from '@prisma/client';
 import { AuthRequest, authMiddleware, adminMiddleware } from '../middleware/auth.middleware';
 import { getNow, isPastCutoff, getTimezone } from '../services/time.service';
 import { sseManager } from '../controllers/sse.controller';
 import { ErrorMessages } from '../utils/errorMessages';
 import { cacheService, CACHE_KEYS, CACHE_TTL } from '../services/cache.service';
 import { logShift, getRequestContext } from '../services/audit.service';
+import { prisma } from '../lib/prisma';
 
 const router = Router();
-const prisma = new PrismaClient();
 
 // Get all shifts (with caching)
 router.get('/', authMiddleware, async (req: AuthRequest, res: Response) => {

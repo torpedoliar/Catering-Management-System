@@ -1,14 +1,13 @@
 import { Router, Response } from 'express';
-import { PrismaClient } from '@prisma/client';
 import ExcelJS from 'exceljs';
 import { authMiddleware, AuthRequest, adminMiddleware } from '../middleware/auth.middleware';
 import { getNow, getToday, getTomorrow } from '../services/time.service';
 import { sendComplaintNotification } from '../services/email.service';
 import { format } from 'date-fns';
 import { id as idLocale } from 'date-fns/locale';
+import { prisma } from '../lib/prisma';
 
 const router = Router();
-const prisma = new PrismaClient();
 
 // Get all messages with filters (Admin only)
 router.get('/', authMiddleware, adminMiddleware, async (req: AuthRequest, res: Response) => {

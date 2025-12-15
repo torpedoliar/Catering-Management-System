@@ -1,8 +1,7 @@
-import { PrismaClient, AuditAction } from '@prisma/client';
+import { AuditAction } from '@prisma/client';
 import { Request } from 'express';
 import { getNow } from './time.service';
-
-const prisma = new PrismaClient();
+import { prisma } from '../lib/prisma';
 
 interface AuditUser {
     id?: string;
@@ -49,22 +48,22 @@ export function getRequestContext(req: Request): RequestContext {
  */
 function calculateChanges(oldValue: any, newValue: any): any {
     if (!oldValue || !newValue) return null;
-    
+
     const changes: Record<string, { from: any; to: any }> = {};
     const allKeys = new Set([...Object.keys(oldValue), ...Object.keys(newValue)]);
-    
+
     for (const key of allKeys) {
         // Skip internal fields
         if (['password', 'createdAt', 'updatedAt'].includes(key)) continue;
-        
+
         const oldVal = oldValue[key];
         const newVal = newValue[key];
-        
+
         if (JSON.stringify(oldVal) !== JSON.stringify(newVal)) {
             changes[key] = { from: oldVal, to: newVal };
         }
     }
-    
+
     return Object.keys(changes).length > 0 ? changes : null;
 }
 
@@ -73,16 +72,16 @@ function calculateChanges(oldValue: any, newValue: any): any {
  */
 function sanitizeData(data: any): any {
     if (!data) return data;
-    
+
     const sensitiveFields = ['password', 'token', 'secret', 'apiKey', 'creditCard'];
     const sanitized = { ...data };
-    
+
     for (const field of sensitiveFields) {
         if (sanitized[field]) {
             sanitized[field] = '[REDACTED]';
         }
     }
-    
+
     return sanitized;
 }
 
@@ -230,9 +229,9 @@ export async function logBlacklist(
 ): Promise<void> {
     const isSuccess = options?.success !== false;
     const isFailed = options?.metadata?.failedPasswordConfirmation === true;
-    
+
     const descriptions: Record<string, string> = {
-        USER_BLACKLISTED: isFailed 
+        USER_BLACKLISTED: isFailed
             ? `Failed blacklist attempt for user ${targetUser.name || 'Unknown'}: Invalid password`
             : `User ${targetUser.name} blacklisted: ${options?.blacklist?.reason || 'No reason'}`,
         USER_UNBLOCKED: isFailed

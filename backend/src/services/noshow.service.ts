@@ -1,9 +1,8 @@
-import { PrismaClient, AuditAction } from '@prisma/client';
+import { AuditAction } from '@prisma/client';
 import { sseManager } from '../controllers/sse.controller';
 import { getNow, getToday, getTomorrow } from './time.service';
 import { createAuditLog } from './audit.service';
-
-const prisma = new PrismaClient();
+import { prisma } from '../lib/prisma';
 
 interface NoShowResult {
     processedOrders: number;

@@ -1,11 +1,10 @@
 import { Router, Response } from 'express';
-import { PrismaClient } from '@prisma/client';
 import { authMiddleware, adminMiddleware, AuthRequest } from '../middleware/auth.middleware';
 import { sseManager } from '../controllers/sse.controller';
 import { getNow } from '../services/time.service';
+import { prisma } from '../lib/prisma';
 
 const router = Router();
-const prisma = new PrismaClient();
 
 // Get all active announcements (for users)
 router.get('/active', authMiddleware, async (req: AuthRequest, res: Response) => {

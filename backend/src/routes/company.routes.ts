@@ -1,12 +1,11 @@
 import { Router, Response } from 'express';
-import { PrismaClient } from '@prisma/client';
 import multer from 'multer';
 import ExcelJS from 'exceljs';
 import { AuthRequest, authMiddleware, adminMiddleware } from '../middleware/auth.middleware';
 import { logOrganization, logDataOperation, getRequestContext } from '../services/audit.service';
+import { prisma } from '../lib/prisma';
 
 const router = Router();
-const prisma = new PrismaClient();
 const upload = multer({ storage: multer.memoryStorage() });
 
 // ==================== COMPANY ENDPOINTS ====================

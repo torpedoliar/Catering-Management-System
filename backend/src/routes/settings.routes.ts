@@ -1,17 +1,15 @@
 import { Router, Response } from 'express';
-import { PrismaClient } from '@prisma/client';
 import { AuthRequest, authMiddleware, adminMiddleware } from '../middleware/auth.middleware';
 import { sseManager } from '../controllers/sse.controller';
 import { getNow } from '../services/time.service';
 import { ErrorMessages } from '../utils/errorMessages';
 import { cacheService, CACHE_KEYS, CACHE_TTL } from '../services/cache.service';
 import { logSettings, getRequestContext } from '../services/audit.service';
-
 import { OrderService } from '../services/order.service';
 import { getToday } from '../services/time.service';
+import { prisma } from '../lib/prisma';
 
 const router = Router();
-const prisma = new PrismaClient();
 
 // Get settings (with caching)
 router.get('/', authMiddleware, async (req: AuthRequest, res: Response) => {
