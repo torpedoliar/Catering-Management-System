@@ -2,310 +2,168 @@
   <img src="https://img.icons8.com/fluency/96/restaurant.png" alt="Catering Management System Logo" width="96" height="96">
 </p>
 
-<h1 align="center">🍽️ Catering Management System</h1>
+<h1 align="center">🍽️ Enterprise Catering Management System</h1>
 
 <p align="center">
-  <strong>Modern & Efficient Corporate Catering Management Solution</strong>
+  <strong>A Scalable, Secure, and Modern Solution for Corporate Food Service Operations</strong>
 </p>
 
 <p align="center">
-  <img src="https://img.shields.io/badge/version-1.2-blue.svg" alt="Version">
+  <img src="https://img.shields.io/badge/version-2.0.0-blue.svg" alt="Version">
   <img src="https://img.shields.io/badge/license-MIT-green.svg" alt="License">
-  <img src="https://img.shields.io/badge/node-%3E%3D18.0.0-brightgreen.svg" alt="Node">
-  <img src="https://img.shields.io/badge/typescript-%5E5.0.0-blue.svg" alt="TypeScript">
-  <img src="https://img.shields.io/badge/react-%5E18.0.0-61dafb.svg" alt="React">
-</p>
-
-<p align="center">
-  <img src="https://img.shields.io/badge/PostgreSQL-316192?style=for-the-badge&logo=postgresql&logoColor=white" alt="PostgreSQL">
-  <img src="https://img.shields.io/badge/Prisma-2D3748?style=for-the-badge&logo=prisma&logoColor=white" alt="Prisma">
-  <img src="https://img.shields.io/badge/Express.js-000000?style=for-the-badge&logo=express&logoColor=white" alt="Express">
-  <img src="https://img.shields.io/badge/React-61DAFB?style=for-the-badge&logo=react&logoColor=black" alt="React">
-  <img src="https://img.shields.io/badge/Tailwind_CSS-38B2AC?style=for-the-badge&logo=tailwind-css&logoColor=white" alt="Tailwind">
+  <img src="https://img.shields.io/badge/build-passing-brightgreen.svg" alt="Build Status">
+  <br />
+  <img src="https://img.shields.io/badge/node-%3E%3D18.0.0-339933.svg?logo=node.js&logoColor=white" alt="Node">
+  <img src="https://img.shields.io/badge/typescript-%5E5.0.0-3178C6.svg?logo=typescript&logoColor=white" alt="TypeScript">
+  <img src="https://img.shields.io/badge/react-%5E18.0.0-61DAFB.svg?logo=react&logoColor=black" alt="React">
+  <img src="https://img.shields.io/badge/docker-containerized-2496ED.svg?logo=docker&logoColor=white" alt="Docker">
 </p>
 
 ---
 
-## 📋 Overview
+## 📋 Executive Summary
 
-**Catering Management System** adalah solusi lengkap untuk mengelola pemesanan katering perusahaan dengan fitur modern seperti multi-shift scheduling, QR code check-in, real-time updates, dan sistem blacklist otomatis untuk mengurangi food waste.
+The **Catering Management System** is an enterprise-grade platform designed to streamline corporate catering operations. It bridges the gap between employees, administration, and canteen operators through a unified, real-time interface. Built with scalability and data integrity in mind, it automates scheduling, minimizes food waste through rigid cutoff policies, and ensures seamless accountability.
 
-### ✨ Key Features
+Recently upgraded to **Version 2.0**, the system now includes advanced guest management, bulk ordering capabilities, and an automated email notification engine.
 
-| Feature | Description |
+---
+
+## ✨ Key Enterprise Features
+
+### 🏢 Core Operations
+| Feature | Functionality |
 |---------|-------------|
-| 📅 **Multi-Day Ordering** | Pesan makanan untuk beberapa hari ke depan |
-| ⏰ **Multi-Shift Support** | Dukungan untuk berbagai shift dengan waktu fleksibel |
-| 📱 **QR Code Check-in** | Verifikasi pengambilan makanan dengan QR code unik |
-| 🏢 **Department Access Control** | Kontrol akses berdasarkan struktur organisasi |
-| 🔔 **Real-time Updates** | Server-Sent Events (SSE) untuk update status instan |
-| 🚫 **Auto Blacklist System** | Sistem strike otomatis untuk mengurangi no-show |
-| 🕐 **NTP Time Sync** | Sinkronisasi waktu server untuk akurasi cutoff |
-| 📊 **Comprehensive Reports** | Export laporan detail ke Excel |
-| 📝 **Audit Log** | Pencatatan lengkap semua aktivitas sistem |
+| **Advanced Order Management** | **New:** Bulk ordering capability permitting multi-day meal planning in a single action. |
+| **Intelligent Shift Support** | Flexible configuration coverage for multiple shifts (Morning, Afternoon, Night) with dynamic cutoff times. |
+| **Visual Identity Check-in** | **New:** Enhanced security at food collection points with user photo verification on QR scan. |
+| **Guest Registry** | **New:** Dedicated module for managing external guests, generating temporary access QR codes, and tracking visits. |
+
+### 🛠 Administrative Control
+| Feature | Functionality |
+|---------|-------------|
+| **Role-Based Access Control (RBAC)** | Granular permissions for **Admin**, **Canteen Operator**, and **User** roles. |
+| **Email Communication Hub** | **New:** Built-in email push service with customizable HTML templates for invitations and notifications. |
+| **Automated Policy Enforcement** | Auto-blacklist system for simple "No-Show" tracking to reduce wastage and enforce accountability. |
+| **Audit & Governance** | comprehensive audit logging of all system actions and NTP-synced timekeeping for dispute resolution. |
+
+### 📊 Reporting & Analytics
+- **Excel Data Export**: Seamless export of transaction logs and user data for payroll integration.
+- **Real-time Dashboard**: Live monitoring of daily orders, collection rates, and user activity.
 
 ---
 
-## 🖼️ Screenshots
+## 🏗️ Technical Architecture
 
-<details>
-<summary>📸 Click to view screenshots</summary>
+The solution uses a microservices-ready architecture, fully containerized for easy deployment.
 
-### Login Page
-Modern login interface dengan gradient design
-
-### Dashboard
-Real-time statistics dan overview
-
-### Order Management
-Intuitive ordering interface dengan shift selection
-
-### Admin Panel
-Comprehensive admin controls dan configurations
-
-</details>
-
----
-
-## 🏗️ Architecture
-
-```
-┌─────────────────────────────────────────────────────────────┐
-│                    Frontend (React + Vite)                   │
-│  ┌─────────┐  ┌─────────┐  ┌─────────┐  ┌─────────────────┐ │
-│  │  Pages  │  │Components│  │Contexts │  │     Utils       │ │
-│  └─────────┘  └─────────┘  └─────────┘  └─────────────────┘ │
-└────────────────────────────┬────────────────────────────────┘
-                             │ HTTP/SSE
-┌────────────────────────────▼────────────────────────────────┐
-│                   Backend (Express + Node.js)                │
-│  ┌─────────┐  ┌─────────┐  ┌─────────┐  ┌─────────────────┐ │
-│  │ Routes  │  │Services │  │Middleware│  │   Controllers   │ │
-│  └─────────┘  └─────────┘  └─────────┘  └─────────────────┘ │
-└────────────────────────────┬────────────────────────────────┘
-                             │ Prisma ORM
-┌────────────────────────────▼────────────────────────────────┐
-│                      PostgreSQL Database                     │
-│  ┌─────────┐  ┌─────────┐  ┌─────────┐  ┌─────────────────┐ │
-│  │  Users  │  │ Orders  │  │ Shifts  │  │   Audit Logs    │ │
-│  └─────────┘  └─────────┘  └─────────┘  └─────────────────┘ │
-└─────────────────────────────────────────────────────────────┘
+```mermaid
+graph TD
+    Client[Client Browser] -->|HTTPS| Nginx[NGINX Reverse Proxy]
+    Nginx -->|Static Assets| Frontend[React + Vite Frontend]
+    Nginx -->|API Requests| Backend[Node.js + Express Backend]
+    
+    subgraph Services
+    Backend -->|ORM| DB[(PostgreSQL Database)]
+    Backend -->|SMTP| Email[Email Service]
+    end
+    
+    subgraph Features
+    Backend -->|SSE| Client
+    Backend -->|NTP| Time[Time Server]
+    end
 ```
 
 ---
 
-## 🚀 Quick Start
+## 🚀 Rapid Deployment
 
-### Prerequisites
+### Infrastructure Prerequisites
+- **Docker** & **Docker Compose**
+- **Git**
 
-- Node.js >= 18.0.0
-- PostgreSQL >= 14
-- npm or yarn
+### 🐳 Enterprise Docker Setup (Recommended)
 
-### Installation
+1. **Clone the Repository**
+   ```bash
+   git clone https://github.com/torpedoliar/Catering-Management-System.git
+   cd Catering-Management-System
+   ```
 
-1. **Clone the repository**
-```bash
-git clone https://github.com/torpedoliar/Catering-Management-System.git
-cd Catering-Management-System
-```
+2. **Environment Configuration**
+   Copy the example environment files and configure your credentials.
+   ```bash
+   cp backend/.env.example backend/.env
+   cp frontend/.env.example frontend/.env
+   ```
 
-2. **Setup Backend**
-```bash
-cd backend
-npm install
-cp .env.example .env
-# Edit .env with your database credentials
-npx prisma migrate dev
-npx prisma db seed
-npm run dev
-```
+3. **Launch Services**
+   Execute the full stack suite (Database, Backend, Frontend, Nginx).
+   ```bash
+   docker-compose up -d --build
+   ```
 
-3. **Setup Frontend**
-```bash
-cd frontend
-npm install
-cp .env.example .env
-npm run dev
-```
-
-4. **Access the application**
-- Frontend: http://localhost:3011
-- Backend API: http://localhost:3012
-
-### 🐳 Docker Deployment
-
-```bash
-# Start all services
-docker-compose up -d
-
-# View logs
-docker-compose logs -f
-```
+4. **Verify Deployment**
+   - **Frontend Application**: `http://localhost:3011`
+   - **Backend Health Check**: `http://localhost:3012/health`
 
 ---
 
-## 📁 Project Structure
+## 🔐 Security & Access
 
-```
-Catering-Management-System/
-├── 📂 backend/
-│   ├── 📂 prisma/
-│   │   ├── schema.prisma      # Database schema
-│   │   ├── migrations/        # Database migrations
-│   │   └── seed.ts            # Database seeder
-│   ├── 📂 src/
-│   │   ├── 📂 controllers/    # Request handlers
-│   │   ├── 📂 middleware/     # Auth & validation
-│   │   ├── 📂 routes/         # API routes
-│   │   ├── 📂 services/       # Business logic
-│   │   └── index.ts           # Entry point
-│   └── package.json
-│
-├── 📂 frontend/
-│   ├── 📂 src/
-│   │   ├── 📂 components/     # Reusable components
-│   │   ├── 📂 contexts/       # React contexts
-│   │   ├── 📂 pages/          # Page components
-│   │   ├── 📂 utils/          # Utility functions
-│   │   ├── App.tsx            # Main app component
-│   │   └── main.tsx           # Entry point
-│   └── package.json
-│
-├── 📂 docs/                   # Documentation
-├── docker-compose.yml         # Docker configuration
-└── README.md
-```
+The system implements a tiered security model.
+
+### Roles & Capabilities
+| Role | Capabilities |
+|------|-------------|
+| **Administrator** | System-wide configuration, User Management, Guest Registry, Master Reporting, Security Policies. |
+| **Canteen Operator** | QR/Manual Redemption, Real-time queue view, Visual verification of personnel. |
+| **Standard User** | Self-service ordering, History view, Profile management. |
+
+### Default Administrative Access
+> [!IMPORTANT]
+> Change these credentials immediately after the initial deployment.
+
+- **Username**: `admin`
+- **Password**: `admin123`
 
 ---
 
-## 🔐 User Roles
+## 🛠️ Technology Standards
 
-| Role | Permissions |
-|------|------------|
-| **USER** | Order food, view history, cancel orders |
-| **CANTEEN** | Check-in orders via QR/manual, view today's orders |
-| **ADMIN** | Full access: manage users, shifts, settings, reports |
+**Backend Layer**
+- **Core**: Node.js, Express.js (TypeScript)
+- **Data**: PostgreSQL, Prisma ORM
+- **Security**: JWT Authentication, Rate Limiting, Helmet
+- **Services**: Nodemailer, Server-Sent Events (SSE)
 
-### Default Credentials
+**Frontend Layer**
+- **Core**: React 18, Vite
+- **UI/UX**: Tailwind CSS, Headless UI, Framer Motion
+- **State**: React Context API
+- **Utilities**: XLSX (Excel Export), React-QR-Code
 
-| Role | ID | Password |
-|------|-----|----------|
-| Admin | `admin` | `admin123` |
-| Canteen | `canteen` | `canteen123` |
-
-⚠️ **Important:** Change default passwords after first login!
-
----
-
-## 🛠️ Tech Stack
-
-### Backend
-- **Runtime:** Node.js
-- **Framework:** Express.js
-- **Database:** PostgreSQL
-- **ORM:** Prisma
-- **Authentication:** JWT
-- **Real-time:** Server-Sent Events (SSE)
-- **Time Sync:** NTP
-
-### Frontend
-- **Framework:** React 18
-- **Build Tool:** Vite
-- **Styling:** Tailwind CSS
-- **State:** React Context
-- **Router:** React Router v6
-- **QR Code:** qrcode.react
+**DevOps & Infrastructure**
+- **Containerization**: Docker, Docker Compose
+- **Proxy**: NGINX
+- **CI/CD**: Standard Git Flow
 
 ---
 
-## 📊 API Endpoints
+## 🤝 Contribution Guidelines
 
-<details>
-<summary>📡 View API Documentation</summary>
+We welcome contributions to improve this enterprise solution.
 
-### Authentication
-| Method | Endpoint | Description |
-|--------|----------|-------------|
-| POST | `/api/auth/login` | User login |
-| POST | `/api/auth/logout` | User logout |
-| POST | `/api/auth/change-password` | Change password |
-| GET | `/api/auth/me` | Get current user |
-
-### Orders
-| Method | Endpoint | Description |
-|--------|----------|-------------|
-| GET | `/api/orders` | Get all orders (Admin) |
-| POST | `/api/orders` | Create new order |
-| POST | `/api/orders/checkin/qr` | Check-in via QR |
-| POST | `/api/orders/:id/cancel` | Cancel order |
-| GET | `/api/orders/export` | Export to Excel |
-
-### Users
-| Method | Endpoint | Description |
-|--------|----------|-------------|
-| GET | `/api/users` | Get all users |
-| POST | `/api/users` | Create user |
-| PUT | `/api/users/:id` | Update user |
-| POST | `/api/users/import` | Import from Excel |
-
-### Settings
-| Method | Endpoint | Description |
-|--------|----------|-------------|
-| GET | `/api/settings` | Get settings |
-| PUT | `/api/settings` | Update settings |
-
-</details>
-
----
-
-## 🤝 Contributing
-
-Contributions are welcome! Please feel free to submit a Pull Request.
-
-1. Fork the repository
-2. Create your feature branch (`git checkout -b feature/AmazingFeature`)
-3. Commit your changes (`git commit -m 'Add some AmazingFeature'`)
-4. Push to the branch (`git push origin feature/AmazingFeature`)
-5. Open a Pull Request
-
----
-
-## 📄 License
-
-This project is licensed under the MIT License - see the [LICENSE](LICENSE) file for details.
-
----
-
-## 👨‍💻 Author
-
-<p align="center">
-  <img src="https://github.com/torpedoliar.png" width="100" height="100" style="border-radius: 50%;" alt="Yohanes Octavian Rizky">
-</p>
-
-<p align="center">
-  <strong>Yohanes Octavian Rizky</strong>
-</p>
-
-<p align="center">
-  <em>"Peningkatan kecil setiap hari pada akhirnya menghasilkan hasil yang besar."</em>
-</p>
-
-<p align="center">
-  <a href="https://github.com/torpedoliar">
-    <img src="https://img.shields.io/badge/GitHub-100000?style=for-the-badge&logo=github&logoColor=white" alt="GitHub">
-  </a>
-  <a href="mailto:yohanesorizky@gmail.com">
-    <img src="https://img.shields.io/badge/Email-D14836?style=for-the-badge&logo=gmail&logoColor=white" alt="Email">
-  </a>
-</p>
+1. **Fork** the repository.
+2. Create a **Feature Branch** (`git checkout -b feature/StrategicEnhancement`).
+3. **Commit** your changes (`git commit -m 'feat: Add strategic enhancement'`).
+4. **Push** to the branch (`git push origin feature/StrategicEnhancement`).
+5. Open a **Pull Request**.
 
 ---
 
 <p align="center">
-  Made with ❤️ in Indonesia
-</p>
-
-<p align="center">
-  © 2026 Catering Management System
+  <small>© 2026 Catering Management System. All Rights Reserved.</small>
+  <br>
+  <small>Maintained by <strong>Yohanes Octavian Rizky</strong></small>
 </p>
