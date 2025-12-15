@@ -565,119 +565,120 @@ router.post('/checkin/qr', authMiddleware, canteenMiddleware, upload.single('pho
             return res.status(400).json({ error: ErrorMessages.MISSING_REQUIRED_FIELDS });
         }
 
-        where: { qrCode },
-        include: {
-            user: { select: { id: true, name: true, externalId: true, company: true, division: true, department: true, photo: true } },
-            shift: true,
+        const order = await prisma.order.findUnique({
+            where: { qrCode },
+            include: {
+                user: { select: { id: true, name: true, externalId: true, company: true, division: true, department: true, photo: true } },
+                shift: true,
             },
-    });
+        });
 
-if (!order) {
-    return res.status(404).json({ error: ErrorMessages.ORDER_NOT_FOUND });
-}
+        if (!order) {
+            return res.status(404).json({ error: ErrorMessages.ORDER_NOT_FOUND });
+        }
 
-if (order.status === 'PICKED_UP') {
-    return res.status(400).json({ error: 'Pesanan sudah di-check in sebelumnya', order });
-}
+        if (order.status === 'PICKED_UP') {
+            return res.status(400).json({ error: 'Pesanan sudah di-check in sebelumnya', order });
+        }
 
-if (order.status === 'CANCELLED') {
-    return res.status(400).json({ error: 'Pesanan sudah dibatalkan' });
-}
+        if (order.status === 'CANCELLED') {
+            return res.status(400).json({ error: 'Pesanan sudah dibatalkan' });
+        }
 
-// Validate order date and shift time window
-const now = getNow();
-const orderDate = new Date(order.orderDate);
-orderDate.setHours(0, 0, 0, 0);
+        // Validate order date and shift time window
+        const now = getNow();
+        const orderDate = new Date(order.orderDate);
+        orderDate.setHours(0, 0, 0, 0);
 
-const [startHour, startMinute] = order.shift.startTime.split(':').map(Number);
-const [endHour, endMinute] = order.shift.endTime.split(':').map(Number);
+        const [startHour, startMinute] = order.shift.startTime.split(':').map(Number);
+        const [endHour, endMinute] = order.shift.endTime.split(':').map(Number);
 
-// Build shift start/end based on order date
-const shiftStart = new Date(orderDate);
-shiftStart.setHours(startHour, startMinute, 0, 0);
+        // Build shift start/end based on order date
+        const shiftStart = new Date(orderDate);
+        shiftStart.setHours(startHour, startMinute, 0, 0);
 
-const shiftEnd = new Date(orderDate);
-shiftEnd.setHours(endHour, endMinute, 0, 0);
+        const shiftEnd = new Date(orderDate);
+        shiftEnd.setHours(endHour, endMinute, 0, 0);
 
-// Handle overnight shifts (e.g., 23:00 - 05:00)
-if (shiftEnd <= shiftStart) {
-    shiftEnd.setDate(shiftEnd.getDate() + 1);
-}
+        // Handle overnight shifts (e.g., 23:00 - 05:00)
+        if (shiftEnd <= shiftStart) {
+            shiftEnd.setDate(shiftEnd.getDate() + 1);
+        }
 
-// Allow checkin 30 mins before start until end
-const allowedStart = new Date(shiftStart.getTime() - 30 * 60000);
+        // Allow checkin 30 mins before start until end
+        const allowedStart = new Date(shiftStart.getTime() - 30 * 60000);
 
-if (now < allowedStart) {
-    return res.status(400).json({
-        error: 'Terlalu dini untuk check-in',
-        message: `Check-in dimulai pada ${allowedStart.toLocaleTimeString('id-ID')}`
-    });
-}
+        if (now < allowedStart) {
+            return res.status(400).json({
+                error: 'Terlalu dini untuk check-in',
+                message: `Check-in dimulai pada ${allowedStart.toLocaleTimeString('id-ID')}`
+            });
+        }
 
-if (now > shiftEnd) {
-    return res.status(400).json({
-        error: 'Waktu check-in sudah lewat',
-        message: `Check-in berakhir pada ${shiftEnd.toLocaleTimeString('id-ID')}`
-    });
-}
+        if (now > shiftEnd) {
+            return res.status(400).json({
+                error: 'Waktu check-in sudah lewat',
+                message: `Check-in berakhir pada ${shiftEnd.toLocaleTimeString('id-ID')}`
+            });
+        }
 
-// Get admin/canteen staff name
-const checkedInByUser = req.user ? await prisma.user.findUnique({
-    where: { id: req.user.id },
-    select: { id: true, name: true, externalId: true }
-}) : null;
+        // Get admin/canteen staff name
+        const checkedInByUser = req.user ? await prisma.user.findUnique({
+            where: { id: req.user.id },
+            select: { id: true, name: true, externalId: true }
+        }) : null;
 
-// Process photo if uploaded
-let photoUrl = undefined;
-if (req.file) {
-    const filename = `checkin-${order.id}-${Date.now()}.webp`;
-    const filepath = path.join(checkinUploadDir, filename);
+        // Process photo if uploaded
+        let photoUrl = undefined;
+        if (req.file) {
+            const filename = `checkin-${order.id}-${Date.now()}.webp`;
+            const filepath = path.join(checkinUploadDir, filename);
 
-    await sharp(req.file.buffer)
-        .resize(400, 400, { fit: 'cover' })
-        .webp({ quality: 80 })
-        .toFile(filepath);
+            await sharp(req.file.buffer)
+                .resize(400, 400, { fit: 'cover' })
+                .webp({ quality: 80 })
+                .toFile(filepath);
 
-    photoUrl = `/uploads/checkins/${filename}`;
-}
+            photoUrl = `/uploads/checkins/${filename}`;
+        }
 
-const updatedOrder = await prisma.order.update({
-    where: { id: order.id },
-    data: {
-        status: 'PICKED_UP',
-        checkInTime: getNow(),
-        checkedInById: checkedInByUser?.id || null,
-        checkedInBy: checkedInByUser?.name || 'System',
-        checkinPhoto: photoUrl,
-    },
-    include: {
-        user: { select: { id: true, name: true, externalId: true, company: true, division: true, department: true, photo: true } },
-        shift: true,
-    },
-});
+        const updatedOrder = await prisma.order.update({
+            where: { id: order.id },
+            data: {
+                status: 'PICKED_UP',
+                checkInTime: getNow(),
+                checkedInById: checkedInByUser?.id || null,
+                checkedInBy: checkedInByUser?.name || 'System',
+                checkinPhoto: photoUrl,
+            },
+            include: {
+                user: { select: { id: true, name: true, externalId: true, company: true, division: true, department: true, photo: true } },
+                shift: true,
+            },
+        });
 
-// Log checkin
-await logOrder('ORDER_CHECKIN', req.user || null, updatedOrder, context, {
-    oldValue: { status: order.status },
-    metadata: { checkedInBy: checkedInByUser?.name, checkedInByExternalId: checkedInByUser?.externalId, method: 'QR' },
-});
+        // Log checkin
+        await logOrder('ORDER_CHECKIN', req.user || null, updatedOrder, context, {
+            oldValue: { status: order.status },
+            metadata: { checkedInBy: checkedInByUser?.name, checkedInByExternalId: checkedInByUser?.externalId, method: 'QR' },
+        });
 
-// Broadcast check-in to all clients
-sseManager.broadcast('order:checkin', {
-    order: updatedOrder,
-    timestamp: getNow().toISOString(),
-});
+        // Broadcast check-in to all clients
+        sseManager.broadcast('order:checkin', {
+            order: updatedOrder,
+            timestamp: getNow().toISOString(),
+        });
 
-res.json({
-    message: 'Check-in berhasil',
-    order: updatedOrder,
-    checkInTime: updatedOrder.checkInTime,
-    checkInBy: req.user?.externalId || 'Admin'
-});
+        res.json({
+            message: 'Check-in berhasil',
+            order: updatedOrder,
+            checkInTime: updatedOrder.checkInTime,
+            checkInBy: req.user?.externalId || 'Admin'
+        });
     } catch (error) {
-    console.error('Check-in error:', error);
-    res.status(500).json({ error: ErrorMessages.SERVER_ERROR });
-}
+        console.error('Check-in error:', error);
+        res.status(500).json({ error: ErrorMessages.SERVER_ERROR });
+    }
 });
 
 // Check-in by user ID or name (Canteen/Admin)

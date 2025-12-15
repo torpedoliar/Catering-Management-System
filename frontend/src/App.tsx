@@ -21,6 +21,7 @@ import MessagesPage from './pages/admin/MessagesPage';
 import CostAnalysisPage from './pages/admin/CostAnalysisPage';
 import AnnouncementPage from './pages/admin/AnnouncementPage';
 import EmailSettingsPage from './pages/admin/EmailSettingsPage';
+import OrderListPage from './pages/admin/OrderListPage';
 import CheckInPage from './pages/canteen/CheckInPage';
 import AboutPage from './pages/AboutPage';
 
@@ -79,6 +80,7 @@ function AppRoutes() {
                 {/* Admin Routes */}
                 <Route element={<ProtectedRoute roles={['ADMIN']}><Outlet /></ProtectedRoute>}>
                     <Route path="/admin/dashboard" element={<DashboardPage />} />
+                    <Route path="/admin/orders" element={<OrderListPage />} />
                     <Route path="/admin/shifts" element={<ShiftConfigPage />} />
                     <Route path="/admin/users" element={<UserManagementPage />} />
                     <Route path="/admin/companies" element={<CompanyManagementPage />} />

@@ -1,4 +1,5 @@
 import { useState, useEffect, useCallback } from 'react';
+import { Link } from 'react-router-dom';
 import { format } from 'date-fns';
 import { id } from 'date-fns/locale';
 import { api } from '../../contexts/AuthContext';
@@ -22,7 +23,8 @@ import {
     Zap,
     ChevronDown,
     ChevronUp,
-    CalendarDays
+    CalendarDays,
+    List
 } from 'lucide-react';
 
 interface ShiftStats {
@@ -292,6 +294,13 @@ export default function DashboardPage() {
                         </div>
                         <span>{connectedClients} terhubung</span>
                     </div>
+                    <Link
+                        to={`/admin/orders?date=${startDate}`}
+                        className="btn-secondary flex items-center gap-2"
+                    >
+                        <List className="w-4 h-4" />
+                        Lihat Detail Order
+                    </Link>
                     <button onClick={loadData} className="btn-primary flex items-center gap-2">
                         <RefreshCw className="w-4 h-4" />
                         Refresh
@@ -736,9 +745,18 @@ export default function DashboardPage() {
                             </tbody>
                         </table>
                         {tomorrowOrders.length > 10 && (
-                            <p className="text-center text-white/40 text-sm py-3">
-                                +{tomorrowOrders.length - 10} pesanan lainnya
-                            </p>
+                            <div className="flex items-center justify-between px-3 py-3 border-t border-white/5">
+                                <p className="text-white/40 text-sm">
+                                    +{tomorrowOrders.length - 10} pesanan lainnya
+                                </p>
+                                <Link
+                                    to={`/admin/orders?date=${getLocalDateString(new Date(Date.now() + 24 * 60 * 60 * 1000))}`}
+                                    className="text-sm text-primary-400 hover:text-primary-300 flex items-center gap-1 transition-colors"
+                                >
+                                    Lihat Semua
+                                    <ChevronUp className="w-4 h-4 rotate-90" />
+                                </Link>
+                            </div>
                         )}
                     </div>
                 </div>
