@@ -219,3 +219,96 @@ class RateLimiterService {
 }
 
 export const rateLimiter = new RateLimiterService();
+
+// ============================================
+// Generic API Rate Limiting
+// ============================================
+
+interface ApiRateLimitConfig {
+    maxRequests: number;
+    windowSeconds: number;
+}
+
+const API_RATE_LIMITS: Record<string, ApiRateLimitConfig> = {
+    'bulk-order': { maxRequests: 10, windowSeconds: 60 },
+    'export': { maxRequests: 5, windowSeconds: 60 },
+    'upload': { maxRequests: 20, windowSeconds: 60 },
+    'default': { maxRequests: 100, windowSeconds: 60 },
+};
+
+/**
+ * Check if an API request is rate limited
+ * @param userId - User ID making the request
+ * @param endpoint - Rate limit category (bulk-order, export, upload, default)
+ * @returns Object with allowed status and remaining info
+ */
+export async function checkApiRateLimit(
+    userId: string,
+    endpoint: keyof typeof API_RATE_LIMITS = 'default'
+): Promise<{ allowed: boolean; remaining: number; resetIn?: number }> {
+    if (!redisService.isReady()) {
+        return { allowed: true, remaining: 999 };
+    }
+
+    const client = redisService.getClient();
+    if (!client) {
+        return { allowed: true, remaining: 999 };
+    }
+
+    const config = API_RATE_LIMITS[endpoint] || API_RATE_LIMITS['default'];
+    const key = `api:ratelimit:${endpoint}:${userId}`;
+
+    try {
+        const current = await client.get(key);
+        const count = current ? parseInt(current, 10) : 0;
+
+        if (count >= config.maxRequests) {
+            const ttl = await client.ttl(key);
+            return {
+                allowed: false,
+                remaining: 0,
+                resetIn: ttl > 0 ? ttl : config.windowSeconds,
+            };
+        }
+
+        // Increment counter
+        const multi = client.multi();
+        multi.incr(key);
+        if (count === 0) {
+            multi.expire(key, config.windowSeconds);
+        }
+        await multi.exec();
+
+        return {
+            allowed: true,
+            remaining: config.maxRequests - count - 1,
+        };
+    } catch (error) {
+        console.error('[ApiRateLimiter] Error:', error);
+        return { allowed: true, remaining: 999 }; // Fail open
+    }
+}
+
+/**
+ * Express middleware for API rate limiting
+ */
+export function apiRateLimitMiddleware(endpoint: keyof typeof API_RATE_LIMITS = 'default') {
+    return async (req: any, res: any, next: any) => {
+        const userId = req.user?.id || req.ip;
+        const result = await checkApiRateLimit(userId, endpoint);
+
+        // Set rate limit headers
+        res.set('X-RateLimit-Remaining', result.remaining.toString());
+
+        if (!result.allowed) {
+            res.set('Retry-After', result.resetIn?.toString() || '60');
+            return res.status(429).json({
+                error: 'Terlalu banyak permintaan. Silakan coba lagi nanti.',
+                code: 'RATE_LIMITED',
+                retryAfter: result.resetIn,
+            });
+        }
+
+        next();
+    };
+}
