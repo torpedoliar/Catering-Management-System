@@ -30,9 +30,9 @@ const CACHE_KEYS = {
 
 // SSE Event types
 export const CANTEEN_EVENTS = {
-    CREATED: 'canteen.created',
-    UPDATED: 'canteen.updated',
-    DELETED: 'canteen.deleted'
+    CREATED: 'canteen:created',
+    UPDATED: 'canteen:updated',
+    DELETED: 'canteen:deleted'
 };
 
 // Invalidate cache helper

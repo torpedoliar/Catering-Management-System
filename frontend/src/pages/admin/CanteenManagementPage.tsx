@@ -1,6 +1,6 @@
 import { useState, useEffect, useCallback } from 'react';
 import { api } from '../../contexts/AuthContext';
-import { useSSERefresh } from '../../contexts/SSEContext';
+import { useSSERefresh, CANTEEN_EVENTS } from '../../contexts/SSEContext';
 import { MapPin, Plus, Edit2, Trash2, Loader2, RefreshCw, Check, X, Building2, Users, Clock } from 'lucide-react';
 import toast from 'react-hot-toast';
 
@@ -71,7 +71,7 @@ export default function CanteenManagementPage() {
     }, [loadData]);
 
     // SSE refresh on canteen events
-    useSSERefresh(['canteen.created', 'canteen.updated', 'canteen.deleted'], loadData);
+    useSSERefresh(CANTEEN_EVENTS, loadData);
 
     const openAddModal = () => {
         setEditingCanteen(null);
@@ -343,8 +343,8 @@ export default function CanteenManagementPage() {
                                             type="button"
                                             onClick={() => toggleShift(shift.id)}
                                             className={`px-3 py-1.5 rounded-lg text-sm flex items-center gap-1 transition-colors ${formData.selectedShifts.includes(shift.id)
-                                                    ? 'bg-primary text-white'
-                                                    : 'bg-dark-lighter text-slate-400 hover:bg-dark-light'
+                                                ? 'bg-primary text-white'
+                                                : 'bg-dark-lighter text-slate-400 hover:bg-dark-light'
                                                 }`}
                                         >
                                             {formData.selectedShifts.includes(shift.id) && <Check className="w-3 h-3" />}

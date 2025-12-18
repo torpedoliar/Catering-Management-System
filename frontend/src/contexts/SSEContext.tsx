@@ -32,12 +32,16 @@ const ALL_EVENTS = [
     'order:checkin',
     'order:cancelled',
     'order:noshow',
+    'order:bulk_created',
     'user:blacklisted',
     'user:unblocked',
     'user:strikes-reset',
     'settings:updated',
     'shift:updated',
     'holiday:updated',
+    'canteen:created',
+    'canteen:updated',
+    'canteen:deleted',
     'announcement:created',
     'announcement:updated',
     'announcement:deleted',
@@ -308,10 +312,11 @@ export function useSSERefresh(eventTypes: string[], refreshFn: () => void) {
 }
 
 // Get all order-related events
-export const ORDER_EVENTS = ['order:created', 'order:checkin', 'order:cancelled', 'order:noshow'];
+export const ORDER_EVENTS = ['order:created', 'order:checkin', 'order:cancelled', 'order:noshow', 'order:bulk_created'];
 export const USER_EVENTS = ['user:blacklisted', 'user:unblocked', 'user:strikes-reset'];
 export const SETTINGS_EVENTS = ['settings:updated'];
 export const SHIFT_EVENTS = ['shift:updated'];
 export const HOLIDAY_EVENTS = ['holiday:updated'];
+export const CANTEEN_EVENTS = ['canteen:created', 'canteen:updated', 'canteen:deleted'];
 export const ANNOUNCEMENT_EVENTS = ['announcement:created', 'announcement:updated', 'announcement:deleted'];
-export const ALL_DATA_EVENTS = [...ORDER_EVENTS, ...USER_EVENTS, ...SETTINGS_EVENTS, ...SHIFT_EVENTS, ...HOLIDAY_EVENTS, ...ANNOUNCEMENT_EVENTS, 'data:refresh'];
+export const ALL_DATA_EVENTS = [...ORDER_EVENTS, ...USER_EVENTS, ...SETTINGS_EVENTS, ...SHIFT_EVENTS, ...HOLIDAY_EVENTS, ...CANTEEN_EVENTS, ...ANNOUNCEMENT_EVENTS, 'data:refresh'];
