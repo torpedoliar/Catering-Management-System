@@ -10,4 +10,23 @@ export default defineConfig({
             usePolling: true,
         },
     },
+    build: {
+        rollupOptions: {
+            output: {
+                manualChunks: {
+                    // Core React vendor chunk
+                    vendor: ['react', 'react-dom', 'react-router-dom'],
+                    // UI libraries
+                    ui: ['lucide-react', 'react-hot-toast'],
+                    // Utility libraries
+                    utils: ['date-fns', 'axios', 'qrcode.react'],
+                },
+            },
+        },
+        // Enable minification
+        minify: 'esbuild',
+        // Smaller chunks warning threshold
+        chunkSizeWarningLimit: 500,
+    },
 })
+

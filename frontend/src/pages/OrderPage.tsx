@@ -202,30 +202,21 @@ export default function OrderPage() {
     useEffect(() => {
         loadData();
         refreshUser();
-        const interval = setInterval(loadData, 60000);
-        return () => clearInterval(interval);
+        // SSE handles real-time updates - no need for redundant polling
     }, [loadData, refreshUser]);
 
     useEffect(() => {
         loadBulkData();
     }, [loadBulkData]);
 
-    useSSERefresh(ORDER_EVENTS, () => {
+    // Consolidated SSE handler for all data-related events (debounced)
+    const handleSSERefresh = useCallback(() => {
         loadData();
         loadBulkData();
-    });
-    useSSERefresh(HOLIDAY_EVENTS, () => {
-        loadData();
-        loadBulkData();
-    });
-    useSSERefresh(SHIFT_EVENTS, () => {
-        loadData();
-        loadBulkData();
-    });
-    useSSERefresh(SETTINGS_EVENTS, () => {
-        loadData();
-        loadBulkData();
-    });
+    }, [loadData, loadBulkData]);
+
+    useSSERefresh([...ORDER_EVENTS, ...HOLIDAY_EVENTS, ...SHIFT_EVENTS, ...SETTINGS_EVENTS], handleSSERefresh);
+
     useSSERefresh(USER_EVENTS, () => {
         refreshUser();
         loadData();
