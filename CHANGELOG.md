@@ -2,6 +2,39 @@
 
 All notable changes to Vibe Catering Management System will be documented in this file.
 
+## [1.5.0] - 2025-12-18
+
+### ⚡ Performance Optimization & UX Improvements
+
+Update v1.5.0 berfokus pada peningkatan performa aplikasi dan perbaikan user experience.
+
+### ✨ New Features
+
+#### 🏢 Kantin Lokasi Kerja (Preferred Canteen)
+- **User Settings**: User dapat memilih kantin lokasi kerja default di halaman Pengaturan
+- **Auto-Select**: Saat pesan makanan, kantin yang dipilih otomatis sesuai preferensi user
+- **Backend API**: Endpoint `PUT /api/auth/me` untuk update preferensi user
+
+### ⚡ Performance Improvements
+
+#### Frontend Optimization
+- **Remove Redundant Polling**: Hapus setInterval 60 detik yang redundan dengan SSE
+- **Consolidated SSE Handlers**: Gabung 5 SSE handler menjadi 1 consolidated handler
+- **Vite Bundle Splitting**: Vendor, UI, dan Utils chunks terpisah untuk better caching
+
+#### Already Optimized (Found During Audit)
+- ✅ Gzip Compression sudah aktif di backend
+- ✅ Code Splitting dengan React.lazy untuk 18 halaman admin
+- ✅ Database indexes lengkap di schema.prisma
+
+### 🛠️ Technical Changes
+- `OrderPage.tsx`: Optimized SSE event handling
+- `vite.config.ts`: Added manualChunks configuration
+- `AuthContext.tsx`: Added `preferredCanteenId` to User interface
+- `SettingsPage.tsx`: Added "Kantin Lokasi Anda Bekerja" selection UI
+
+---
+
 ## [1.4.0] - 2025-12-15
 
 ### 📸 Check-in Photo Verification

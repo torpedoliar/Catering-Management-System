@@ -9,7 +9,7 @@ export default function AboutPage() {
                     <FileText className="w-10 h-10 text-white" />
                 </div>
                 <h1 className="text-3xl font-bold text-[#1a1f37] mb-2">Catering Management System</h1>
-                <p className="text-lg font-semibold text-orange-500 mb-4">Version 1.4.0</p>
+                <p className="text-lg font-semibold text-orange-500 mb-4">Version 1.5.0</p>
                 <p className="text-slate-500 max-w-2xl mx-auto">
                     Sistem manajemen pemesanan katering yang modern dan efisien dengan fitur multi-shift,
                     multi-day ordering, QR code check-in, dan kontrol administratif yang lengkap.
