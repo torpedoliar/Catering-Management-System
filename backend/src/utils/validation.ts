@@ -20,6 +20,7 @@ export const changePasswordSchema = z.object({
 
 export const createUserSchema = z.object({
     externalId: z.string().min(1, 'ID Karyawan wajib diisi').max(50),
+    nik: z.string().regex(/^\d+$/, 'NIK harus berupa angka').max(30).optional().nullable(),
     name: z.string().min(2, 'Nama minimal 2 karakter').max(100),
     email: z.string().email('Format email tidak valid').optional().nullable(),
     password: z.string().min(6, 'Password minimal 6 karakter').optional(),
@@ -32,6 +33,7 @@ export const createUserSchema = z.object({
 
 export const updateUserSchema = z.object({
     name: z.string().min(2).max(100).optional(),
+    nik: z.string().regex(/^\d+$/, 'NIK harus berupa angka').max(30).optional().nullable(),
     email: z.string().email().optional().nullable(),
     company: z.string().min(1).optional(),
     division: z.string().min(1).optional(),
@@ -50,6 +52,7 @@ const dateRegex = /^\d{4}-\d{2}-\d{2}$/;
 export const createOrderSchema = z.object({
     shiftId: z.string().uuid('Shift ID tidak valid'),
     orderDate: z.string().regex(dateRegex, 'Format tanggal harus YYYY-MM-DD').optional(),
+    canteenId: z.string().uuid().optional().nullable(),
 });
 
 export const bulkOrderSchema = z.object({
@@ -57,6 +60,7 @@ export const bulkOrderSchema = z.object({
         date: z.string().regex(dateRegex, 'Format tanggal harus YYYY-MM-DD'),
         shiftId: z.string().uuid('Shift ID tidak valid'),
     })).min(1, 'Minimal 1 pesanan').max(30, 'Maksimal 30 pesanan sekaligus'),
+    canteenId: z.string().uuid().optional().nullable(),
 });
 
 export const cancelOrderSchema = z.object({
@@ -97,14 +101,32 @@ export const createHolidaySchema = z.object({
 // ============================================
 
 export const updateSettingsSchema = z.object({
-    cutoffHours: z.coerce.number().min(0).max(24).optional(),
+    // Mode selection
+    cutoffMode: z.enum(['per-shift', 'weekly']).optional(),
+
+    // Per-shift mode settings
+    cutoffDays: z.coerce.number().min(0).max(30).optional(),
+    cutoffHours: z.coerce.number().min(0).max(23).optional(),
+    maxOrderDaysAhead: z.coerce.number().min(1).max(30).optional(),
+
+    // Weekly mode settings
+    weeklyCutoffDay: z.coerce.number().min(0).max(6).optional(),
+    weeklyCutoffHour: z.coerce.number().min(0).max(23).optional(),
+    weeklyCutoffMinute: z.coerce.number().min(0).max(59).optional(),
+    orderableDays: z.string().regex(/^[0-6](,[0-6])*$/, 'Format hari tidak valid').optional(),
+    maxWeeksAhead: z.coerce.number().min(1).max(4).optional(),
+
+    // Blacklist settings
     blacklistStrikes: z.coerce.number().min(1).max(10).optional(),
     blacklistDuration: z.coerce.number().min(1).max(365).optional(),
-    maxOrderDaysAhead: z.coerce.number().min(1).max(30).optional(),
+
+    // NTP settings
     ntpEnabled: z.boolean().optional(),
     ntpServer: z.string().optional(),
     ntpTimezone: z.string().optional(),
     ntpSyncInterval: z.coerce.number().min(60).max(86400).optional(),
+
+    // Email settings
     emailEnabled: z.boolean().optional(),
     smtpHost: z.string().optional().nullable(),
     smtpPort: z.coerce.number().min(1).max(65535).optional(),
@@ -113,6 +135,8 @@ export const updateSettingsSchema = z.object({
     smtpPass: z.string().optional().nullable(),
     smtpFrom: z.string().email().optional().nullable(),
     adminEmail: z.string().email().optional().nullable(),
+
+    // Other settings
     checkinPhotoEnabled: z.boolean().optional(),
 });
 

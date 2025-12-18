@@ -35,6 +35,12 @@ interface ShiftStats {
     count: number;
 }
 
+interface CanteenStats {
+    canteenId: string;
+    canteenName: string;
+    count: number;
+}
+
 interface DepartmentShiftStats {
     shiftName: string;
     total: number;
@@ -103,6 +109,7 @@ interface Stats {
     noShow: number;
     pickupRate: number;
     byShift: ShiftStats[];
+    byCanteen: CanteenStats[];
     byDepartment: DepartmentStats[];
     noShowUsers: {
         today: NoShowUser[];
@@ -228,7 +235,7 @@ export default function DashboardPage() {
         switch (status) {
             case 'PICKED_UP': return 'Diambil';
             case 'ORDERED': return 'Pending';
-            case 'NO_SHOW': return 'No-Show';
+            case 'NO_SHOW': return 'Tidak Diambil';
             case 'CANCELLED': return 'Batal';
             default: return status;
         }
@@ -263,7 +270,7 @@ export default function DashboardPage() {
     });
 
     // Get unique shift names for table header
-    const shiftNames = stats?.byShift.map(s => s.shiftName) || [];
+    const shiftNames = stats?.byShift?.map(s => s.shiftName) || [];
 
     return (
         <div className="space-y-6 animate-fade-in">
@@ -437,13 +444,13 @@ export default function DashboardPage() {
                         <h2 className="text-lg font-bold text-white">Pengambilan Makan per Shift</h2>
                     </div>
                     <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                        {stats?.byShift.map((shift) => {
+                        {stats?.byShift?.map((shift) => {
                             // Use allFilteredOrders for accurate count (not todayOrders which is limited to 10)
                             const shiftOrders = allFilteredOrders.filter(o => o.shift.name === shift.shiftName && o.status !== 'CANCELLED');
                             const pickedUp = shiftOrders.filter(o => o.status === 'PICKED_UP').length;
                             const pending = shiftOrders.filter(o => o.status === 'ORDERED').length;
+                            const noShow = shiftOrders.filter(o => o.status === 'NO_SHOW').length;
                             const total = shiftOrders.length;
-                            const pickedUpPercent = total > 0 ? Math.round((pickedUp / total) * 100) : 0;
 
                             return (
                                 <div key={shift.shiftId} className="p-4 rounded-2xl bg-white/5 border border-white/5 hover:border-primary-500/30 transition-all">
@@ -478,6 +485,13 @@ export default function DashboardPage() {
                                             </span>
                                             <span className="font-bold text-warning">{pending}</span>
                                         </div>
+                                        <div className="flex items-center justify-between text-sm">
+                                            <span className="flex items-center gap-2">
+                                                <span className="w-3 h-3 rounded-full bg-gradient-to-r from-red-500 to-rose-500" />
+                                                <span className="text-white/70">Tidak Diambil</span>
+                                            </span>
+                                            <span className="font-bold text-red-500">{noShow}</span>
+                                        </div>
                                         <div className="pt-2 mt-2 border-t border-white/10 flex items-center justify-between text-sm">
                                             <span className="text-white/50">Total Pesanan</span>
                                             <span className="font-bold text-white">{total}</span>
@@ -490,6 +504,40 @@ export default function DashboardPage() {
                             <div className="col-span-2">
                                 <p className="text-white/40 text-center py-8">Belum ada order hari ini</p>
                             </div>
+                        )}
+                    </div>
+                </div>
+
+
+
+                {/* Canteen Stats */}
+                <div className="card">
+                    <div className="flex items-center gap-3 mb-6">
+                        <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-orange-500 to-amber-500 flex items-center justify-center">
+                            <Building2 className="w-5 h-5 text-white" />
+                        </div>
+                        <h2 className="text-lg font-bold text-white">Order per Kantin</h2>
+                    </div>
+                    <div className="space-y-4">
+                        {stats?.byCanteen && stats.byCanteen.length > 0 ? (
+                            stats.byCanteen.map((canteen) => (
+                                <div key={canteen.canteenId} className="flex items-center justify-between p-4 rounded-xl bg-white/5 border border-white/5 hover:border-orange-500/30 transition-colors">
+                                    <div className="flex items-center gap-3">
+                                        <div className="w-8 h-8 rounded-lg bg-orange-500/20 flex items-center justify-center text-orange-400 font-bold">
+                                            {canteen.canteenName.charAt(0)}
+                                        </div>
+                                        <div>
+                                            <p className="font-semibold text-white">{canteen.canteenName}</p>
+                                        </div>
+                                    </div>
+                                    <div className="text-right">
+                                        <p className="text-xl font-bold text-white">{canteen.count}</p>
+                                        <p className="text-xs text-white/50">pesanan</p>
+                                    </div>
+                                </div>
+                            ))
+                        ) : (
+                            <p className="text-white/40 text-center py-8">Tidak ada data kantin</p>
                         )}
                     </div>
                 </div>
@@ -650,10 +698,11 @@ export default function DashboardPage() {
             </div>
 
             {/* Row 3 - No Show Users */}
-            {((stats?.noShowUsers?.today && stats.noShowUsers.today.length > 0) ||
-                (stats?.noShowUsers?.yesterday && stats.noShowUsers.yesterday.length > 0)) && (
+            {
+                ((stats?.noShowUsers?.today && stats.noShowUsers.today.length > 0) ||
+                    (stats?.noShowUsers?.yesterday && stats.noShowUsers.yesterday.length > 0)) && (
                     <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-                        {/* Today's No-Shows */}
+                        {/* Today's Tidak Diambil */}
                         {stats?.noShowUsers?.today && stats.noShowUsers.today.length > 0 && (
                             <div className="card border-danger/30">
                                 <div className="flex items-center gap-3 mb-4">
@@ -661,7 +710,7 @@ export default function DashboardPage() {
                                         <XCircle className="w-5 h-5 text-danger" />
                                     </div>
                                     <div>
-                                        <h2 className="text-lg font-bold text-white">No-Show Hari Ini</h2>
+                                        <h2 className="text-lg font-bold text-white">Tidak Diambil Hari Ini</h2>
                                         <p className="text-xs text-white/40">{stats.noShowUsers.today.length} user</p>
                                     </div>
                                 </div>
@@ -679,7 +728,7 @@ export default function DashboardPage() {
                             </div>
                         )}
 
-                        {/* Yesterday's No-Shows */}
+                        {/* Yesterday's Tidak Diambil */}
                         {stats?.noShowUsers?.yesterday && stats.noShowUsers.yesterday.length > 0 && (
                             <div className="card border-warning/30">
                                 <div className="flex items-center gap-3 mb-4">
@@ -687,7 +736,7 @@ export default function DashboardPage() {
                                         <Clock className="w-5 h-5 text-warning" />
                                     </div>
                                     <div>
-                                        <h2 className="text-lg font-bold text-white">No-Show Kemarin</h2>
+                                        <h2 className="text-lg font-bold text-white">Tidak Diambil Kemarin</h2>
                                         <p className="text-xs text-white/40">{stats.noShowUsers.yesterday.length} user</p>
                                     </div>
                                 </div>
@@ -705,63 +754,66 @@ export default function DashboardPage() {
                             </div>
                         )}
                     </div>
-                )}
+                )
+            }
 
             {/* Row 4 - Tomorrow's Orders */}
-            {tomorrowOrders.length > 0 && (
-                <div className="card">
-                    <div className="flex items-center gap-3 mb-6">
-                        <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-accent-cyan to-info flex items-center justify-center">
-                            <CalendarDays className="w-5 h-5 text-white" />
-                        </div>
-                        <div>
-                            <h2 className="text-lg font-bold text-white">Order Besok</h2>
-                            <p className="text-xs text-white/40">{tomorrowOrders.length} pesanan</p>
-                        </div>
-                    </div>
-                    <div className="overflow-x-auto">
-                        <table className="w-full text-sm">
-                            <thead>
-                                <tr className="border-b border-white/10">
-                                    <th className="text-left py-3 px-3 text-white/50 font-medium">Nama</th>
-                                    <th className="text-left py-3 px-3 text-white/50 font-medium">ID</th>
-                                    <th className="text-left py-3 px-3 text-white/50 font-medium">Perusahaan</th>
-                                    <th className="text-left py-3 px-3 text-white/50 font-medium">Departemen</th>
-                                    <th className="text-left py-3 px-3 text-white/50 font-medium">Shift</th>
-                                </tr>
-                            </thead>
-                            <tbody>
-                                {tomorrowOrders.slice(0, 10).map((order) => (
-                                    <tr key={order.id} className="border-b border-white/5 hover:bg-white/5 transition-colors">
-                                        <td className="py-3 px-3 font-medium text-white">{order.user.name}</td>
-                                        <td className="py-3 px-3 text-white/70 font-mono text-xs">{order.user.externalId}</td>
-                                        <td className="py-3 px-3 text-white/70">{order.user.company || '-'}</td>
-                                        <td className="py-3 px-3 text-white/70">{order.user.department || '-'}</td>
-                                        <td className="py-3 px-3">
-                                            <span className="badge badge-info">{order.shift.name}</span>
-                                        </td>
-                                    </tr>
-                                ))}
-                            </tbody>
-                        </table>
-                        {tomorrowOrders.length > 10 && (
-                            <div className="flex items-center justify-between px-3 py-3 border-t border-white/5">
-                                <p className="text-white/40 text-sm">
-                                    +{tomorrowOrders.length - 10} pesanan lainnya
-                                </p>
-                                <Link
-                                    to={`/admin/orders?date=${getLocalDateString(new Date(Date.now() + 24 * 60 * 60 * 1000))}`}
-                                    className="text-sm text-primary-400 hover:text-primary-300 flex items-center gap-1 transition-colors"
-                                >
-                                    Lihat Semua
-                                    <ChevronUp className="w-4 h-4 rotate-90" />
-                                </Link>
+            {
+                tomorrowOrders.length > 0 && (
+                    <div className="card">
+                        <div className="flex items-center gap-3 mb-6">
+                            <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-accent-cyan to-info flex items-center justify-center">
+                                <CalendarDays className="w-5 h-5 text-white" />
                             </div>
-                        )}
+                            <div>
+                                <h2 className="text-lg font-bold text-white">Order Besok</h2>
+                                <p className="text-xs text-white/40">{tomorrowOrders.length} pesanan</p>
+                            </div>
+                        </div>
+                        <div className="overflow-x-auto">
+                            <table className="w-full text-sm">
+                                <thead>
+                                    <tr className="border-b border-white/10">
+                                        <th className="text-left py-3 px-3 text-white/50 font-medium">Nama</th>
+                                        <th className="text-left py-3 px-3 text-white/50 font-medium">ID</th>
+                                        <th className="text-left py-3 px-3 text-white/50 font-medium">Perusahaan</th>
+                                        <th className="text-left py-3 px-3 text-white/50 font-medium">Departemen</th>
+                                        <th className="text-left py-3 px-3 text-white/50 font-medium">Shift</th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    {tomorrowOrders.slice(0, 10).map((order) => (
+                                        <tr key={order.id} className="border-b border-white/5 hover:bg-white/5 transition-colors">
+                                            <td className="py-3 px-3 font-medium text-white">{order.user.name}</td>
+                                            <td className="py-3 px-3 text-white/70 font-mono text-xs">{order.user.externalId}</td>
+                                            <td className="py-3 px-3 text-white/70">{order.user.company || '-'}</td>
+                                            <td className="py-3 px-3 text-white/70">{order.user.department || '-'}</td>
+                                            <td className="py-3 px-3">
+                                                <span className="badge badge-info">{order.shift.name}</span>
+                                            </td>
+                                        </tr>
+                                    ))}
+                                </tbody>
+                            </table>
+                            {tomorrowOrders.length > 10 && (
+                                <div className="flex items-center justify-between px-3 py-3 border-t border-white/5">
+                                    <p className="text-white/40 text-sm">
+                                        +{tomorrowOrders.length - 10} pesanan lainnya
+                                    </p>
+                                    <Link
+                                        to={`/admin/orders?date=${getLocalDateString(new Date(Date.now() + 24 * 60 * 60 * 1000))}`}
+                                        className="text-sm text-primary-400 hover:text-primary-300 flex items-center gap-1 transition-colors"
+                                    >
+                                        Lihat Semua
+                                        <ChevronUp className="w-4 h-4 rotate-90" />
+                                    </Link>
+                                </div>
+                            )}
+                        </div>
                     </div>
-                </div>
-            )}
-        </div>
+                )
+            }
+        </div >
     );
 }
 

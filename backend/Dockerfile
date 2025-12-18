@@ -1,5 +1,8 @@
 FROM node:20-alpine
 
+# Install postgresql-client for backup/restore
+RUN apk add --no-cache postgresql-client
+
 WORKDIR /app
 
 # Install dependencies for Prisma, development, and NTP

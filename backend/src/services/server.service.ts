@@ -203,15 +203,27 @@ export async function createBackup(userId: string, notes?: string): Promise<Back
     });
 
     try {
-        // Get database URL components
-        const dbUrl = process.env.DATABASE_URL || '';
-        const match = dbUrl.match(/postgresql:\/\/([^:]+):([^@]+)@([^:]+):(\d+)\/(.+)/);
+        // Get database connection details
+        const dbUrl = process.env.DATABASE_URL;
+        let user, password, host, port, database;
 
-        if (!match) {
-            throw new Error('Invalid DATABASE_URL format');
+        if (dbUrl) {
+            const match = dbUrl.match(/postgresql:\/\/([^:]+):([^@]+)@([^:]+):(\d+)\/(.+)/);
+            if (match) {
+                [, user, password, host, port, database] = match;
+                // Remove query parameters from database name if present
+                if (database.includes('?')) {
+                    database = database.split('?')[0];
+                }
+            }
         }
 
-        const [, user, password, host, port, database] = match;
+        // Fallback to individual env vars if URL parsing failed or URL not present
+        if (!user) user = process.env.DB_USER || 'postgres';
+        if (!password) password = process.env.DB_PASSWORD || 'postgres';
+        if (!host) host = process.env.DB_HOST || 'db';
+        if (!port) port = process.env.DB_PORT || '5432';
+        if (!database) database = process.env.DB_NAME || 'catering_db';
 
         // Execute pg_dump
         const dumpCommand = `PGPASSWORD="${password}" pg_dump -h ${host} -p ${port} -U ${user} -d ${database} -F p -f "${filepath}"`;
@@ -284,15 +296,23 @@ export async function restoreBackup(backupId: string, userId: string): Promise<{
     }
 
     try {
-        // Get database URL components
-        const dbUrl = process.env.DATABASE_URL || '';
-        const match = dbUrl.match(/postgresql:\/\/([^:]+):([^@]+)@([^:]+):(\d+)\/(.+)/);
+        // Get database connection details
+        const dbUrl = process.env.DATABASE_URL;
+        let user, password, host, port, database;
 
-        if (!match) {
-            throw new Error('Invalid DATABASE_URL format');
+        if (dbUrl) {
+            const match = dbUrl.match(/postgresql:\/\/([^:]+):([^@]+)@([^:]+):(\d+)\/(.+)/);
+            if (match) {
+                [, user, password, host, port, database] = match;
+            }
         }
 
-        const [, user, password, host, port, database] = match;
+        // Fallback to individual env vars if URL parsing failed or URL not present
+        if (!user) user = process.env.DB_USER || 'postgres';
+        if (!password) password = process.env.DB_PASSWORD || 'postgres';
+        if (!host) host = process.env.DB_HOST || 'db';
+        if (!port) port = process.env.DB_PORT || '5432';
+        if (!database) database = process.env.DB_NAME || 'catering_db';
 
         // Execute restore
         const restoreCommand = `PGPASSWORD="${password}" psql -h ${host} -p ${port} -U ${user} -d ${database} -f "${filepath}"`;
@@ -390,6 +410,79 @@ export async function cleanupOldBackups(): Promise<number> {
 
 export function getBackupFilePath(backupId: string): string | null {
     return path.join(BACKUP_DIR, backupId);
+}
+
+// ==================== SETTINGS & UPLOAD ====================
+
+export async function getBackupSettings() {
+    const settings = await prisma.settings.upsert({
+        where: { id: 'default' },
+        update: {},
+        create: { id: 'default' }
+    });
+
+    return {
+        autoBackupEnabled: settings.autoBackupEnabled,
+        autoBackupInterval: settings.autoBackupInterval,
+        lastAutoBackup: settings.lastAutoBackup
+    };
+}
+
+export async function updateBackupSettings(enabled: boolean, interval: number) {
+    return await prisma.settings.update({
+        where: { id: 'default' },
+        data: {
+            autoBackupEnabled: enabled,
+            autoBackupInterval: interval
+        }
+    });
+}
+
+export async function importBackupFile(userId: string, tempFilePath: string, originalFilename: string, size: number): Promise<BackupInfo> {
+    const timestamp = new Date().toISOString().replace(/[:.]/g, '-');
+    const ext = path.extname(originalFilename);
+    const filename = `imported_${timestamp}${ext}`;
+    const destinationPath = path.join(BACKUP_DIR, filename);
+
+    // Move file
+    await fs.promises.rename(tempFilePath, destinationPath);
+
+    // Create backup record
+    const backup = await prisma.backup.create({
+        data: {
+            filename,
+            size,
+            createdById: userId,
+            notes: `Imported from: ${originalFilename}`,
+            status: 'COMPLETED'
+        },
+        include: {
+            createdBy: { select: { name: true } }
+        }
+    });
+
+    // Audit log
+    await logSystem(AuditAction.IMPORT_DATA, `Backup imported: ${filename}`, {
+        entity: 'Backup',
+        entityId: backup.id,
+        metadata: {
+            originalFilename,
+            size,
+            importedBy: userId
+        }
+    });
+
+    return {
+        id: backup.id,
+        filename: backup.filename,
+        filepath: destinationPath,
+        size: backup.size,
+        createdAt: backup.createdAt,
+        createdById: backup.createdById,
+        createdByName: backup.createdBy?.name || null,
+        notes: backup.notes,
+        status: backup.status
+    };
 }
 
 // ==================== HELPERS ====================

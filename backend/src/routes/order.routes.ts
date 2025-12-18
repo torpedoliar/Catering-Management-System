@@ -7,10 +7,11 @@ import { AuthRequest, authMiddleware, adminMiddleware, canteenMiddleware } from 
 import { cutoffMiddleware } from '../middleware/cutoff.middleware';
 import { blacklistMiddleware } from '../middleware/blacklist.middleware';
 import { sseManager } from '../controllers/sse.controller';
-import { getNow, getToday, getTomorrow, isPastCutoff, isPastCutoffForDate } from '../services/time.service';
+import { getNow, getNowUTC, getToday, getTomorrow, isPastCutoff, isPastCutoffForDate, isDateOrderableWeekly } from '../services/time.service';
 import { logOrder, getRequestContext } from '../services/audit.service';
 import { ErrorMessages, formatErrorMessage } from '../utils/errorMessages';
 import { apiRateLimitMiddleware } from '../services/rate-limiter.service';
+import { OrderService } from '../services/order.service';
 import { validate } from '../middleware/validate.middleware';
 import { createOrderSchema, bulkOrderSchema } from '../utils/validation';
 import { OrderWhereFilter, BulkOrderSuccess, BulkOrderFailure } from '../types';
@@ -50,7 +51,10 @@ router.get('/my-orders', authMiddleware, async (req: AuthRequest, res: Response)
         const [orders, total] = await Promise.all([
             prisma.order.findMany({
                 where,
-                include: { shift: true },
+                include: {
+                    shift: true,
+                    canteen: { select: { id: true, name: true, location: true } }
+                },
                 orderBy: { orderDate: 'desc' },
                 skip,
                 take: parseInt(limit as string),
@@ -116,7 +120,7 @@ router.post('/', authMiddleware, blacklistMiddleware, validate(createOrderSchema
     const context = getRequestContext(req);
 
     try {
-        const { shiftId, orderDate: orderDateParam } = req.body;
+        const { shiftId, orderDate: orderDateParam, canteenId } = req.body;
         const userId = req.user?.id;
 
         if (!userId || !shiftId) {
@@ -154,20 +158,42 @@ router.post('/', authMiddleware, blacklistMiddleware, validate(createOrderSchema
             return res.status(400).json({ error: ErrorMessages.PAST_DATE });
         }
 
-        // Get settings to check maxOrderDaysAhead
+        // Get settings to check cutoff mode and limits
         const settings = await prisma.settings.findUnique({ where: { id: 'default' } });
+        const cutoffMode = settings?.cutoffMode || 'per-shift';
         const maxOrderDaysAhead = settings?.maxOrderDaysAhead || 7;
+        const cutoffDays = settings?.cutoffDays || 0;
         const cutoffHours = settings?.cutoffHours || 6;
 
-        // Calculate max allowed date
-        const maxDate = new Date(today);
-        maxDate.setDate(maxDate.getDate() + maxOrderDaysAhead);
-
-        if (orderDate > maxDate) {
-            return res.status(400).json({
-                error: formatErrorMessage('MAX_DAYS_EXCEEDED', { days: maxOrderDaysAhead }),
-                maxOrderDaysAhead
+        // Validate based on cutoff mode
+        if (cutoffMode === 'weekly') {
+            // Weekly mode: use isDateOrderableWeekly
+            const weeklyCheck = isDateOrderableWeekly(orderDate, {
+                weeklyCutoffDay: settings?.weeklyCutoffDay || 5,
+                weeklyCutoffHour: settings?.weeklyCutoffHour || 17,
+                weeklyCutoffMinute: settings?.weeklyCutoffMinute || 0,
+                orderableDays: settings?.orderableDays || '1,2,3,4,5,6',
+                maxWeeksAhead: settings?.maxWeeksAhead || 1,
             });
+
+            if (!weeklyCheck.canOrder) {
+                return res.status(400).json({
+                    error: weeklyCheck.reason || ErrorMessages.DATE_NOT_ORDERABLE,
+                    cutoffMode: 'weekly'
+                });
+            }
+        } else {
+            // Per-shift mode: use existing logic
+            // Calculate max allowed date
+            const maxDate = new Date(today);
+            maxDate.setDate(maxDate.getDate() + maxOrderDaysAhead);
+
+            if (orderDate > maxDate) {
+                return res.status(400).json({
+                    error: formatErrorMessage('MAX_DAYS_EXCEEDED', { days: maxOrderDaysAhead }),
+                    maxOrderDaysAhead
+                });
+            }
         }
 
         // Check if user already has an order for this date
@@ -236,7 +262,8 @@ router.post('/', authMiddleware, blacklistMiddleware, validate(createOrderSchema
         const shiftStartDateTime = new Date(orderDate);
         shiftStartDateTime.setHours(hours, minutes, 0, 0);
 
-        const cutoffDateTime = new Date(shiftStartDateTime.getTime() - (cutoffHours * 60 * 60 * 1000));
+        const cutoffMs = (cutoffDays * 24 * 60 * 60 * 1000) + (cutoffHours * 60 * 60 * 1000);
+        const cutoffDateTime = new Date(shiftStartDateTime.getTime() - cutoffMs);
         const now = getNow();
 
         // Check if we're past the cutoff for this date's shift
@@ -258,6 +285,14 @@ router.post('/', authMiddleware, blacklistMiddleware, validate(createOrderSchema
             color: { dark: '#000000', light: '#ffffff' },
         });
 
+        // Check canteen capacity
+        if (canteenId) {
+            const capacityCheck = await OrderService.validateCanteenCapacity(canteenId, shiftId, orderDate);
+            if (!capacityCheck.valid) {
+                return res.status(400).json({ error: capacityCheck.message });
+            }
+        }
+
         const order = await prisma.order.create({
             data: {
                 userId,
@@ -265,10 +300,12 @@ router.post('/', authMiddleware, blacklistMiddleware, validate(createOrderSchema
                 orderDate,
                 qrCode: qrCodeData,
                 mealPrice: shift.mealPrice, // Store price at time of order
+                canteenId: canteenId || null, // Optional canteen
             },
             include: {
-                user: { select: { id: true, name: true, externalId: true, company: true, division: true, department: true } },
+                user: { select: { id: true, name: true, externalId: true, company: true, division: true, department: true, photo: true } },
                 shift: true,
+                canteen: { select: { id: true, name: true, location: true } },
             },
         });
 
@@ -296,7 +333,7 @@ router.post('/bulk', authMiddleware, blacklistMiddleware, apiRateLimitMiddleware
     const context = getRequestContext(req);
 
     try {
-        const { orders: orderRequests } = req.body;
+        const { orders: orderRequests, canteenId } = req.body; // canteenId applies to all orders in bulk
         const userId = req.user?.id;
 
         if (!userId || !orderRequests || !Array.isArray(orderRequests) || orderRequests.length === 0) {
@@ -310,12 +347,14 @@ router.post('/bulk', authMiddleware, blacklistMiddleware, apiRateLimitMiddleware
 
         // Get settings
         const settings = await prisma.settings.findUnique({ where: { id: 'default' } });
+        const cutoffMode = settings?.cutoffMode || 'per-shift';
         const maxOrderDaysAhead = settings?.maxOrderDaysAhead || 7;
+        const cutoffDays = settings?.cutoffDays || 0;
         const cutoffHours = settings?.cutoffHours || 6;
         const today = getToday();
         const now = getNow();
 
-        // Calculate max allowed date
+        // Calculate max allowed date for per-shift mode
         const maxDate = new Date(today);
         maxDate.setDate(maxDate.getDate() + maxOrderDaysAhead);
 
@@ -366,14 +405,35 @@ router.post('/bulk', authMiddleware, blacklistMiddleware, apiRateLimitMiddleware
                 continue;
             }
 
-            // Check max days ahead
-            if (orderDate > maxDate) {
-                failedOrders.push({
-                    date: orderDateParam,
-                    shiftId,
-                    reason: `Maksimal pemesanan ${maxOrderDaysAhead} hari ke depan`
+            // Validate based on cutoff mode
+            if (cutoffMode === 'weekly') {
+                // Weekly mode: check if date is orderable using weekly logic
+                const weeklyCheck = isDateOrderableWeekly(orderDate, {
+                    weeklyCutoffDay: settings?.weeklyCutoffDay || 5,
+                    weeklyCutoffHour: settings?.weeklyCutoffHour || 17,
+                    weeklyCutoffMinute: settings?.weeklyCutoffMinute || 0,
+                    orderableDays: settings?.orderableDays || '1,2,3,4,5,6',
+                    maxWeeksAhead: settings?.maxWeeksAhead || 1,
                 });
-                continue;
+
+                if (!weeklyCheck.canOrder) {
+                    failedOrders.push({
+                        date: orderDateParam,
+                        shiftId,
+                        reason: weeklyCheck.reason || 'Tanggal tidak dapat dipesan (mode mingguan)'
+                    });
+                    continue;
+                }
+            } else {
+                // Per-shift mode: check max days ahead
+                if (orderDate > maxDate) {
+                    failedOrders.push({
+                        date: orderDateParam,
+                        shiftId,
+                        reason: `Maksimal pemesanan ${maxOrderDaysAhead} hari ke depan`
+                    });
+                    continue;
+                }
             }
 
             // Check existing order for this date
@@ -453,7 +513,8 @@ router.post('/bulk', authMiddleware, blacklistMiddleware, apiRateLimitMiddleware
             const [hours, minutes] = shift.startTime.split(':').map(Number);
             const shiftStartDateTime = new Date(orderDate);
             shiftStartDateTime.setHours(hours, minutes, 0, 0);
-            const cutoffDateTime = new Date(shiftStartDateTime.getTime() - (cutoffHours * 60 * 60 * 1000));
+            const cutoffMs = (cutoffDays * 24 * 60 * 60 * 1000) + (cutoffHours * 60 * 60 * 1000);
+            const cutoffDateTime = new Date(shiftStartDateTime.getTime() - cutoffMs);
 
             if (now >= cutoffDateTime) {
                 failedOrders.push({
@@ -462,6 +523,19 @@ router.post('/bulk', authMiddleware, blacklistMiddleware, apiRateLimitMiddleware
                     reason: `Waktu pemesanan sudah lewat (cutoff: ${cutoffDateTime.toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit' })})`
                 });
                 continue;
+            }
+
+            // Check canteen capacity (if selected)
+            if (canteenId) {
+                const capacityCheck = await OrderService.validateCanteenCapacity(canteenId, shiftId, orderDate);
+                if (!capacityCheck.valid) {
+                    failedOrders.push({
+                        date: orderDateParam,
+                        shiftId,
+                        reason: capacityCheck.message || 'Kuota kantin penuh'
+                    });
+                    continue;
+                }
             }
 
             // All validations passed - create order
@@ -480,10 +554,12 @@ router.post('/bulk', authMiddleware, blacklistMiddleware, apiRateLimitMiddleware
                         orderDate,
                         qrCode: qrCodeData,
                         mealPrice: shift.mealPrice, // Store price at time of order
+                        canteenId: canteenId || null, // Same canteen for all bulk orders
                     },
                     include: {
-                        user: { select: { id: true, name: true, externalId: true, company: true, division: true, department: true } },
+                        user: { select: { id: true, name: true, externalId: true, company: true, division: true, department: true, photo: true } },
                         shift: true,
+                        canteen: { select: { id: true, name: true, location: true } },
                     },
                 });
 
@@ -650,7 +726,7 @@ router.post('/checkin/qr', authMiddleware, canteenMiddleware, upload.single('pho
             where: { id: order.id },
             data: {
                 status: 'PICKED_UP',
-                checkInTime: getNow(),
+                checkInTime: getNowUTC(),
                 checkedInById: checkedInByUser?.id || null,
                 checkedInBy: checkedInByUser?.name || 'System',
                 checkinPhoto: photoUrl,
@@ -688,28 +764,48 @@ router.post('/checkin/qr', authMiddleware, canteenMiddleware, upload.single('pho
 // Check-in by user ID or name (Canteen/Admin)
 router.post('/checkin/manual', authMiddleware, canteenMiddleware, async (req: AuthRequest, res: Response) => {
     try {
-        const { externalId, name } = req.body;
+        const { externalId, name, nik } = req.body;
 
-        if (!externalId && !name) {
+        if (!externalId && !name && !nik) {
             return res.status(400).json({ error: ErrorMessages.MISSING_REQUIRED_FIELDS });
         }
 
-        // Find user
+        // Find user by externalId, nik, or name (priority order)
+        // Find user by externalId, nik, or name
+        // Use OR condition because frontend might send both externalId and nik for numeric inputs
+        const whereClause: any = {};
+        const orConditions = [];
+
+        if (externalId) orConditions.push({ externalId });
+        if (nik) orConditions.push({ nik });
+        if (name) orConditions.push({ name: { contains: name, mode: 'insensitive' } });
+
+        if (orConditions.length > 0) {
+            whereClause.OR = orConditions;
+        } else {
+            // Fallback if nothing provided (though checked above)
+            return res.status(400).json({ error: ErrorMessages.MISSING_REQUIRED_FIELDS });
+        }
+
         const user = await prisma.user.findFirst({
-            where: externalId
-                ? { externalId }
-                : { name: { contains: name, mode: 'insensitive' } },
+            where: whereClause
         });
 
         if (!user) {
             return res.status(404).json({ error: ErrorMessages.USER_NOT_FOUND });
         }
 
-        // Find today's order for this user
+        // Find order for this user - check both today and yesterday (for overnight shifts)
         const today = getToday();
         const tomorrow = getTomorrow();
+        const yesterday = new Date(today);
+        yesterday.setDate(yesterday.getDate() - 1);
+        const now = getNow();
 
-        const order = await prisma.order.findFirst({
+        console.log(`[Manual Check-in] User: ${user.externalId}, Now: ${now.toISOString()}, Today: ${today.toISOString()}`);
+
+        // First, try to find today's order
+        let todayOrder = await prisma.order.findFirst({
             where: {
                 userId: user.id,
                 orderDate: { gte: today, lt: tomorrow },
@@ -718,12 +814,77 @@ router.post('/checkin/manual', authMiddleware, canteenMiddleware, async (req: Au
             include: { shift: true },
         });
 
+        // Also check for yesterday's overnight shift order
+        let yesterdayOrder = await prisma.order.findFirst({
+            where: {
+                userId: user.id,
+                orderDate: { gte: yesterday, lt: today },
+                status: 'ORDERED',
+            },
+            include: { shift: true },
+        });
+
+        console.log(`[Manual Check-in] Today's order: ${todayOrder?.id || 'none'}, Yesterday's order: ${yesterdayOrder?.id || 'none'}`);
+
+        // Helper function to check if an order is within valid check-in window
+        const isOrderValidForCheckin = (order: any): boolean => {
+            const orderDate = new Date(order.orderDate);
+            orderDate.setHours(0, 0, 0, 0);
+
+            const [startHour, startMinute] = order.shift.startTime.split(':').map(Number);
+            const [endHour, endMinute] = order.shift.endTime.split(':').map(Number);
+
+            const shiftStart = new Date(orderDate);
+            shiftStart.setHours(startHour, startMinute, 0, 0);
+
+            const shiftEnd = new Date(orderDate);
+            shiftEnd.setHours(endHour, endMinute, 0, 0);
+
+            // Handle overnight shifts
+            if (shiftEnd <= shiftStart) {
+                shiftEnd.setDate(shiftEnd.getDate() + 1);
+            }
+
+            const allowedStart = new Date(shiftStart.getTime() - 30 * 60000);
+
+            console.log(`[Manual Check-in] Order ${order.id} - Shift: ${order.shift.name}, AllowedStart: ${allowedStart.toISOString()}, ShiftEnd: ${shiftEnd.toISOString()}, Now: ${now.toISOString()}`);
+
+            return now >= allowedStart && now <= shiftEnd;
+        };
+
+        // Determine which order to use
+        let order = null;
+
+        // First priority: check if yesterday's overnight shift order is valid (still in progress)
+        if (yesterdayOrder) {
+            const [startHour] = yesterdayOrder.shift.startTime.split(':').map(Number);
+            const [endHour, endMinute] = yesterdayOrder.shift.endTime.split(':').map(Number);
+            const isOvernightShift = endHour < startHour || (endHour === startHour && endMinute === 0);
+
+            if (isOvernightShift && isOrderValidForCheckin(yesterdayOrder)) {
+                console.log(`[Manual Check-in] Using yesterday's overnight shift order: ${yesterdayOrder.id}`);
+                order = yesterdayOrder;
+            }
+        }
+
+        // Second priority: check if today's order is valid
+        if (!order && todayOrder && isOrderValidForCheckin(todayOrder)) {
+            console.log(`[Manual Check-in] Using today's order: ${todayOrder.id}`);
+            order = todayOrder;
+        }
+
+        // If neither is valid for check-in, but we have today's order, use it (will show appropriate error)
+        if (!order && todayOrder) {
+            console.log(`[Manual Check-in] Today's order exists but not in valid window, will return timing error`);
+            order = todayOrder;
+        }
+
         if (!order) {
+            console.log(`[Manual Check-in] No active order found for user ${user.externalId}`);
             return res.status(404).json({ error: 'Tidak ada pesanan aktif untuk pengguna ini hari ini' });
         }
 
-        // Validate order date and shift time window
-        const now = getNow();
+        // Validate order date and shift time window (now is already defined above)
         const orderDate = new Date(order.orderDate);
         orderDate.setHours(0, 0, 0, 0);
 
@@ -768,7 +929,7 @@ router.post('/checkin/manual', authMiddleware, canteenMiddleware, async (req: Au
             where: { id: order.id },
             data: {
                 status: 'PICKED_UP',
-                checkInTime: getNow(),
+                checkInTime: getNowUTC(),
                 checkedInById: checkedInByUser?.id || null,
                 checkedInBy: checkedInByUser?.name || 'System',
             },
@@ -814,16 +975,38 @@ router.post('/:id/cancel', authMiddleware, async (req: AuthRequest, res: Respons
         }
 
         // Check cutoff time - can only cancel BEFORE cutoff
-        // Use isPastCutoffForDate to properly check against the ORDER DATE, not today
         const settings = await prisma.settings.findUnique({ where: { id: 'default' } });
+        const cutoffMode = settings?.cutoffMode || 'per-shift';
+        const cutoffDays = settings?.cutoffDays || 0;
         const cutoffHours = settings?.cutoffHours || 6;
-        const cutoffInfo = isPastCutoffForDate(order.orderDate, order.shift.startTime, cutoffHours);
 
-        console.log(`[Cancel] Order ${order.id} for ${order.orderDate.toISOString().split('T')[0]}, Shift ${order.shift.name}, Cutoff: ${cutoffInfo.cutoffTime.toISOString()}, Now: ${cutoffInfo.now.toISOString()}, IsPast: ${cutoffInfo.isPast}`);
+        let canCancel = true;
+        let cancelBlockReason = '';
 
-        if (cutoffInfo.isPast) {
+        if (cutoffMode === 'weekly') {
+            // Weekly mode: check if order date is still orderable (means can still cancel)
+            const weeklyCheck = isDateOrderableWeekly(order.orderDate, {
+                weeklyCutoffDay: settings?.weeklyCutoffDay || 5,
+                weeklyCutoffHour: settings?.weeklyCutoffHour || 17,
+                weeklyCutoffMinute: settings?.weeklyCutoffMinute || 0,
+                orderableDays: settings?.orderableDays || '1,2,3,4,5,6',
+                maxWeeksAhead: settings?.maxWeeksAhead || 1,
+            });
+            canCancel = weeklyCheck.canOrder;
+            cancelBlockReason = weeklyCheck.reason || 'Cutoff mingguan sudah lewat';
+            console.log(`[Cancel Weekly] Order ${order.id}, Date: ${order.orderDate.toISOString().split('T')[0]}, CanCancel: ${canCancel}`);
+        } else {
+            // Per-shift mode: use existing logic
+            const cutoffInfo = isPastCutoffForDate(order.orderDate, order.shift.startTime, cutoffDays, cutoffHours);
+            canCancel = !cutoffInfo.isPast;
+            cancelBlockReason = `Cutoff untuk shift ${order.shift.name} sudah lewat`;
+            console.log(`[Cancel PerShift] Order ${order.id}, Cutoff: ${cutoffInfo.cutoffTime.toISOString()}, IsPast: ${cutoffInfo.isPast}`);
+        }
+
+        if (!canCancel) {
             return res.status(400).json({
                 error: ErrorMessages.CANNOT_CANCEL_PAST_CUTOFF,
+                message: cancelBlockReason,
                 canCancel: false
             });
         }
@@ -911,6 +1094,7 @@ router.get('/', authMiddleware, adminMiddleware, async (req: AuthRequest, res: R
                 include: {
                     user: { select: { id: true, name: true, externalId: true, company: true, division: true, department: true } },
                     shift: true,
+                    canteen: { select: { id: true, name: true, location: true } },
                 },
                 orderBy: { orderDate: 'desc' },
                 skip,
@@ -1068,6 +1252,7 @@ router.get('/export', authMiddleware, adminMiddleware, async (req: AuthRequest, 
             include: {
                 user: true,
                 shift: true,
+                canteen: true,
             },
             orderBy: [{ orderDate: 'desc' }, { orderTime: 'desc' }],
         });
@@ -1126,6 +1311,7 @@ router.get('/export', authMiddleware, adminMiddleware, async (req: AuthRequest, 
             { header: 'Jam Shift', key: 'shiftTime', width: 14 },
             { header: 'Tanggal Order', key: 'orderDate', width: 18 },
             { header: 'Jam Order', key: 'orderTime', width: 12 },
+            { header: 'Lokasi / Kantin', key: 'canteen', width: 20 },
             { header: 'Status', key: 'status', width: 16 },
             { header: 'Harga Makanan', key: 'mealPrice', width: 16 },
             { header: 'Biaya Aktual', key: 'actualCost', width: 16 },
@@ -1256,6 +1442,7 @@ router.get('/export', authMiddleware, adminMiddleware, async (req: AuthRequest, 
                 shiftTime: `${order.shift.startTime} - ${order.shift.endTime}`,
                 orderDate: order.orderDate.toLocaleDateString('id-ID', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' }),
                 orderTime: order.orderTime.toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit', second: '2-digit' }),
+                canteen: order.canteen?.name || '-',
                 status: statusLabels[order.status] || order.status,
                 mealPrice: mealPrice,
                 actualCost: actualCost,
@@ -1503,7 +1690,7 @@ router.get('/stats/range', authMiddleware, adminMiddleware, async (req: AuthRequ
         const settings = await prisma.settings.findUnique({ where: { id: 'default' } });
         const blacklistStrikes = settings?.blacklistStrikes || 3;
 
-        const [total, pickedUp, pending, cancelled, noShow, byShift, shifts, holidays, blacklistedCount, usersAtRisk, ordersWithDetails] = await Promise.all([
+        const [total, pickedUp, pending, cancelled, noShow, shiftGroup, shifts, holidays, canteenGroup, canteens, blacklistedCount, usersAtRisk, ordersWithDetails] = await Promise.all([
             // Total does NOT include cancelled orders - only actual orders
             prisma.order.count({
                 where: { orderDate: { gte: startDate, lte: endDate }, status: { not: 'CANCELLED' } },
@@ -1534,6 +1721,13 @@ router.get('/stats/range', authMiddleware, adminMiddleware, async (req: AuthRequ
                 },
                 include: { shift: true },
             }),
+            // byCanteen
+            prisma.order.groupBy({
+                by: ['canteenId'],
+                where: { orderDate: { gte: startDate, lte: endDate }, status: { not: 'CANCELLED' } },
+                _count: { id: true },
+            }),
+            prisma.canteen.findMany({ where: { isActive: true } }),
             prisma.blacklist.count({
                 where: { isActive: true, OR: [{ endDate: null }, { endDate: { gt: getNow() } }] },
             }),
@@ -1583,7 +1777,7 @@ router.get('/stats/range', authMiddleware, adminMiddleware, async (req: AuthRequ
             }
         });
 
-        const shiftStats = byShift.map((s) => {
+        const shiftStats = shiftGroup.map((s) => {
             const shift = shifts.find((sh) => sh.id === s.shiftId);
             return {
                 shiftId: s.shiftId,
@@ -1611,6 +1805,15 @@ router.get('/stats/range', authMiddleware, adminMiddleware, async (req: AuthRequ
         // Calculate pickup rate
         const pickupRate = total > 0 ? Math.round((pickedUp / total) * 100) : 0;
 
+        const canteenStats = canteens.map(c => {
+            const stat = canteenGroup.find(g => g.canteenId === c.id);
+            return {
+                canteenId: c.id,
+                canteenName: c.name,
+                count: stat?._count.id || 0
+            };
+        }).sort((a, b) => b.count - a.count);
+
         res.json({
             date: startDateParam,
             dateRange: { start: startDateParam, end: endDateParam },
@@ -1621,6 +1824,7 @@ router.get('/stats/range', authMiddleware, adminMiddleware, async (req: AuthRequ
             noShow,
             pickupRate,
             byShift: shiftStats,
+            byCanteen: canteenStats,
             byDepartment,
             holidays: holidays.map((h) => ({
                 id: h.id,

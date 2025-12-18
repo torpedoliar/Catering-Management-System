@@ -145,27 +145,7 @@ export default function LoginPage() {
                         </button>
                     </form>
 
-                    {/* Demo Credentials */}
-                    <div className="mt-6 pt-6 border-t border-slate-100">
-                        <div className="flex items-center gap-2 mb-3">
-                            <div className="w-1.5 h-1.5 rounded-full bg-emerald-500" />
-                            <span className="text-xs font-medium text-slate-400 uppercase tracking-wide">Demo Account</span>
-                        </div>
-                        <div className="space-y-1.5 text-sm">
-                            <div className="flex justify-between items-center py-1.5 px-2.5 rounded-md hover:bg-slate-50 transition-colors">
-                                <span className="text-slate-500">Admin</span>
-                                <code className="text-orange-600 font-mono text-xs bg-orange-50 px-2 py-0.5 rounded">ADMIN001 / admin123</code>
-                            </div>
-                            <div className="flex justify-between items-center py-1.5 px-2.5 rounded-md hover:bg-slate-50 transition-colors">
-                                <span className="text-slate-500">Canteen</span>
-                                <code className="text-emerald-600 font-mono text-xs bg-emerald-50 px-2 py-0.5 rounded">CANTEEN001 / admin123</code>
-                            </div>
-                            <div className="flex justify-between items-center py-1.5 px-2.5 rounded-md hover:bg-slate-50 transition-colors">
-                                <span className="text-slate-500">User</span>
-                                <code className="text-purple-600 font-mono text-xs bg-purple-50 px-2 py-0.5 rounded">EMP001 / admin123</code>
-                            </div>
-                        </div>
-                    </div>
+
                 </div>
 
                 {/* Footer */}

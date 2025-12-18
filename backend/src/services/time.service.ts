@@ -67,7 +67,9 @@ function getTimezoneOffset(timezone: string): number {
 }
 
 /**
- * Get current time adjusted with NTP offset in configured timezone
+ * Get current time adjusted with NTP offset in configured timezone.
+ * Use this for time comparisons and display purposes.
+ * WARNING: Do NOT use this for database storage - use getNowUTC() instead.
  */
 export function getNow(): Date {
     const now = new Date();
@@ -79,6 +81,17 @@ export function getNow(): Date {
     const tzOffset = getTimezoneOffset(cachedTimezone);
 
     return new Date(utcTime + tzOffset);
+}
+
+/**
+ * Get current time adjusted with NTP offset only (no timezone conversion).
+ * Use this for storing timestamps in the database.
+ * The database stores in UTC, and the frontend handles timezone display.
+ */
+export function getNowUTC(): Date {
+    const now = new Date();
+    // Apply NTP offset only
+    return new Date(now.getTime() + cachedOffset);
 }
 
 /**
@@ -119,10 +132,11 @@ export function getTimeToday(timeStr: string): Date {
 /**
  * Check if current time is past a cutoff time for a shift (for TODAY only)
  */
-export function isPastCutoff(shiftStartTime: string, cutoffHours: number): { isPast: boolean; cutoffTime: Date; shiftStart: Date; now: Date; minutesUntilCutoff: number } {
+export function isPastCutoff(shiftStartTime: string, cutoffDays: number, cutoffHours: number): { isPast: boolean; cutoffTime: Date; shiftStart: Date; now: Date; minutesUntilCutoff: number } {
     const now = getNow();
     const shiftStart = getTimeToday(shiftStartTime);
-    const cutoffTime = new Date(shiftStart.getTime() - (cutoffHours * 60 * 60 * 1000));
+    const cutoffMs = (cutoffDays * 24 * 60 * 60 * 1000) + (cutoffHours * 60 * 60 * 1000);
+    const cutoffTime = new Date(shiftStart.getTime() - cutoffMs);
     const minutesUntilCutoff = Math.max(0, Math.floor((cutoffTime.getTime() - now.getTime()) / 60000));
 
     return {
@@ -138,7 +152,7 @@ export function isPastCutoff(shiftStartTime: string, cutoffHours: number): { isP
  * Check if current time is past a cutoff time for a shift on a SPECIFIC DATE
  * This is used for orders that may be for future dates
  */
-export function isPastCutoffForDate(orderDate: Date, shiftStartTime: string, cutoffHours: number): { isPast: boolean; cutoffTime: Date; shiftStart: Date; now: Date; minutesUntilCutoff: number } {
+export function isPastCutoffForDate(orderDate: Date, shiftStartTime: string, cutoffDays: number, cutoffHours: number): { isPast: boolean; cutoffTime: Date; shiftStart: Date; now: Date; minutesUntilCutoff: number } {
     const now = getNow();
 
     // Parse order date (normalize to start of day)
@@ -152,8 +166,9 @@ export function isPastCutoffForDate(orderDate: Date, shiftStartTime: string, cut
     const shiftStart = new Date(orderDay);
     shiftStart.setHours(hours, minutes, 0, 0);
 
-    // Calculate cutoff time (X hours before shift start)
-    const cutoffTime = new Date(shiftStart.getTime() - (cutoffHours * 60 * 60 * 1000));
+    // Calculate cutoff time (X days and Y hours before shift start)
+    const cutoffMs = (cutoffDays * 24 * 60 * 60 * 1000) + (cutoffHours * 60 * 60 * 1000);
+    const cutoffTime = new Date(shiftStart.getTime() - cutoffMs);
 
     // Calculate minutes until cutoff
     const minutesUntilCutoff = Math.max(0, Math.floor((cutoffTime.getTime() - now.getTime()) / 60000));
@@ -166,6 +181,185 @@ export function isPastCutoffForDate(orderDate: Date, shiftStartTime: string, cut
         minutesUntilCutoff
     };
 }
+
+// ============================================
+// Weekly Cutoff Mode Functions
+// ============================================
+
+/**
+ * Get Monday of the week containing the given date
+ */
+export function getWeekStart(date: Date): Date {
+    const d = new Date(date);
+    d.setHours(0, 0, 0, 0);
+    const day = d.getDay();
+    // Monday = 1, so we need to go back (day - 1) days, but if it's Sunday (0), go back 6 days
+    const diff = day === 0 ? 6 : day - 1;
+    d.setDate(d.getDate() - diff);
+    return d;
+}
+
+/**
+ * Parse orderable days CSV string to array of weekday numbers
+ * @param orderableDays CSV string like "1,2,3,4,5,6" (1=Mon, 6=Sat, 0=Sun)
+ */
+export function parseOrderableDays(orderableDays: string): number[] {
+    return orderableDays.split(',').map(d => parseInt(d.trim())).filter(d => !isNaN(d) && d >= 0 && d <= 6);
+}
+
+/**
+ * Get the cutoff time for the current week
+ */
+export function getWeeklyCutoffTime(weekStart: Date, cutoffDay: number, cutoffHour: number, cutoffMinute: number): Date {
+    const cutoffTime = new Date(weekStart);
+    // cutoffDay: 0=Sun, 1=Mon, ..., 5=Fri, 6=Sat
+    // weekStart is Monday (day 1)
+    // So we need to add (cutoffDay - 1) days, but handle Sunday specially
+    const daysToAdd = cutoffDay === 0 ? 6 : cutoffDay - 1;
+    cutoffTime.setDate(cutoffTime.getDate() + daysToAdd);
+    cutoffTime.setHours(cutoffHour, cutoffMinute, 0, 0);
+    return cutoffTime;
+}
+
+/**
+ * Check if weekly cutoff has passed for ordering next week
+ */
+export function isWeeklyCutoffPassed(cutoffDay: number, cutoffHour: number, cutoffMinute: number): { isPassed: boolean; cutoffTime: Date; currentWeekStart: Date; nextWeekStart: Date } {
+    const now = getNow();
+    const currentWeekStart = getWeekStart(now);
+    const nextWeekStart = new Date(currentWeekStart);
+    nextWeekStart.setDate(nextWeekStart.getDate() + 7);
+
+    const cutoffTime = getWeeklyCutoffTime(currentWeekStart, cutoffDay, cutoffHour, cutoffMinute);
+
+    return {
+        isPassed: now >= cutoffTime,
+        cutoffTime,
+        currentWeekStart,
+        nextWeekStart
+    };
+}
+
+/**
+ * Get orderable date range based on cutoff mode
+ */
+export function getOrderableDateRange(settings: {
+    cutoffMode: string;
+    cutoffDays: number;
+    cutoffHours: number;
+    maxOrderDaysAhead: number;
+    weeklyCutoffDay: number;
+    weeklyCutoffHour: number;
+    weeklyCutoffMinute: number;
+    orderableDays: string;
+    maxWeeksAhead: number;
+}): { dates: Date[]; weekStart: Date | null; weekEnd: Date | null; cutoffTime: Date | null } {
+    const now = getNow();
+    const today = getToday();
+
+    if (settings.cutoffMode === 'weekly') {
+        const weeklyCheck = isWeeklyCutoffPassed(
+            settings.weeklyCutoffDay,
+            settings.weeklyCutoffHour,
+            settings.weeklyCutoffMinute
+        );
+
+        const orderableDayNumbers = parseOrderableDays(settings.orderableDays);
+        const dates: Date[] = [];
+
+        // Determine which week(s) can be ordered
+        let startWeek: Date;
+        if (weeklyCheck.isPassed) {
+            // Cutoff passed - skip to week after next
+            startWeek = new Date(weeklyCheck.nextWeekStart);
+            startWeek.setDate(startWeek.getDate() + 7);
+        } else {
+            // Before cutoff - can order next week
+            startWeek = weeklyCheck.nextWeekStart;
+        }
+
+        // Generate orderable dates for maxWeeksAhead weeks
+        for (let w = 0; w < settings.maxWeeksAhead; w++) {
+            const weekStart = new Date(startWeek);
+            weekStart.setDate(weekStart.getDate() + (w * 7));
+
+            for (const dayNum of orderableDayNumbers) {
+                const date = new Date(weekStart);
+                // dayNum: 1=Mon, 2=Tue, ..., 6=Sat, 0=Sun
+                const daysToAdd = dayNum === 0 ? 6 : dayNum - 1;
+                date.setDate(date.getDate() + daysToAdd);
+                dates.push(date);
+            }
+        }
+
+        return {
+            dates: dates.sort((a, b) => a.getTime() - b.getTime()),
+            weekStart: startWeek,
+            weekEnd: new Date(startWeek.getTime() + (settings.maxWeeksAhead * 7 - 1) * 24 * 60 * 60 * 1000),
+            cutoffTime: weeklyCheck.cutoffTime
+        };
+    } else {
+        // Per-shift mode: today + maxOrderDaysAhead
+        const dates: Date[] = [];
+        for (let i = 0; i <= settings.maxOrderDaysAhead; i++) {
+            const date = new Date(today);
+            date.setDate(date.getDate() + i);
+            dates.push(date);
+        }
+        return { dates, weekStart: null, weekEnd: null, cutoffTime: null };
+    }
+}
+
+/**
+ * Check if a specific date is orderable in weekly mode
+ */
+export function isDateOrderableWeekly(orderDate: Date, settings: {
+    weeklyCutoffDay: number;
+    weeklyCutoffHour: number;
+    weeklyCutoffMinute: number;
+    orderableDays: string;
+    maxWeeksAhead: number;
+}): { canOrder: boolean; reason: string } {
+    const now = getNow();
+    const orderDay = new Date(orderDate);
+    orderDay.setHours(0, 0, 0, 0);
+
+    const currentWeekStart = getWeekStart(now);
+    const orderWeekStart = getWeekStart(orderDate);
+
+    // Rule 1: Cannot order for current week or past
+    if (orderWeekStart.getTime() <= currentWeekStart.getTime()) {
+        return { canOrder: false, reason: 'Tidak dapat memesan untuk minggu ini atau yang sudah lewat' };
+    }
+
+    // Rule 2: Check if the weekday is orderable
+    const dayOfWeek = orderDate.getDay(); // 0=Sun, 1=Mon, ..., 6=Sat
+    const orderableDayNumbers = parseOrderableDays(settings.orderableDays);
+    if (!orderableDayNumbers.includes(dayOfWeek)) {
+        return { canOrder: false, reason: 'Hari ini tidak dapat dipesan' };
+    }
+
+    // Rule 3: Check max weeks ahead
+    const weeksDiff = Math.floor((orderWeekStart.getTime() - currentWeekStart.getTime()) / (7 * 24 * 60 * 60 * 1000));
+
+    // Check cutoff
+    const cutoffTime = getWeeklyCutoffTime(currentWeekStart, settings.weeklyCutoffDay, settings.weeklyCutoffHour, settings.weeklyCutoffMinute);
+    const cutoffPassed = now >= cutoffTime;
+
+    // If cutoff passed, we're ordering for "next cycle"
+    const effectiveWeeksDiff = cutoffPassed ? weeksDiff - 1 : weeksDiff;
+
+    if (effectiveWeeksDiff > settings.maxWeeksAhead) {
+        return { canOrder: false, reason: `Maksimal pemesanan ${settings.maxWeeksAhead} minggu ke depan` };
+    }
+
+    if (effectiveWeeksDiff < 1) {
+        return { canOrder: false, reason: 'Waktu pemesanan sudah lewat' };
+    }
+
+    return { canOrder: true, reason: '' };
+}
+
 
 /**
  * Query NTP server using w32tm (Windows) or sntp/ntpdate (Linux)

@@ -182,11 +182,10 @@ function ConfirmModal({
                         <button
                             type="submit"
                             disabled={isSubmitting}
-                            className={`flex-1 px-4 py-2 rounded-lg transition-colors disabled:opacity-50 flex items-center justify-center gap-2 ${
-                                actionColor === 'red'
+                            className={`flex-1 px-4 py-2 rounded-lg transition-colors disabled:opacity-50 flex items-center justify-center gap-2 ${actionColor === 'red'
                                     ? 'bg-red-600 hover:bg-red-700 text-white'
                                     : 'bg-green-600 hover:bg-green-700 text-white'
-                            }`}
+                                }`}
                         >
                             {isSubmitting ? (
                                 <>
@@ -503,7 +502,7 @@ export default function BlacklistPage() {
     const [page, setPage] = useState(1);
     const [totalPages, setTotalPages] = useState(1);
     const [showAll, setShowAll] = useState(false);
-    
+
     // Modal states
     const [showBlacklistModal, setShowBlacklistModal] = useState(false);
     const [unblockTarget, setUnblockTarget] = useState<Blacklist | null>(null);
@@ -547,7 +546,7 @@ export default function BlacklistPage() {
 
     const handleUnblockUser = async (password: string, reason: string) => {
         if (!unblockTarget) return;
-        
+
         await api.post(`/api/blacklist/${unblockTarget.id}/unblock`, {
             adminPassword: password,
             reason,
@@ -604,7 +603,7 @@ export default function BlacklistPage() {
                                         <th className="px-6 py-4 text-left text-xs font-semibold text-slate-400 uppercase">Reason</th>
                                         <th className="px-6 py-4 text-left text-xs font-semibold text-slate-400 uppercase">Start Date</th>
                                         <th className="px-6 py-4 text-left text-xs font-semibold text-slate-400 uppercase">End Date</th>
-                                        <th className="px-6 py-4 text-left text-xs font-semibold text-slate-400 uppercase">No-Shows</th>
+                                        <th className="px-6 py-4 text-left text-xs font-semibold text-slate-400 uppercase">Tidak Diambil</th>
                                         <th className="px-6 py-4 text-left text-xs font-semibold text-slate-400 uppercase">Action</th>
                                     </tr>
                                 </thead>

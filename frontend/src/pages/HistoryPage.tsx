@@ -3,7 +3,7 @@ import { api } from '../contexts/AuthContext';
 import { useSSERefresh, ORDER_EVENTS } from '../contexts/SSEContext';
 import { format } from 'date-fns';
 import { formatDateTimeShortWIB } from '../utils/timezone';
-import { Calendar, ChevronLeft, ChevronRight, Loader2, X, CheckCircle, XCircle, Clock, Ban, History, MessageSquare, Send } from 'lucide-react';
+import { Calendar, ChevronLeft, ChevronRight, Loader2, X, CheckCircle, XCircle, Clock, Ban, History, MessageSquare, Send, MapPin } from 'lucide-react';
 import { QRCodeSVG } from 'qrcode.react';
 import toast from 'react-hot-toast';
 
@@ -19,6 +19,11 @@ interface Order {
         name: string;
         startTime: string;
         endTime: string;
+    };
+    canteen?: {
+        id: string;
+        name: string;
+        location: string | null;
     };
 }
 
@@ -113,7 +118,7 @@ export default function HistoryPage() {
         { value: '', label: 'Semua' },
         { value: 'PICKED_UP', label: 'Diambil' },
         { value: 'ORDERED', label: 'Pending' },
-        { value: 'NO_SHOW', label: 'No-Show' },
+        { value: 'NO_SHOW', label: 'Tidak Diambil', highlight: true },
         { value: 'CANCELLED', label: 'Batal' },
     ];
 
@@ -138,8 +143,12 @@ export default function HistoryPage() {
                             key={option.value}
                             onClick={() => { setStatusFilter(option.value); setPage(1); }}
                             className={`px-4 py-2 rounded-xl text-sm font-medium transition-all duration-200 ${statusFilter === option.value
-                                ? 'bg-orange-500 text-white shadow-lg'
-                                : 'text-slate-600 hover:text-slate-900 hover:bg-white'
+                                ? option.highlight
+                                    ? 'bg-red-500 text-white shadow-lg shadow-red-500/30'
+                                    : 'bg-orange-500 text-white shadow-lg'
+                                : option.highlight
+                                    ? 'text-red-600 hover:text-red-700 hover:bg-red-50 border border-red-200'
+                                    : 'text-slate-600 hover:text-slate-900 hover:bg-white'
                                 }`}
                         >
                             {option.label}
@@ -189,6 +198,12 @@ export default function HistoryPage() {
                                                     </p>
                                                     <p className="text-sm text-slate-500">
                                                         {order.shift.name} • {order.shift.startTime} - {order.shift.endTime}
+                                                        {order.canteen && (
+                                                            <span className="ml-2 inline-flex items-center gap-1 text-orange-600 bg-orange-50 px-2 py-0.5 rounded-full text-xs font-medium">
+                                                                <MapPin className="w-3 h-3" />
+                                                                {order.canteen.name}
+                                                            </span>
+                                                        )}
                                                     </p>
                                                     <p className="text-xs text-slate-400 mt-0.5">
                                                         Dipesan: {formatDateTimeShortWIB(order.orderTime)}

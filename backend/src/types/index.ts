@@ -73,6 +73,7 @@ export interface BulkOrderResult {
 
 export interface ImportUserData {
     externalId: string;
+    nik?: string;
     name: string;
     company: string;
     division: string;

@@ -1,13 +1,14 @@
 import { useState, useEffect, useRef, useCallback } from 'react';
 import { api } from '../../contexts/AuthContext';
 import { useSSERefresh, USER_EVENTS } from '../../contexts/SSEContext';
-import { Users, Search, Upload, Download, Loader2, ChevronLeft, ChevronRight, AlertCircle, Edit2, Trash2, Save, X, Plus, RotateCcw, Key, Filter, Camera } from 'lucide-react';
+import { Users, Search, Upload, Download, Loader2, ChevronLeft, ChevronRight, AlertCircle, Edit2, Trash2, Save, X, Plus, RotateCcw, Key, Filter, Camera, Power } from 'lucide-react';
 import toast from 'react-hot-toast';
 import Webcam from 'react-webcam';
 
 interface User {
     id: string;
     externalId: string;
+    nik: string | null;
     name: string;
     email: string | null;
     company: string;
@@ -17,6 +18,7 @@ interface User {
     role: string;
     noShowCount: number;
     isBlacklisted: boolean;
+    isActive: boolean;
     photo?: string;
 }
 
@@ -53,6 +55,7 @@ export default function UserManagementPage() {
     const [filterCompany, setFilterCompany] = useState('');
     const [filterDivision, setFilterDivision] = useState('');
     const [filterDepartment, setFilterDepartment] = useState('');
+    const [filterStatus, setFilterStatus] = useState('all'); // 'all', 'active', 'inactive'
     const [showFilters, setShowFilters] = useState(false);
 
     // Edit/Add modal
@@ -67,6 +70,7 @@ export default function UserManagementPage() {
     const [deleteTarget, setDeleteTarget] = useState<{ id: string, name: string } | null>(null);
     const [formData, setFormData] = useState({
         externalId: '',
+        nik: '',
         name: '',
         email: '',
         departmentId: '',
@@ -92,6 +96,7 @@ export default function UserManagementPage() {
             if (filterCompany) params.append('company', filterCompany);
             if (filterDivision) params.append('division', filterDivision);
             if (filterDepartment) params.append('department', filterDepartment);
+            params.append('status', filterStatus);
 
             const res = await api.get(`/api/users?${params}`);
             setUsers(res.data.users);
@@ -101,7 +106,7 @@ export default function UserManagementPage() {
         } finally {
             setIsLoading(false);
         }
-    }, [page, search, filterCompany, filterDivision, filterDepartment]);
+    }, [page, search, filterCompany, filterDivision, filterDepartment, filterStatus]);
 
     const loadCompanies = async () => {
         try {
@@ -181,6 +186,7 @@ export default function UserManagementPage() {
         setEditingUser(user);
         setFormData({
             externalId: user.externalId,
+            nik: user.nik || '',
             name: user.name,
             email: user.email || '',
             departmentId: user.departmentId || '',
@@ -211,8 +217,15 @@ export default function UserManagementPage() {
 
     const saveUser = async () => {
         try {
+            // Validate NIK format (numeric only)
+            if (formData.nik && !/^\d+$/.test(formData.nik)) {
+                toast.error('NIK harus berupa angka');
+                return;
+            }
+
             const data = new FormData();
             data.append('name', formData.name);
+            if (formData.nik) data.append('nik', formData.nik);
             if (formData.email) data.append('email', formData.email);
             if (formData.departmentId) data.append('departmentId', formData.departmentId);
             data.append('role', formData.role);
@@ -307,6 +320,7 @@ export default function UserManagementPage() {
         setShowAddModal(false);
         setFormData({
             externalId: '',
+            nik: '',
             name: '',
             email: '',
             departmentId: '',
@@ -323,6 +337,18 @@ export default function UserManagementPage() {
     const openAddModal = () => {
         closeModal();
         setShowAddModal(true);
+    };
+
+    // Toggle user active status
+    const toggleUserActive = async (user: User) => {
+        const newStatus = !user.isActive;
+        try {
+            await api.put(`/api/users/${user.id}`, { isActive: newStatus });
+            toast.success(newStatus ? `${user.name} diaktifkan` : `${user.name} dinonaktifkan`);
+            loadUsers();
+        } catch (error: any) {
+            toast.error(error.response?.data?.error || 'Gagal mengubah status user');
+        }
     };
 
     // Get divisions for selected company
@@ -456,6 +482,23 @@ export default function UserManagementPage() {
                                 </select>
                             </div>
 
+                            {/* Status Filter */}
+                            <div className="flex-1">
+                                <label className="block text-sm text-slate-500 mb-2">Status User</label>
+                                <select
+                                    value={filterStatus}
+                                    onChange={(e) => {
+                                        setFilterStatus(e.target.value);
+                                        setPage(1);
+                                    }}
+                                    className="input-field"
+                                >
+                                    <option value="all">Semua Status</option>
+                                    <option value="active">Aktif</option>
+                                    <option value="inactive">Non-Aktif</option>
+                                </select>
+                            </div>
+
                             {/* Clear Filters */}
                             <div className="flex items-end">
                                 <button
@@ -463,10 +506,11 @@ export default function UserManagementPage() {
                                         setFilterCompany('');
                                         setFilterDivision('');
                                         setFilterDepartment('');
+                                        setFilterStatus('all');
                                         setPage(1);
                                     }}
                                     className="btn-secondary text-sm"
-                                    disabled={!filterCompany && !filterDivision && !filterDepartment}
+                                    disabled={!filterCompany && !filterDivision && !filterDepartment && filterStatus === 'all'}
                                 >
                                     Reset Filter
                                 </button>
@@ -548,6 +592,21 @@ export default function UserManagementPage() {
                                     onChange={(e) => setFormData(f => ({ ...f, externalId: e.target.value }))}
                                     className="input-field"
                                     disabled={!!editingUser}
+                                />
+                            </div>
+
+                            {/* NIK */}
+                            <div>
+                                <label className="block text-sm text-slate-500 mb-1">NIK <span className="text-xs text-slate-400">(opsional, angka saja)</span></label>
+                                <input
+                                    type="text"
+                                    value={formData.nik}
+                                    onChange={(e) => {
+                                        const val = e.target.value.replace(/\D/g, ''); // Only allow numbers
+                                        setFormData(f => ({ ...f, nik: val }));
+                                    }}
+                                    className="input-field"
+                                    placeholder="NIK Perusahaan"
                                 />
                             </div>
 
@@ -690,7 +749,8 @@ export default function UserManagementPage() {
                             <table className="w-full">
                                 <thead>
                                     <tr className="border-b border-white/5">
-                                        <th className="table-header">ID</th>
+                                        <th className="table-header">ID HRIS</th>
+                                        <th className="table-header">NIK</th>
                                         <th className="table-header">Nama</th>
                                         <th className="table-header">Perusahaan</th>
                                         <th className="table-header">Divisi</th>
@@ -718,6 +778,7 @@ export default function UserManagementPage() {
                                                     <span className="text-apple-blue font-mono">{user.externalId}</span>
                                                 </div>
                                             </td>
+                                            <td className="table-cell text-cyan-400 font-mono">{user.nik || '-'}</td>
                                             <td className="table-cell">
                                                 <p className="text-white font-medium">{user.name}</p>
                                                 <p className="text-caption text-dark-text-secondary">{user.email}</p>
@@ -756,12 +817,21 @@ export default function UserManagementPage() {
                                             <td className="table-cell">
                                                 {user.isBlacklisted ? (
                                                     <span className="px-2.5 py-1 rounded-full text-xs font-medium bg-red-50 text-red-600">Blacklist</span>
+                                                ) : !user.isActive ? (
+                                                    <span className="px-2.5 py-1 rounded-full text-xs font-medium bg-slate-100 text-slate-500">Non-Aktif</span>
                                                 ) : (
                                                     <span className="px-2.5 py-1 rounded-full text-xs font-medium bg-emerald-50 text-emerald-600">Aktif</span>
                                                 )}
                                             </td>
                                             <td className="table-cell">
                                                 <div className="flex items-center gap-1">
+                                                    <button
+                                                        onClick={() => toggleUserActive(user)}
+                                                        className={`btn-icon ${user.isActive ? 'hover:text-orange-500' : 'hover:text-emerald-500'}`}
+                                                        title={user.isActive ? 'Nonaktifkan' : 'Aktifkan'}
+                                                    >
+                                                        <Power className="w-4 h-4" />
+                                                    </button>
                                                     <button
                                                         onClick={() => startEdit(user)}
                                                         className="btn-icon"

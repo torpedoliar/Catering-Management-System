@@ -216,5 +216,68 @@ export const OrderService = {
             console.error('[OrderService] Error cancelling orders beyond date:', error);
             throw error;
         }
+    },
+
+    /**
+     * Validate canteen capacity for a specific date and shift
+     */
+    async validateCanteenCapacity(canteenId: string | null, shiftId: string, orderDate: Date) {
+        if (!canteenId) return { valid: true };
+
+        // 1. Get Canteen and CanteenShift settings
+        const canteen = await prisma.canteen.findUnique({
+            where: { id: canteenId },
+            include: {
+                canteenShifts: {
+                    where: { shiftId }
+                }
+            }
+        });
+
+        if (!canteen || !canteen.isActive) {
+            return { valid: false, message: 'Kantin tidak ditemukan atau tidak aktif' };
+        }
+
+        const canteenShift = canteen.canteenShifts[0]; // Specific shift setting
+
+        // 2. Determine Capacity Limit
+        let limit = 0;
+        let isShiftSpecific = false;
+
+        if (canteenShift && canteenShift.capacity) {
+            limit = canteenShift.capacity;
+            isShiftSpecific = true;
+        } else if (canteen.capacity) {
+            limit = canteen.capacity;
+        } else {
+            return { valid: true }; // No limit set
+        }
+
+        // 3. Count existing orders
+        const nextDay = new Date(orderDate);
+        nextDay.setDate(nextDay.getDate() + 1);
+
+        const where: any = {
+            canteenId,
+            orderDate: { gte: orderDate, lt: nextDay },
+            status: { not: 'CANCELLED' }
+        };
+
+        if (isShiftSpecific) {
+            where.shiftId = shiftId;
+        }
+
+        const currentCount = await prisma.order.count({ where });
+
+        if (currentCount >= limit) {
+            return {
+                valid: false,
+                message: isShiftSpecific
+                    ? `KKuota kantin ${canteen.name} untuk shift ini penuh (${limit} porsi)`
+                    : `Kuota harian kantin ${canteen.name} penuh (${limit} porsi)`
+            };
+        }
+
+        return { valid: true };
     }
 };

@@ -4,7 +4,7 @@ import jwt from 'jsonwebtoken';
 import { prisma } from '../lib/prisma';
 import { AuthRequest, authMiddleware } from '../middleware/auth.middleware';
 import { getNow } from '../services/time.service';
-import { logAuth, getRequestContext } from '../services/audit.service';
+import { logAuth, logUserManagement, getRequestContext } from '../services/audit.service';
 import { rateLimiter } from '../services/rate-limiter.service';
 import { validate } from '../middleware/validate.middleware';
 import { loginSchema, changePasswordSchema } from '../utils/validation';
@@ -40,26 +40,39 @@ router.post('/login', validate(loginSchema), async (req, res) => {
             where: { externalId },
         });
 
-        if (!user || !user.isActive) {
-            // Record failed attempt before logging
+        // Check if user exists
+        if (!user) {
             await rateLimiter.recordFailedAttempt(externalId, clientIp);
-
-            // Get current attempts for user feedback
             const current = await rateLimiter.getCurrentAttempts(externalId, clientIp);
             const attemptCount = Math.max(current.user, current.ip);
             const remaining = await rateLimiter.getRemainingAttempts(externalId, clientIp);
             const minRemaining = Math.min(remaining.user, remaining.ip);
 
-            // Log failed login attempt
             await logAuth('LOGIN_FAILED', { externalId }, context, {
                 success: false,
-                errorMessage: !user ? 'User not found' : 'User inactive',
+                errorMessage: 'User not found',
                 metadata: { ip: clientIp, attemptCount, remainingAttempts: minRemaining }
             });
             return res.status(401).json({
-                error: 'Invalid credentials or user is inactive',
+                error: 'User yang Anda input tidak ditemukan',
+                code: 'USER_NOT_FOUND',
                 attemptCount,
                 remainingAttempts: minRemaining > 0 ? minRemaining : undefined
+            });
+        }
+
+        // Check if user is inactive
+        if (!user.isActive) {
+            await rateLimiter.recordFailedAttempt(externalId, clientIp);
+
+            await logAuth('LOGIN_FAILED', { externalId, name: user.name }, context, {
+                success: false,
+                errorMessage: 'User inactive',
+                metadata: { ip: clientIp }
+            });
+            return res.status(403).json({
+                error: 'Akun Anda telah dinonaktifkan. Silakan hubungi administrator.',
+                code: 'USER_INACTIVE'
             });
         }
 
@@ -82,7 +95,7 @@ router.post('/login', validate(loginSchema), async (req, res) => {
             });
 
             return res.status(401).json({
-                error: 'Invalid credentials',
+                error: 'Salah username atau password',
                 attemptCount,
                 remainingAttempts: minRemaining > 0 ? minRemaining : undefined
             });
@@ -136,6 +149,7 @@ router.get('/me', authMiddleware, async (req: AuthRequest, res: Response) => {
                 role: true,
                 noShowCount: true,
                 createdAt: true,
+                preferredCanteenId: true,
             },
         });
 
@@ -163,6 +177,61 @@ router.get('/me', authMiddleware, async (req: AuthRequest, res: Response) => {
     } catch (error) {
         console.error('Get profile error:', error);
         res.status(500).json({ error: 'Failed to get profile' });
+    }
+});
+
+// Update current user profile
+router.put('/me', authMiddleware, async (req: AuthRequest, res: Response) => {
+    try {
+        const { preferredCanteenId } = req.body;
+
+        // Allowed fields to update
+        const updateData: any = {};
+
+        if (preferredCanteenId !== undefined) {
+            // Verify canteen exists if not null
+            if (preferredCanteenId) {
+                const canteen = await prisma.canteen.findUnique({
+                    where: { id: preferredCanteenId, isActive: true }
+                });
+                if (!canteen) {
+                    return res.status(400).json({ error: 'Kantin tidak valid atau tidak aktif' });
+                }
+            }
+            updateData.preferredCanteenId = preferredCanteenId;
+        }
+
+        if (Object.keys(updateData).length === 0) {
+            return res.status(400).json({ error: 'No fields to update' });
+        }
+
+        const user = await prisma.user.update({
+            where: { id: req.user?.id },
+            data: updateData,
+            select: {
+                id: true,
+                externalId: true,
+                name: true,
+                email: true,
+                company: true,
+                division: true,
+                department: true,
+                role: true,
+                preferredCanteenId: true,
+                createdAt: true,
+            },
+        });
+
+        // Log profile update
+        const context = getRequestContext(req);
+        await logUserManagement('UPDATE', { id: user.id, name: user.name, role: user.role }, user, context, {
+            metadata: { updatedFields: Object.keys(updateData), isProfileUpdate: true }
+        });
+
+        res.json(user);
+    } catch (error) {
+        console.error('Update profile error:', error);
+        res.status(500).json({ error: 'Failed to update profile' });
     }
 });
 

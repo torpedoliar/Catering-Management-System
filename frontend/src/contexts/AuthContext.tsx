@@ -38,6 +38,7 @@ interface User {
     mustChangePassword?: boolean;
     isBlacklisted?: boolean;
     blacklistEndDate?: string;
+    preferredCanteenId?: string;
 }
 
 interface AuthContextType {

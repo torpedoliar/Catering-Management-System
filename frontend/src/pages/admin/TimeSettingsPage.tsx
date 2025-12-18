@@ -344,7 +344,7 @@ export default function TimeSettingsPage() {
                         <ul className="text-sm text-slate-400 mt-2 list-disc list-inside space-y-1">
                             <li>Validasi cutoff time pemesanan makanan</li>
                             <li>Penentuan tanggal order dan check-in</li>
-                            <li>Proses otomatis no-show berdasarkan jadwal shift</li>
+                            <li>Proses otomatis tidak diambil berdasarkan jadwal shift</li>
                             <li>Pencatatan waktu transaksi dan log aktivitas</li>
                         </ul>
                     </div>

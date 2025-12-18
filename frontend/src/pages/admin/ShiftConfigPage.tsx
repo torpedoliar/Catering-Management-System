@@ -16,10 +16,17 @@ interface Shift {
 }
 
 interface Settings {
+    cutoffMode: 'per-shift' | 'weekly';
+    cutoffDays: number;
     cutoffHours: number;
+    maxOrderDaysAhead: number;
+    weeklyCutoffDay: number;
+    weeklyCutoffHour: number;
+    weeklyCutoffMinute: number;
+    orderableDays: string;
+    maxWeeksAhead: number;
     blacklistStrikes: number;
     blacklistDuration: number;
-    maxOrderDaysAhead: number;
 }
 
 export default function ShiftConfigPage() {
@@ -295,32 +302,201 @@ export default function ShiftConfigPage() {
                 </div>
             </div>
 
-            {/* Settings */}
+            {/* Settings - Dual Cutoff Mode */}
             <div className="card p-6">
                 <h2 className="text-lg font-semibold text-[#1a1f37] mb-6">Pengaturan Sistem</h2>
 
-                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
-                    <div>
-                        <label className="block text-sm text-slate-500 mb-2">
-                            Jam Cutoff Sebelum Shift
+                {/* Mode Cutoff Selection */}
+                <div className="mb-6">
+                    <label className="flex items-center gap-2 text-sm font-medium text-slate-600 mb-3">
+                        <Clock className="w-4 h-4" />
+                        Mode Cutoff
+                    </label>
+                    <div className="grid grid-cols-2 gap-3">
+                        <label className={`flex items-center gap-3 p-4 rounded-xl border-2 cursor-pointer transition-all ${settings?.cutoffMode === 'per-shift' ? 'border-orange-500 bg-orange-50' : 'border-slate-200 bg-white'}`}>
+                            <input
+                                type="radio"
+                                name="cutoffMode"
+                                checked={settings?.cutoffMode === 'per-shift'}
+                                onChange={() => setSettings(s => s ? { ...s, cutoffMode: 'per-shift' } : null)}
+                                className="sr-only"
+                            />
+                            <div className={`w-4 h-4 rounded-full border-2 flex items-center justify-center ${settings?.cutoffMode === 'per-shift' ? 'border-orange-500 bg-orange-500' : 'border-slate-300'}`}>
+                                {settings?.cutoffMode === 'per-shift' && <div className="w-2 h-2 bg-white rounded-full" />}
+                            </div>
+                            <div>
+                                <div className="text-slate-800 font-medium">Per-Shift</div>
+                                <div className="text-xs text-slate-500">X hari/jam sebelum shift</div>
+                            </div>
                         </label>
-                        <input
-                            type="number"
-                            min="0"
-                            max="24"
-                            value={settings?.cutoffHours || 6}
-                            onChange={(e) => setSettings(s => s ? { ...s, cutoffHours: parseInt(e.target.value) } : null)}
-                            className="input-field"
-                        />
-                        <p className="text-xs text-slate-500 mt-1">
-                            Pesanan harus dibuat sekian jam sebelum shift dimulai
+                        <label className={`flex items-center gap-3 p-4 rounded-xl border-2 cursor-pointer transition-all ${settings?.cutoffMode === 'weekly' ? 'border-orange-500 bg-orange-50' : 'border-slate-200 bg-white'}`}>
+                            <input
+                                type="radio"
+                                name="cutoffMode"
+                                checked={settings?.cutoffMode === 'weekly'}
+                                onChange={() => setSettings(s => s ? { ...s, cutoffMode: 'weekly' } : null)}
+                                className="sr-only"
+                            />
+                            <div className={`w-4 h-4 rounded-full border-2 flex items-center justify-center ${settings?.cutoffMode === 'weekly' ? 'border-orange-500 bg-orange-500' : 'border-slate-300'}`}>
+                                {settings?.cutoffMode === 'weekly' && <div className="w-2 h-2 bg-white rounded-full" />}
+                            </div>
+                            <div>
+                                <div className="text-slate-800 font-medium">Mingguan</div>
+                                <div className="text-xs text-slate-500">Cutoff hari tertentu</div>
+                            </div>
+                        </label>
+                    </div>
+                </div>
+
+                {/* Per-Shift Mode Settings */}
+                {settings?.cutoffMode === 'per-shift' && (
+                    <div className="p-4 bg-slate-50 rounded-xl mb-6">
+                        <p className="text-sm text-slate-500 mb-4">Batas waktu order sebelum shift dimulai</p>
+                        <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+                            <div>
+                                <label className="block text-xs text-slate-500 mb-1">Hari sebelum shift</label>
+                                <input
+                                    type="number"
+                                    min="0"
+                                    max="30"
+                                    value={settings?.cutoffDays || 0}
+                                    onChange={(e) => setSettings(s => s ? { ...s, cutoffDays: parseInt(e.target.value) || 0 } : null)}
+                                    className="input-field"
+                                />
+                            </div>
+                            <div>
+                                <label className="block text-xs text-slate-500 mb-1">Jam sebelum shift</label>
+                                <input
+                                    type="number"
+                                    min="0"
+                                    max="23"
+                                    value={settings?.cutoffHours || 6}
+                                    onChange={(e) => setSettings(s => s ? { ...s, cutoffHours: parseInt(e.target.value) || 0 } : null)}
+                                    className="input-field"
+                                />
+                            </div>
+                            <div>
+                                <label className="block text-xs text-slate-500 mb-1">Maksimal hari order</label>
+                                <input
+                                    type="number"
+                                    min="1"
+                                    max="30"
+                                    value={settings?.maxOrderDaysAhead || 7}
+                                    onChange={(e) => setSettings(s => s ? { ...s, maxOrderDaysAhead: parseInt(e.target.value) || 7 } : null)}
+                                    className="input-field"
+                                />
+                            </div>
+                        </div>
+                        <p className="text-xs text-orange-500 mt-2">
+                            Total: {((settings?.cutoffDays || 0) * 24) + (settings?.cutoffHours || 6)} jam sebelum shift
                         </p>
                     </div>
+                )}
 
+                {/* Weekly Mode Settings */}
+                {settings?.cutoffMode === 'weekly' && (
+                    <div className="p-4 bg-slate-50 rounded-xl mb-6 space-y-4">
+                        <p className="text-sm text-slate-500">Cutoff hari & jam tertentu untuk order minggu depan</p>
+                        <div className="grid grid-cols-3 gap-3">
+                            <div>
+                                <label className="block text-xs text-slate-500 mb-1">Hari Cutoff</label>
+                                <select
+                                    value={settings?.weeklyCutoffDay ?? 5}
+                                    onChange={(e) => setSettings(s => s ? { ...s, weeklyCutoffDay: parseInt(e.target.value) } : null)}
+                                    className="input-field"
+                                >
+                                    <option value={1}>Senin</option>
+                                    <option value={2}>Selasa</option>
+                                    <option value={3}>Rabu</option>
+                                    <option value={4}>Kamis</option>
+                                    <option value={5}>Jumat</option>
+                                    <option value={6}>Sabtu</option>
+                                    <option value={0}>Minggu</option>
+                                </select>
+                            </div>
+                            <div>
+                                <label className="block text-xs text-slate-500 mb-1">Jam</label>
+                                <input
+                                    type="number"
+                                    min="0"
+                                    max="23"
+                                    value={settings?.weeklyCutoffHour ?? 17}
+                                    onChange={(e) => setSettings(s => s ? { ...s, weeklyCutoffHour: parseInt(e.target.value) || 0 } : null)}
+                                    className="input-field"
+                                />
+                            </div>
+                            <div>
+                                <label className="block text-xs text-slate-500 mb-1">Menit</label>
+                                <input
+                                    type="number"
+                                    min="0"
+                                    max="59"
+                                    value={settings?.weeklyCutoffMinute ?? 0}
+                                    onChange={(e) => setSettings(s => s ? { ...s, weeklyCutoffMinute: parseInt(e.target.value) || 0 } : null)}
+                                    className="input-field"
+                                />
+                            </div>
+                        </div>
+
+                        <div>
+                            <label className="block text-xs text-slate-500 mb-2">Hari yang Dapat Dipesan</label>
+                            <div className="flex flex-wrap gap-2">
+                                {[
+                                    { value: 1, label: 'Sen' },
+                                    { value: 2, label: 'Sel' },
+                                    { value: 3, label: 'Rab' },
+                                    { value: 4, label: 'Kam' },
+                                    { value: 5, label: 'Jum' },
+                                    { value: 6, label: 'Sab' },
+                                    { value: 0, label: 'Min' },
+                                ].map(day => {
+                                    const orderableDays = (settings?.orderableDays || '1,2,3,4,5,6').split(',').map(d => parseInt(d));
+                                    const isSelected = orderableDays.includes(day.value);
+                                    return (
+                                        <label
+                                            key={day.value}
+                                            className={`px-3 py-1.5 rounded-lg cursor-pointer transition-all ${isSelected ? 'bg-orange-500 text-white' : 'bg-slate-200 text-slate-600'}`}
+                                        >
+                                            <input
+                                                type="checkbox"
+                                                checked={isSelected}
+                                                onChange={(e) => {
+                                                    const currentDays = (settings?.orderableDays || '1,2,3,4,5,6').split(',').map(d => parseInt(d));
+                                                    let newDays: number[];
+                                                    if (e.target.checked) {
+                                                        newDays = [...currentDays, day.value];
+                                                    } else {
+                                                        newDays = currentDays.filter(d => d !== day.value);
+                                                    }
+                                                    setSettings(s => s ? { ...s, orderableDays: newDays.join(',') } : null);
+                                                }}
+                                                className="sr-only"
+                                            />
+                                            {day.label}
+                                        </label>
+                                    );
+                                })}
+                            </div>
+                        </div>
+
+                        <div>
+                            <label className="block text-xs text-slate-500 mb-1">Maksimal Minggu ke Depan</label>
+                            <select
+                                value={settings?.maxWeeksAhead ?? 1}
+                                onChange={(e) => setSettings(s => s ? { ...s, maxWeeksAhead: parseInt(e.target.value) } : null)}
+                                className="input-field w-40"
+                            >
+                                <option value={1}>1 Minggu</option>
+                                <option value={2}>2 Minggu</option>
+                            </select>
+                        </div>
+                    </div>
+                )}
+
+                {/* Blacklist Settings */}
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                     <div>
-                        <label className="block text-sm text-slate-500 mb-2">
-                            Strike No-Show untuk Blacklist
-                        </label>
+                        <label className="block text-sm text-slate-500 mb-2">Strike untuk Blacklist</label>
                         <input
                             type="number"
                             min="1"
@@ -329,15 +505,10 @@ export default function ShiftConfigPage() {
                             onChange={(e) => setSettings(s => s ? { ...s, blacklistStrikes: parseInt(e.target.value) } : null)}
                             className="input-field"
                         />
-                        <p className="text-xs text-slate-500 mt-1">
-                            Jumlah no-show sebelum user di-blacklist
-                        </p>
+                        <p className="text-xs text-slate-500 mt-1">Jumlah tidak diambil sebelum di-blacklist</p>
                     </div>
-
                     <div>
-                        <label className="block text-sm text-slate-500 mb-2">
-                            Durasi Blacklist (Hari)
-                        </label>
+                        <label className="block text-sm text-slate-500 mb-2">Durasi Blacklist (Hari)</label>
                         <input
                             type="number"
                             min="1"
@@ -346,26 +517,7 @@ export default function ShiftConfigPage() {
                             onChange={(e) => setSettings(s => s ? { ...s, blacklistDuration: parseInt(e.target.value) } : null)}
                             className="input-field"
                         />
-                        <p className="text-xs text-slate-500 mt-1">
-                            Berapa lama user tetap di-blacklist
-                        </p>
-                    </div>
-
-                    <div>
-                        <label className="block text-sm text-slate-500 mb-2">
-                            Maksimal Hari Order ke Depan
-                        </label>
-                        <input
-                            type="number"
-                            min="1"
-                            max="30"
-                            value={settings?.maxOrderDaysAhead || 7}
-                            onChange={(e) => setSettings(s => s ? { ...s, maxOrderDaysAhead: parseInt(e.target.value) } : null)}
-                            className="input-field"
-                        />
-                        <p className="text-xs text-slate-500 mt-1">
-                            Berapa hari ke depan user bisa order catering
-                        </p>
+                        <p className="text-xs text-slate-500 mt-1">Berapa lama user tetap di-blacklist</p>
                     </div>
                 </div>
             </div>

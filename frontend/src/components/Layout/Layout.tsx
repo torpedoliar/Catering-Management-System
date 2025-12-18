@@ -28,7 +28,11 @@ import {
     Mail,
     Timer,
     ChevronDown,
-    ChevronRight
+    ChevronRight,
+    Activity,
+    DatabaseBackup,
+    FileText,
+    MapPin
 } from 'lucide-react';
 
 interface LayoutProps {
@@ -43,6 +47,7 @@ export default function Layout({ children }: LayoutProps) {
     const [userExpanded, setUserExpanded] = useState(true);
     const [adminExpanded, setAdminExpanded] = useState(false);
     const [canteenExpanded, setCanteenExpanded] = useState(true);
+    const [serverExpanded, setServerExpanded] = useState(true);
 
     const isActive = (path: string) => location.pathname === path;
 
@@ -56,24 +61,23 @@ export default function Layout({ children }: LayoutProps) {
         { path: '/history', icon: History, label: 'Riwayat' },
         { path: '/settings', icon: Settings, label: 'Pengaturan' },
         { path: '/about', icon: Info, label: 'Tentang' },
+        { path: '/terms', icon: FileText, label: 'Syarat & Ketentuan' },
     ];
 
     const adminLinks = [
-        // Daily/Most Frequent
         { path: '/admin/dashboard', icon: LayoutDashboard, label: 'Dashboard' },
-        { path: '/admin/calendar', icon: Calendar, label: 'Kalender' },
-        { path: '/admin/users', icon: Users, label: 'Pengguna' },
-        { path: '/admin/companies', icon: Building2, label: 'Perusahaan' },
-        // Regular Use
-        { path: '/admin/announcements', icon: Bell, label: 'Pengumuman' },
-        { path: '/admin/messages', icon: MessageSquare, label: 'Pesan' },
-        { path: '/admin/export', icon: FileSpreadsheet, label: 'Ekspor' },
-        // Occasional
-        { path: '/admin/blacklist', icon: Ban, label: 'Blacklist' },
-        { path: '/admin/audit-log', icon: ScrollText, label: 'Log Audit' },
         { path: '/admin/costs', icon: DollarSign, label: 'Analisis Biaya' },
-        // Configuration (Rare)
+        { path: '/admin/calendar', icon: Calendar, label: 'Kalender' },
+        { path: '/admin/messages', icon: MessageSquare, label: 'Pesan' },
+        { path: '/admin/announcements', icon: Bell, label: 'Pengumuman' },
+        { path: '/admin/agreement', icon: FileText, label: 'Syarat & Ketentuan' },
+        { path: '/admin/companies', icon: Building2, label: 'Perusahaan' },
+        { path: '/admin/canteens', icon: MapPin, label: 'Manajemen Kantin' },
+        { path: '/admin/users', icon: Users, label: 'Pengguna' },
+        { path: '/admin/blacklist', icon: Ban, label: 'Blacklist' },
+        { path: '/admin/export', icon: FileSpreadsheet, label: 'Ekspor' },
         { path: '/admin/shifts', icon: Clock, label: 'Konfigurasi Shift' },
+        { path: '/admin/audit-log', icon: ScrollText, label: 'Log Audit' },
         { path: '/admin/time-settings', icon: Timer, label: 'Pengaturan Waktu' },
         { path: '/admin/email-settings', icon: Mail, label: 'Email Settings' },
     ];
@@ -201,10 +205,31 @@ export default function Layout({ children }: LayoutProps) {
                         )}
                     </div>
                 )}
+
+                {/* Server Management section */}
+                {user?.role === 'ADMIN' && (
+                    <div className="mb-3">
+                        <div
+                            onClick={() => setServerExpanded(!serverExpanded)}
+                            className="flex items-center justify-between px-3 py-2.5 cursor-pointer rounded-xl transition-all duration-200 mb-2 bg-white/[0.03] border border-white/[0.05] backdrop-blur-sm hover:bg-white/[0.08] hover:border-white/[0.1]"
+                        >
+                            <p className="text-[10px] font-semibold text-orange-400 uppercase tracking-wider">
+                                Server Management
+                            </p>
+                            {serverExpanded ? <ChevronDown className="w-3.5 h-3.5 text-slate-400" /> : <ChevronRight className="w-3.5 h-3.5 text-slate-400" />}
+                        </div>
+                        {serverExpanded && (
+                            <div className="space-y-2">
+                                <NavLink path="/admin/performance" icon={Activity} label="Performa Server" colorIndex={4} />
+                                <NavLink path="/admin/backup" icon={DatabaseBackup} label="Backup Database" colorIndex={5} />
+                            </div>
+                        )}
+                    </div>
+                )}
             </nav>
 
             {/* Logout */}
-            <div className="p-3 border-t border-white/10">
+            < div className="p-3 border-t border-white/10" >
                 <button
                     onClick={() => {
                         logout();
@@ -217,7 +242,7 @@ export default function Layout({ children }: LayoutProps) {
                     </div>
                     <span className="font-medium text-sm">Logout</span>
                 </button>
-            </div>
+            </div >
         </>
     );
 

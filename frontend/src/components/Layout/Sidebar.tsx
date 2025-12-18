@@ -23,7 +23,8 @@ import {
     ChevronDown,
     ChevronRight,
     Activity,
-    DatabaseBackup
+    DatabaseBackup,
+    FileText
 } from 'lucide-react';
 
 interface SidebarProps {
@@ -36,7 +37,6 @@ export default function Sidebar({ onClose }: SidebarProps) {
     const [userExpanded, setUserExpanded] = useState(true);
     const [adminExpanded, setAdminExpanded] = useState(false);
     const [canteenExpanded, setCanteenExpanded] = useState(true);
-    const [serverExpanded, setServerExpanded] = useState(false);
 
     const isActive = (path: string) => location.pathname === path;
 
@@ -63,6 +63,7 @@ export default function Sidebar({ onClose }: SidebarProps) {
     const adminLinks = [
         // Daily/Most Frequent
         { path: '/admin/dashboard', icon: LayoutDashboard, label: 'Dashboard' },
+        { path: '/admin/agreement', icon: FileText, label: 'User Agreement' },
         { path: '/admin/calendar', icon: CalendarDays, label: 'Calendar' },
         { path: '/admin/users', icon: Users, label: 'Users' },
         { path: '/admin/companies', icon: Building2, label: 'Companies' },
@@ -72,6 +73,9 @@ export default function Sidebar({ onClose }: SidebarProps) {
         // Occasional
         { path: '/admin/blacklist', icon: Ban, label: 'Blacklist' },
         { path: '/admin/audit-log', icon: ScrollText, label: 'Audit Log' },
+        // System
+        { path: '/admin/performance', icon: Activity, label: 'Performance' },
+        { path: '/admin/backup', icon: DatabaseBackup, label: 'Backup & Restore' },
         // Configuration (Rare)
         { path: '/admin/shifts', icon: Clock, label: 'Shift Config' },
         { path: '/admin/time-settings', icon: Timer, label: 'Time Settings' },
@@ -80,11 +84,6 @@ export default function Sidebar({ onClose }: SidebarProps) {
 
     const canteenLinks = [
         { path: '/canteen/checkin', icon: ScanLine, label: 'Check-in' },
-    ];
-
-    const serverLinks = [
-        { path: '/admin/performance', icon: Activity, label: 'Performance' },
-        { path: '/admin/backup', icon: DatabaseBackup, label: 'Backup & Restore' },
     ];
 
     const NavLink = ({ path, icon: Icon, label, colorIndex }: { path: string; icon: any; label: string; colorIndex: number }) => (
@@ -192,27 +191,7 @@ export default function Sidebar({ onClose }: SidebarProps) {
                     </div>
                 )}
 
-                {/* Server section */}
-                {user?.role === 'ADMIN' && (
-                    <div className="mb-3">
-                        <div
-                            onClick={() => setServerExpanded(!serverExpanded)}
-                            className="flex items-center justify-between px-3 py-2.5 cursor-pointer rounded-xl transition-all duration-200 mb-2 bg-white/[0.03] border border-white/[0.05] backdrop-blur-sm hover:bg-white/[0.08] hover:border-white/[0.1]"
-                        >
-                            <p className="text-[10px] font-semibold text-orange-400 uppercase tracking-wider">
-                                Server
-                            </p>
-                            {serverExpanded ? <ChevronDown className="w-3.5 h-3.5 text-slate-400" /> : <ChevronRight className="w-3.5 h-3.5 text-slate-400" />}
-                        </div>
-                        {serverExpanded && (
-                            <div className="space-y-2">
-                                {serverLinks.map((link, index) => (
-                                    <NavLink key={link.path} {...link} colorIndex={index + 4} />
-                                ))}
-                            </div>
-                        )}
-                    </div>
-                )}
+
             </nav>
 
             {/* Settings & Logout */}

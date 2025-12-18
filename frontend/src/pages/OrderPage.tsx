@@ -2,7 +2,7 @@ import { useState, useEffect, useCallback, useMemo } from 'react';
 import { QRCodeSVG } from 'qrcode.react';
 import { useAuth, api } from '../contexts/AuthContext';
 import { useSSE, useSSERefresh, ORDER_EVENTS, USER_EVENTS, HOLIDAY_EVENTS, SHIFT_EVENTS, SETTINGS_EVENTS } from '../contexts/SSEContext';
-import { Clock, AlertTriangle, CheckCircle2, Ban, Loader2, Download, Wifi, Calendar, XCircle, Sparkles, CalendarDays, Check, X, MessageSquare, Send } from 'lucide-react';
+import { Clock, AlertTriangle, CheckCircle2, Ban, Loader2, Download, Wifi, XCircle, Sparkles, CalendarDays, Check, X, MapPin } from 'lucide-react';
 import toast from 'react-hot-toast';
 
 interface Shift {
@@ -44,11 +44,19 @@ interface BulkOrderResult {
     summary: { total: number; successCount: number; failedCount: number };
 }
 
+interface Canteen {
+    id: string;
+    name: string;
+    location: string | null;
+}
+
 export default function OrderPage() {
     const { user, refreshUser } = useAuth();
     const { isConnected } = useSSE();
     const [shifts, setShifts] = useState<Shift[]>([]);
     const [selectedShift, setSelectedShift] = useState<string>('');
+    const [canteens, setCanteens] = useState<Canteen[]>([]);
+    const [selectedCanteen, setSelectedCanteen] = useState<string>('');
 
     // Helper to format date as YYYY-MM-DD in local timezone (avoids UTC date shift)
     const getLocalDateString = (date: Date = new Date()): string => {
@@ -63,6 +71,7 @@ export default function OrderPage() {
     const [todayOrder, setTodayOrder] = useState<Order | null>(null);
     const [isLoading, setIsLoading] = useState(true);
     const [isOrdering, setIsOrdering] = useState(false);
+    const [cutoffDays, setCutoffDays] = useState(0);
     const [cutoffHours, setCutoffHours] = useState(6);
 
     // Bulk order states - Default to TRUE and remove toggle
@@ -70,42 +79,47 @@ export default function OrderPage() {
     const [selectedDates, setSelectedDates] = useState<string[]>([]);
     const [availableDates, setAvailableDates] = useState<DateInfo[]>([]);
     const [bulkResult, setBulkResult] = useState<BulkOrderResult | null>(null);
-    const [existingOrders, setExistingOrders] = useState<Order[]>([]);
 
     // Cancel modal states
     const [showCancelModal, setShowCancelModal] = useState(false);
     const [cancelReason, setCancelReason] = useState('');
     const [isCancelling, setIsCancelling] = useState(false);
 
-    // Complaint form states
-    const [showComplaintForm, setShowComplaintForm] = useState(false);
-    const [complaintText, setComplaintText] = useState('');
-    const [isSubmittingComplaint, setIsSubmittingComplaint] = useState(false);
-    const [recentOrders, setRecentOrders] = useState<Order[]>([]);
-    const [selectedComplaintOrder, setSelectedComplaintOrder] = useState<string>('');
-
     const loadData = useCallback(async () => {
         try {
-            const [shiftsRes, orderRes, settingsRes] = await Promise.all([
+            const [shiftsRes, orderRes, settingsRes, canteensRes] = await Promise.all([
                 api.get(`/api/shifts/for-user?date=${selectedDate}`),
                 api.get(`/api/orders/today?date=${selectedDate}`),
                 api.get('/api/settings'),
+                api.get('/api/canteens')
             ]);
             setShifts(shiftsRes.data.shifts);
+            setCutoffDays(shiftsRes.data.cutoffDays || 0);
             setCutoffHours(shiftsRes.data.cutoffHours);
             setTodayOrder(orderRes.data.order);
             setMaxOrderDaysAhead(settingsRes.data.maxOrderDaysAhead || 7);
+            setCanteens(canteensRes.data.canteens || []);
+            // Auto-select user's preferred canteen if available, otherwise default to first one
+            if (canteensRes.data.canteens?.length > 0 && !selectedCanteen) {
+                // Check if user has a preferred canteen and it exists in the active canteens list
+                const preferred = canteensRes.data.canteens.find((c: Canteen) => c.id === user?.preferredCanteenId);
+
+                if (preferred) {
+                    setSelectedCanteen(preferred.id);
+                } else {
+                    setSelectedCanteen(canteensRes.data.canteens[0].id);
+                }
+            }
         } catch (error) {
             console.error('Failed to load data:', error);
         } finally {
             setIsLoading(false);
         }
-    }, [selectedDate]);
+    }, [selectedDate, selectedCanteen, user]);
 
     // Load available dates for bulk ordering
     const loadBulkData = useCallback(async () => {
         // Always load bulk data
-
 
         try {
             const today = new Date();
@@ -120,27 +134,46 @@ export default function OrderPage() {
                 return `${year}-${month}-${day}`;
             };
 
+            // First get shifts API to check cutoffMode and orderableDates
+            const shiftsRes = await api.get(`/api/shifts/for-user?date=${formatLocalDate(today)}`);
+            const cutoffMode = shiftsRes.data.cutoffMode || 'per-shift';
+            const apiOrderableDates = shiftsRes.data.orderableDates || [];
+
+            // Determine which dates to show
+            let datesToProcess: string[] = [];
+
+            if (cutoffMode === 'weekly' && apiOrderableDates.length > 0) {
+                // Weekly mode: use dates from API
+                datesToProcess = apiOrderableDates;
+            } else {
+                // Per-shift mode: generate dates based on maxOrderDaysAhead
+                const endDate = new Date(today);
+                endDate.setDate(endDate.getDate() + maxOrderDaysAhead);
+
+                for (let i = 0; i <= maxOrderDaysAhead; i++) {
+                    const date = new Date(today);
+                    date.setDate(date.getDate() + i);
+                    datesToProcess.push(formatLocalDate(date));
+                }
+            }
+
             // Get all orders for the user in the date range
-            const endDate = new Date(today);
-            endDate.setDate(endDate.getDate() + maxOrderDaysAhead);
+            const startDateStr = datesToProcess.length > 0 ? datesToProcess[0] : formatLocalDate(today);
+            const endDateStr = datesToProcess.length > 0 ? datesToProcess[datesToProcess.length - 1] : formatLocalDate(today);
 
             const ordersRes = await api.get('/api/orders/my-orders', {
                 params: {
-                    startDate: formatLocalDate(today),
-                    endDate: formatLocalDate(endDate),
+                    startDate: startDateStr,
+                    endDate: endDateStr,
                     limit: 100
                 }
             });
 
-            setExistingOrders(ordersRes.data.orders || []);
-
-            for (let i = 0; i <= maxOrderDaysAhead; i++) {
-                const date = new Date(today);
-                date.setDate(date.getDate() + i);
-                const dateStr = formatLocalDate(date);
+            for (const dateStr of datesToProcess) {
+                const date = new Date(dateStr + 'T00:00:00');
 
                 // Get shifts for this date
-                const shiftsRes = await api.get(`/api/shifts/for-user?date=${dateStr}`);
+                const dateShiftsRes = await api.get(`/api/shifts/for-user?date=${dateStr}`);
 
                 // Check if user already has an order for this date
                 const existingOrder = ordersRes.data.orders?.find((o: Order) => {
@@ -153,8 +186,8 @@ export default function OrderPage() {
                     date: dateStr,
                     formatted: date.toLocaleDateString('id-ID', { day: 'numeric', month: 'short', year: 'numeric' }),
                     dayName: date.toLocaleDateString('id-ID', { weekday: 'long' }),
-                    isToday: i === 0,
-                    shifts: shiftsRes.data.shifts,
+                    isToday: dateStr === formatLocalDate(today),
+                    shifts: dateShiftsRes.data.shifts,
                     hasOrder: !!existingOrder,
                     existingOrder,
                 });
@@ -189,7 +222,10 @@ export default function OrderPage() {
         loadData();
         loadBulkData();
     });
-    useSSERefresh(SETTINGS_EVENTS, loadData);
+    useSSERefresh(SETTINGS_EVENTS, () => {
+        loadData();
+        loadBulkData();
+    });
     useSSERefresh(USER_EVENTS, () => {
         refreshUser();
         loadData();
@@ -216,7 +252,7 @@ export default function OrderPage() {
                 shiftId: selectedShift
             }));
 
-            const res = await api.post('/api/orders/bulk', { orders });
+            const res = await api.post('/api/orders/bulk', { orders, canteenId: selectedCanteen || null });
             setBulkResult(res.data);
 
             if (res.data.summary.successCount > 0) {
@@ -543,12 +579,12 @@ export default function OrderPage() {
                     </div>
                     <div>
                         <h2 className="text-2xl font-bold text-[#1a1f37]">
-                            {isBulkMode ? 'Pesan Beberapa Hari' : 'Buat Pesanan'}
+                            {isBulkMode ? 'Menu Pesan Makan' : 'Buat Pesanan'}
                         </h2>
                         <p className="text-slate-500 mt-1">
                             {isBulkMode
-                                ? `Pilih hingga ${maxOrderDaysAhead + 1} tanggal sekaligus`
-                                : `Pesanan harus dibuat ${cutoffHours} jam sebelum shift dimulai`}
+                                ? `Order Makanan anda hingga ${maxOrderDaysAhead + 1} hari kedepan`
+                                : `Pesanan harus dibuat ${cutoffDays > 0 ? `${cutoffDays} hari ` : ''}${cutoffHours} jam sebelum shift dimulai`}
                         </p>
                     </div>
                 </div>
@@ -700,7 +736,35 @@ export default function OrderPage() {
                     </div>
                 </div>
 
-                {/* Order Button */}
+                {/* Canteen Selection */}
+                {canteens.length > 0 && (
+                    <div className="mb-6">
+                        <label className="text-sm font-medium text-white/60 block mb-3">
+                            <MapPin className="w-4 h-4 inline mr-2" />
+                            Pilih Lokasi Kantin
+                        </label>
+                        <div className="flex flex-wrap gap-2">
+                            {canteens.map((canteen) => (
+                                <button
+                                    key={canteen.id}
+                                    type="button"
+                                    onClick={() => setSelectedCanteen(canteen.id)}
+                                    className={`px-4 py-2 rounded-xl text-sm flex items-center gap-2 transition-all ${selectedCanteen === canteen.id
+                                        ? 'bg-primary text-white shadow-lg shadow-primary/20'
+                                        : 'bg-dark-lighter text-white/60 hover:bg-dark-light hover:text-white'
+                                        }`}
+                                >
+                                    <MapPin className="w-4 h-4" />
+                                    <span>{canteen.name}</span>
+                                    {canteen.location && (
+                                        <span className="text-xs opacity-60">({canteen.location})</span>
+                                    )}
+                                </button>
+                            ))}
+                        </div>
+                    </div>
+                )}
+
                 {/* Order Button */}
                 <button
                     onClick={handleBulkOrder}
@@ -735,156 +799,7 @@ export default function OrderPage() {
                     </div>
                 )}
 
-                {/* Complaint Form */}
-                <div className="mt-6 card">
-                    <button
-                        onClick={async () => {
-                            if (!showComplaintForm) {
-                                // Load recent orders when opening
-                                try {
-                                    const yesterday = new Date();
-                                    yesterday.setDate(yesterday.getDate() - 1);
-                                    const res = await api.get('/api/orders/my-orders', {
-                                        params: {
-                                            startDate: getLocalDateString(yesterday),
-                                            endDate: getLocalDateString(),
-                                            status: 'PICKED_UP',
-                                            limit: 10
-                                        }
-                                    });
-                                    setRecentOrders(res.data.orders || []);
-                                } catch (error) {
-                                    console.error('Failed to load recent orders:', error);
-                                }
-                            }
-                            setShowComplaintForm(!showComplaintForm);
-                        }}
-                        className="w-full flex items-center justify-between text-left"
-                    >
-                        <div className="flex items-center gap-3">
-                            <div className="w-10 h-10 rounded-xl bg-warning/20 flex items-center justify-center">
-                                <MessageSquare className="w-5 h-5 text-warning" />
-                            </div>
-                            <div>
-                                <p className="font-medium text-white">Keluhan Makanan</p>
-                                <p className="text-sm text-white/50">Laporkan masalah kualitas makanan</p>
-                            </div>
-                        </div>
-                        <div className={`transform transition-transform ${showComplaintForm ? 'rotate-180' : ''}`}>
-                            <X className={`w-5 h-5 text-white/40 ${showComplaintForm ? '' : 'rotate-45'}`} />
-                        </div>
-                    </button>
-
-                    {showComplaintForm && (
-                        <div className="mt-4 pt-4 border-t border-white/10">
-                            {recentOrders.length === 0 ? (
-                                <div className="text-center py-4">
-                                    <MessageSquare className="w-10 h-10 text-white/20 mx-auto mb-2" />
-                                    <p className="text-white/50">Tidak ada pesanan yang sudah diambil</p>
-                                    <p className="text-sm text-white/30 mt-1">Keluhan hanya bisa dikirim untuk pesanan yang sudah diambil dalam 2 hari terakhir</p>
-                                </div>
-                            ) : (
-                                <>
-                                    <div className="mb-4">
-                                        <label className="block text-sm font-medium text-white/60 mb-2">
-                                            Pilih Pesanan <span className="text-danger">*</span>
-                                        </label>
-                                        <select
-                                            value={selectedComplaintOrder}
-                                            onChange={(e) => setSelectedComplaintOrder(e.target.value)}
-                                            className="input-field w-full"
-                                        >
-                                            <option value="">Pilih pesanan...</option>
-                                            {recentOrders.map((order) => (
-                                                <option key={order.id} value={order.id}>
-                                                    {new Date(order.orderDate).toLocaleDateString('id-ID', { weekday: 'long', day: 'numeric', month: 'short' })} - {order.shift.name} ({order.shift.startTime} - {order.shift.endTime})
-                                                </option>
-                                            ))}
-                                        </select>
-                                    </div>
-
-                                    {selectedComplaintOrder && (
-                                        <>
-                                            <div className="mb-4 p-3 rounded-xl bg-white/5 border border-white/10">
-                                                <p className="text-xs text-white/40 mb-1">Pesanan yang dipilih:</p>
-                                                {(() => {
-                                                    const order = recentOrders.find(o => o.id === selectedComplaintOrder);
-                                                    if (!order) return null;
-                                                    return (
-                                                        <div className="flex items-center gap-2">
-                                                            <Calendar className="w-4 h-4 text-primary-400" />
-                                                            <span className="text-white font-medium">
-                                                                {new Date(order.orderDate).toLocaleDateString('id-ID', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' })}
-                                                            </span>
-                                                            <span className="badge badge-info">{order.shift.name}</span>
-                                                        </div>
-                                                    );
-                                                })()}
-                                            </div>
-
-                                            <div className="mb-4">
-                                                <label className="block text-sm font-medium text-white/60 mb-2">
-                                                    Keluhan Anda <span className="text-danger">*</span>
-                                                </label>
-                                                <textarea
-                                                    value={complaintText}
-                                                    onChange={(e) => setComplaintText(e.target.value)}
-                                                    placeholder="Contoh: Makanan terasa kurang segar, nasi terlalu keras, lauk tidak matang sempurna..."
-                                                    className="input-field w-full min-h-[100px] resize-none"
-                                                />
-                                            </div>
-
-                                            <button
-                                                onClick={async () => {
-                                                    const order = recentOrders.find(o => o.id === selectedComplaintOrder);
-                                                    if (!order) {
-                                                        toast.error('Pilih pesanan terlebih dahulu');
-                                                        return;
-                                                    }
-                                                    if (!complaintText.trim()) {
-                                                        toast.error('Keluhan harus diisi');
-                                                        return;
-                                                    }
-                                                    setIsSubmittingComplaint(true);
-                                                    try {
-                                                        await api.post('/api/messages', {
-                                                            orderId: order.id,
-                                                            shiftId: order.shift.id,
-                                                            content: complaintText.trim(),
-                                                            orderDate: order.orderDate,
-                                                        });
-                                                        toast.success('Keluhan berhasil dikirim');
-                                                        setComplaintText('');
-                                                        setSelectedComplaintOrder('');
-                                                        setShowComplaintForm(false);
-                                                    } catch (error: any) {
-                                                        toast.error(error.response?.data?.error || 'Gagal mengirim keluhan');
-                                                    } finally {
-                                                        setIsSubmittingComplaint(false);
-                                                    }
-                                                }}
-                                                disabled={!selectedComplaintOrder || !complaintText.trim() || isSubmittingComplaint}
-                                                className="btn-warning w-full flex items-center justify-center gap-2"
-                                            >
-                                                {isSubmittingComplaint ? (
-                                                    <>
-                                                        <Loader2 className="w-4 h-4 animate-spin" />
-                                                        Mengirim...
-                                                    </>
-                                                ) : (
-                                                    <>
-                                                        <Send className="w-4 h-4" />
-                                                        Kirim Keluhan
-                                                    </>
-                                                )}
-                                            </button>
-                                        </>
-                                    )}
-                                </>
-                            )}
-                        </div>
-                    )}
-                </div>
+                {/* Complaint Form Removed per user request */}
 
             </div>
 

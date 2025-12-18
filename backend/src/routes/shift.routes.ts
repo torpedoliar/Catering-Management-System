@@ -1,6 +1,6 @@
 import { Router, Response } from 'express';
 import { AuthRequest, authMiddleware, adminMiddleware } from '../middleware/auth.middleware';
-import { getNow, isPastCutoff, getTimezone } from '../services/time.service';
+import { getNow, isPastCutoff, getTimezone, getOrderableDateRange } from '../services/time.service';
 import { sseManager } from '../controllers/sse.controller';
 import { ErrorMessages } from '../utils/errorMessages';
 import { cacheService, CACHE_KEYS, CACHE_TTL } from '../services/cache.service';
@@ -26,26 +26,64 @@ router.get('/', authMiddleware, async (req: AuthRequest, res: Response) => {
 
                 // Add cutoff validation info
                 const settings = await prisma.settings.findUnique({ where: { id: 'default' } });
+                const cutoffMode = settings?.cutoffMode || 'per-shift';
+                const cutoffDays = settings?.cutoffDays || 0;
                 const cutoffHours = settings?.cutoffHours || 6;
                 const now = getNow();
                 const timezone = getTimezone();
 
-                console.log(`[Shifts] Current time: ${now.toISOString()}, Timezone: ${timezone}, Cutoff hours: ${cutoffHours}`);
+                console.log(`[Shifts] Current time: ${now.toISOString()}, Timezone: ${timezone}, Mode: ${cutoffMode}`);
+
+                // Get orderable date range for weekly mode
+                let orderableDates: Date[] = [];
+                if (cutoffMode === 'weekly') {
+                    const rangeResult = getOrderableDateRange({
+                        cutoffMode: 'weekly',
+                        cutoffDays,
+                        cutoffHours,
+                        maxOrderDaysAhead: settings?.maxOrderDaysAhead || 7,
+                        weeklyCutoffDay: settings?.weeklyCutoffDay ?? 5,
+                        weeklyCutoffHour: settings?.weeklyCutoffHour ?? 17,
+                        weeklyCutoffMinute: settings?.weeklyCutoffMinute ?? 0,
+                        orderableDays: settings?.orderableDays || '1,2,3,4,5,6',
+                        maxWeeksAhead: settings?.maxWeeksAhead || 1,
+                    });
+                    orderableDates = rangeResult.dates;
+                }
 
                 const shiftsWithCutoff = shifts.map((shift) => {
-                    const cutoffInfo = isPastCutoff(shift.startTime, cutoffHours);
-
-                    console.log(`[Shifts] ${shift.name}: Start=${shift.startTime}, Cutoff=${cutoffInfo.cutoffTime.toTimeString()}, Now=${cutoffInfo.now.toTimeString()}, IsPast=${cutoffInfo.isPast}`);
-
-                    return {
-                        ...shift,
-                        canOrder: shift.isActive && !cutoffInfo.isPast,
-                        cutoffTime: cutoffInfo.cutoffTime.toISOString(),
-                        minutesUntilCutoff: cutoffInfo.minutesUntilCutoff,
-                    };
+                    if (cutoffMode === 'weekly') {
+                        // For weekly mode, canOrder is based on whether there are orderable dates
+                        return {
+                            ...shift,
+                            canOrder: shift.isActive && orderableDates.length > 0,
+                            cutoffTime: null,
+                            minutesUntilCutoff: null,
+                            cutoffMode: 'weekly',
+                        };
+                    } else {
+                        // Per-shift mode: use existing logic
+                        const cutoffInfo = isPastCutoff(shift.startTime, cutoffDays, cutoffHours);
+                        console.log(`[Shifts] ${shift.name}: Start=${shift.startTime}, Cutoff=${cutoffInfo.cutoffTime.toTimeString()}, IsPast=${cutoffInfo.isPast}`);
+                        return {
+                            ...shift,
+                            canOrder: shift.isActive && !cutoffInfo.isPast,
+                            cutoffTime: cutoffInfo.cutoffTime.toISOString(),
+                            minutesUntilCutoff: cutoffInfo.minutesUntilCutoff,
+                            cutoffMode: 'per-shift',
+                        };
+                    }
                 });
 
-                return { shifts: shiftsWithCutoff, cutoffHours, serverTime: now.toISOString(), timezone };
+                return {
+                    shifts: shiftsWithCutoff,
+                    cutoffMode,
+                    cutoffDays,
+                    cutoffHours,
+                    orderableDates: orderableDates.map(d => d.toISOString().split('T')[0]),
+                    serverTime: now.toISOString(),
+                    timezone
+                };
             },
             { ttl: CACHE_TTL.SHIFTS }
         );
@@ -80,9 +118,28 @@ router.get('/for-user', authMiddleware, async (req: AuthRequest, res: Response) 
 
         // Get settings for cutoff calculation
         const settings = await prisma.settings.findUnique({ where: { id: 'default' } });
+        const cutoffMode = settings?.cutoffMode || 'per-shift';
+        const cutoffDays = settings?.cutoffDays || 0;
         const cutoffHours = settings?.cutoffHours || 6;
         const now = getNow();
         const timezone = getTimezone();
+
+        // Get orderable dates for weekly mode
+        let orderableDates: string[] = [];
+        if (cutoffMode === 'weekly') {
+            const rangeResult = getOrderableDateRange({
+                cutoffMode: 'weekly',
+                cutoffDays,
+                cutoffHours,
+                maxOrderDaysAhead: settings?.maxOrderDaysAhead || 7,
+                weeklyCutoffDay: settings?.weeklyCutoffDay ?? 5,
+                weeklyCutoffHour: settings?.weeklyCutoffHour ?? 17,
+                weeklyCutoffMinute: settings?.weeklyCutoffMinute ?? 0,
+                orderableDays: settings?.orderableDays || '1,2,3,4,5,6',
+                maxWeeksAhead: settings?.maxWeeksAhead || 1,
+            });
+            orderableDates = rangeResult.dates.map(d => d.toISOString().split('T')[0]);
+        }
 
         let shifts;
 
@@ -168,12 +225,13 @@ router.get('/for-user', authMiddleware, async (req: AuthRequest, res: Response) 
             const fulldayHoliday = holidays.find(h => h.shiftId === null);
             const holiday = shiftHoliday || fulldayHoliday;
 
-            // Calculate cutoff time for the target date
+            // Calculate cutoff time for the target date (days + hours)
             const [hours, minutes] = shift.startTime.split(':').map(Number);
             const shiftStartDateTime = new Date(targetDate);
             shiftStartDateTime.setHours(hours, minutes, 0, 0);
 
-            const cutoffDateTime = new Date(shiftStartDateTime.getTime() - (cutoffHours * 60 * 60 * 1000));
+            const cutoffMs = (cutoffDays * 24 * 60 * 60 * 1000) + (cutoffHours * 60 * 60 * 1000);
+            const cutoffDateTime = new Date(shiftStartDateTime.getTime() - cutoffMs);
             const minutesUntilCutoff = Math.max(0, Math.floor((cutoffDateTime.getTime() - now.getTime()) / 60000));
 
             return {
@@ -188,7 +246,7 @@ router.get('/for-user', authMiddleware, async (req: AuthRequest, res: Response) 
             };
         });
 
-        res.json({ shifts: shiftsWithCutoff, cutoffHours, serverTime: now.toISOString(), timezone });
+        res.json({ shifts: shiftsWithCutoff, cutoffMode, cutoffDays, cutoffHours, orderableDates, serverTime: now.toISOString(), timezone });
     } catch (error) {
         console.error('Get user shifts error:', error);
         res.status(500).json({ error: 'Failed to get shifts' });

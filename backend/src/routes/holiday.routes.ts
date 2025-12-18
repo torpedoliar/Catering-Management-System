@@ -379,4 +379,192 @@ router.delete('/:id', authMiddleware, adminMiddleware, async (req: AuthRequest, 
     }
 });
 
+// ============================================
+// SUNDAY AUTO-HOLIDAY ENDPOINTS
+// ============================================
+
+// Get Sunday auto-holiday status
+router.get('/sundays/status', authMiddleware, async (req: AuthRequest, res: Response) => {
+    try {
+        const settings = await prisma.settings.findUnique({ where: { id: 'default' } });
+        res.json({
+            enabled: settings?.sundayAutoHoliday || false
+        });
+    } catch (error) {
+        console.error('Get Sunday status error:', error);
+        res.status(500).json({ error: ErrorMessages.SERVER_ERROR });
+    }
+});
+
+// Toggle Sunday auto-holiday (Admin only)
+router.post('/sundays/toggle', authMiddleware, adminMiddleware, async (req: AuthRequest, res: Response) => {
+    const context = getRequestContext(req);
+    try {
+        const { enabled, monthsAhead = 12 } = req.body;
+
+        // Update settings
+        await prisma.settings.upsert({
+            where: { id: 'default' },
+            update: { sundayAutoHoliday: enabled },
+            create: { id: 'default', sundayAutoHoliday: enabled }
+        });
+
+        const now = getNow();
+        let created = 0;
+        let deleted = 0;
+
+        if (enabled) {
+            // Create holidays for all Sundays in the next X months
+            const endDate = new Date(now);
+            endDate.setMonth(endDate.getMonth() + monthsAhead);
+
+            const currentDate = new Date(now);
+            currentDate.setHours(0, 0, 0, 0);
+
+            // Move to next Sunday if not already Sunday
+            const daysUntilSunday = (7 - currentDate.getDay()) % 7;
+            if (daysUntilSunday === 0 && currentDate.getDay() !== 0) {
+                currentDate.setDate(currentDate.getDate() + 7);
+            } else {
+                currentDate.setDate(currentDate.getDate() + daysUntilSunday);
+            }
+
+            while (currentDate <= endDate) {
+                // Check if Sunday holiday already exists
+                const existing = await prisma.holiday.findFirst({
+                    where: {
+                        date: new Date(currentDate),
+                        name: 'Hari Minggu',
+                        shiftId: null
+                    }
+                });
+
+                if (!existing) {
+                    await prisma.holiday.create({
+                        data: {
+                            date: new Date(currentDate),
+                            name: 'Hari Minggu',
+                            description: 'Libur Hari Minggu (otomatis)',
+                            shiftId: null,
+                            isActive: true
+                        }
+                    });
+                    created++;
+                }
+
+                // Move to next Sunday
+                currentDate.setDate(currentDate.getDate() + 7);
+            }
+        } else {
+            // Remove all auto-generated Sunday holidays
+            const result = await prisma.holiday.deleteMany({
+                where: {
+                    name: 'Hari Minggu',
+                    description: 'Libur Hari Minggu (otomatis)'
+                }
+            });
+            deleted = result.count;
+        }
+
+        // Broadcast update
+        sseManager.broadcast('holiday:updated', {
+            action: 'sunday-toggle',
+            enabled,
+            created,
+            deleted,
+            timestamp: getNow().toISOString(),
+        });
+
+        // Also broadcast settings update for OrderPage refresh
+        sseManager.broadcast('settings:updated', {
+            sundayAutoHoliday: enabled,
+            timestamp: getNow().toISOString(),
+        });
+
+        res.json({
+            message: enabled
+                ? `Libur Hari Minggu diaktifkan. ${created} hari libur dibuat.`
+                : `Libur Hari Minggu dinonaktifkan. ${deleted} hari libur dihapus.`,
+            enabled,
+            created,
+            deleted
+        });
+    } catch (error) {
+        console.error('Toggle Sunday holiday error:', error);
+        res.status(500).json({ error: ErrorMessages.SERVER_ERROR });
+    }
+});
+
+// Override specific Sunday (Admin only) - mark as NOT holiday
+router.post('/sundays/override/:date', authMiddleware, adminMiddleware, async (req: AuthRequest, res: Response) => {
+    const context = getRequestContext(req);
+    try {
+        const dateStr = req.params.date;
+        const targetDate = new Date(dateStr);
+        targetDate.setHours(0, 0, 0, 0);
+
+        // Verify it's actually a Sunday
+        if (targetDate.getDay() !== 0) {
+            return res.status(400).json({ error: 'Tanggal yang dipilih bukan hari Minggu' });
+        }
+
+        const { override } = req.body; // true = make it work day, false = restore as holiday
+
+        if (override) {
+            // Remove the Sunday holiday
+            const deleted = await prisma.holiday.deleteMany({
+                where: {
+                    date: targetDate,
+                    name: 'Hari Minggu'
+                }
+            });
+
+            // Broadcast update
+            sseManager.broadcast('holiday:updated', {
+                action: 'sunday-override',
+                date: dateStr,
+                override: true,
+                timestamp: getNow().toISOString(),
+            });
+
+            res.json({
+                message: `Minggu ${dateStr} diubah menjadi hari kerja`,
+                deleted: deleted.count
+            });
+        } else {
+            // Create Sunday holiday
+            const existing = await prisma.holiday.findFirst({
+                where: { date: targetDate, name: 'Hari Minggu' }
+            });
+
+            if (!existing) {
+                await prisma.holiday.create({
+                    data: {
+                        date: targetDate,
+                        name: 'Hari Minggu',
+                        description: 'Libur Hari Minggu (otomatis)',
+                        shiftId: null,
+                        isActive: true
+                    }
+                });
+            }
+
+            // Broadcast update
+            sseManager.broadcast('holiday:updated', {
+                action: 'sunday-override',
+                date: dateStr,
+                override: false,
+                timestamp: getNow().toISOString(),
+            });
+
+            res.json({
+                message: `Minggu ${dateStr} dikembalikan menjadi hari libur`
+            });
+        }
+    } catch (error) {
+        console.error('Sunday override error:', error);
+        res.status(500).json({ error: ErrorMessages.SERVER_ERROR });
+    }
+});
+
 export default router;

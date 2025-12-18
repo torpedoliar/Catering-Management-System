@@ -3,7 +3,6 @@ import { api, useAuth } from '../contexts/AuthContext';
 import { useSSE } from '../contexts/SSEContext';
 import { formatDateTimeShortWIB } from '../utils/timezone';
 import {
-    X,
     Bell,
     AlertCircle,
     Info,
@@ -74,9 +73,9 @@ export default function AnnouncementPopup() {
             const res = await api.get('/api/announcements/active');
             const newAnnouncements = res.data.announcements || [];
 
-            // Filter out already dismissed announcements
+            // Filter out already dismissed announcements and those with type AGREEMENT
             const visibleAnnouncements = newAnnouncements.filter(
-                (a: Announcement) => !dismissedIds.has(a.id)
+                (a: Announcement & { type?: string }) => !dismissedIds.has(a.id) && a.type !== 'AGREEMENT'
             );
 
             setAnnouncements(visibleAnnouncements);
@@ -204,9 +203,9 @@ export default function AnnouncementPopup() {
 
     return (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm animate-fade-in">
-            <div className={`relative w-full max-w-lg mx-4 rounded-2xl border ${styles.border} bg-gradient-to-br ${styles.bg} shadow-2xl overflow-hidden`}>
+            <div className={`relative w-full max-w-lg mx-4 rounded-2xl border ${styles.border} bg-gradient-to-br ${styles.bg} shadow-2xl overflow-hidden flex flex-col max-h-[90vh]`}>
                 {/* Header */}
-                <div className="flex items-center justify-between p-4 border-b border-white/20">
+                <div className="flex-none flex items-center justify-between p-4 border-b border-white/20">
                     <div className="flex items-center gap-3">
                         <div className="w-10 h-10 rounded-xl bg-white/20 flex items-center justify-center">
                             {styles.icon}
@@ -218,16 +217,10 @@ export default function AnnouncementPopup() {
                             </p>
                         </div>
                     </div>
-                    <button
-                        onClick={handleDismiss}
-                        className="p-2 rounded-lg hover:bg-white/20 transition-colors"
-                    >
-                        <X className="w-5 h-5 text-white" />
-                    </button>
                 </div>
 
                 {/* Content */}
-                <div className="p-6">
+                <div className="p-6 overflow-y-auto">
                     <div className="flex items-start gap-2 mb-3">
                         <span className={`px-2 py-0.5 rounded text-xs font-medium ${styles.badge}`}>
                             {current.priority === 'urgent' ? 'PENTING!' :
@@ -245,7 +238,7 @@ export default function AnnouncementPopup() {
                 </div>
 
                 {/* Footer / Navigation */}
-                <div className="flex items-center justify-between p-4 bg-black/20">
+                <div className="flex-none flex items-center justify-between p-4 bg-black/20">
                     <div className="flex items-center gap-2">
                         {announcements.length > 1 && (
                             <>

@@ -56,10 +56,28 @@ router.get('/', authMiddleware, adminMiddleware, async (req: AuthRequest, res: R
     }
 });
 
+// Get active agreement (for password change)
+router.get('/agreement/latest', authMiddleware, async (req: AuthRequest, res: Response) => {
+    try {
+        const agreement = await prisma.announcement.findFirst({
+            where: {
+                type: 'AGREEMENT',
+                isActive: true
+            },
+            orderBy: { createdAt: 'desc' }
+        });
+
+        res.json({ agreement });
+    } catch (error) {
+        console.error('Get latest agreement error:', error);
+        res.status(500).json({ error: 'Failed to get agreement' });
+    }
+});
+
 // Create new announcement (admin)
 router.post('/', authMiddleware, adminMiddleware, async (req: AuthRequest, res: Response) => {
     try {
-        const { title, content, priority, expiresAt } = req.body;
+        const { title, content, priority, expiresAt, type } = req.body;
         const userId = req.user?.id;
 
         if (!title || !content) {
@@ -74,6 +92,7 @@ router.post('/', authMiddleware, adminMiddleware, async (req: AuthRequest, res: 
             data: {
                 title,
                 content,
+                type: type || 'ANNOUNCEMENT',
                 priority: priority || 'normal',
                 expiresAt: expiresAt ? new Date(expiresAt) : null,
                 createdById: userId
@@ -102,13 +121,14 @@ router.post('/', authMiddleware, adminMiddleware, async (req: AuthRequest, res: 
 router.put('/:id', authMiddleware, adminMiddleware, async (req: AuthRequest, res: Response) => {
     try {
         const { id } = req.params;
-        const { title, content, priority, isActive, expiresAt } = req.body;
+        const { title, content, priority, isActive, expiresAt, type } = req.body;
 
         const announcement = await prisma.announcement.update({
             where: { id },
             data: {
                 ...(title !== undefined && { title }),
                 ...(content !== undefined && { content }),
+                ...(type !== undefined && { type }),
                 ...(priority !== undefined && { priority }),
                 ...(isActive !== undefined && { isActive }),
                 ...(expiresAt !== undefined && { expiresAt: expiresAt ? new Date(expiresAt) : null })

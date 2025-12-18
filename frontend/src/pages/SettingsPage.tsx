@@ -10,6 +10,7 @@ const API_URL = import.meta.env.VITE_API_URL ?? 'http://localhost:3012';
 
 interface SystemSettings {
     id: string;
+    cutoffDays: number;
     cutoffHours: number;
     blacklistStrikes: number;
     blacklistDuration: number;
@@ -62,10 +63,20 @@ export default function SettingsPage() {
     const [syncing, setSyncing] = useState(false);
     const [currentTime, setCurrentTime] = useState<Date>(new Date());
 
+    const [cutoffMode, setCutoffMode] = useState<'per-shift' | 'weekly'>('per-shift');
+    const [cutoffDays, setCutoffDays] = useState(0);
     const [cutoffHours, setCutoffHours] = useState(6);
+    const [maxOrderDaysAhead, setMaxOrderDaysAhead] = useState(7);
+
+    // Weekly cutoff mode
+    const [weeklyCutoffDay, setWeeklyCutoffDay] = useState(5);
+    const [weeklyCutoffHour, setWeeklyCutoffHour] = useState(17);
+    const [weeklyCutoffMinute, setWeeklyCutoffMinute] = useState(0);
+    const [orderableDays, setOrderableDays] = useState<number[]>([1, 2, 3, 4, 5, 6]);
+    const [maxWeeksAhead, setMaxWeeksAhead] = useState(1);
+
     const [blacklistStrikes, setBlacklistStrikes] = useState(3);
     const [blacklistDuration, setBlacklistDuration] = useState(7);
-    const [maxOrderDaysAhead, setMaxOrderDaysAhead] = useState(7);
 
     const getToken = () => localStorage.getItem('token');
 
@@ -81,7 +92,35 @@ export default function SettingsPage() {
     const isPasswordValid = passwordChecks.length && passwordChecks.hasNumber;
     const passwordsMatch = newPassword === confirmPassword && confirmPassword.length > 0;
 
+    // Preferred Canteen
+    const [canteens, setCanteens] = useState<Array<{ id: string; name: string }>>([]);
+    const [preferredCanteenId, setPreferredCanteenId] = useState<string>('');
+    const [savingProfile, setSavingProfile] = useState(false);
+
     const fetchAdminData = useCallback(async () => {
+        // Fetch user preferences (for everyone)
+        try {
+            // Fetch active canteens
+            const canteensRes = await fetch(`${API_URL}/api/canteens?active=true`, {
+                headers: { Authorization: `Bearer ${getToken()}` }
+            });
+            if (canteensRes.ok) {
+                const data = await canteensRes.json();
+                setCanteens(data.canteens || []);
+            }
+
+            // Fetch current user profile to get preference
+            const meRes = await fetch(`${API_URL}/api/auth/me`, {
+                headers: { Authorization: `Bearer ${getToken()}` }
+            });
+            if (meRes.ok) {
+                const me = await meRes.json();
+                setPreferredCanteenId(me.preferredCanteenId || '');
+            }
+        } catch (error) {
+            console.error('Error fetching preferences:', error);
+        }
+
         if (!isAdmin) {
             setLoadingSettings(false);
             return;
@@ -104,10 +143,17 @@ export default function SettingsPage() {
             if (settingsRes.ok) {
                 const data = await settingsRes.json();
                 combinedSettings = data;
+                setCutoffMode(data.cutoffMode || 'per-shift');
+                setCutoffDays(data.cutoffDays || 0);
                 setCutoffHours(data.cutoffHours || 6);
+                setMaxOrderDaysAhead(data.maxOrderDaysAhead || 7);
+                setWeeklyCutoffDay(data.weeklyCutoffDay ?? 5);
+                setWeeklyCutoffHour(data.weeklyCutoffHour ?? 17);
+                setWeeklyCutoffMinute(data.weeklyCutoffMinute ?? 0);
+                setOrderableDays(data.orderableDays ? data.orderableDays.split(',').map((d: string) => parseInt(d)) : [1, 2, 3, 4, 5, 6]);
+                setMaxWeeksAhead(data.maxWeeksAhead || 1);
                 setBlacklistStrikes(data.blacklistStrikes || 3);
                 setBlacklistDuration(data.blacklistDuration || 7);
-                setMaxOrderDaysAhead(data.maxOrderDaysAhead || 7);
             }
 
             if (ntpRes.ok) {
@@ -161,6 +207,33 @@ export default function SettingsPage() {
         }, 1000);
         return () => clearInterval(interval);
     }, [isAdmin]);
+
+    const handleSaveProfile = async () => {
+        setSavingProfile(true);
+        try {
+            const token = getToken();
+            const response = await fetch(`${API_URL}/api/auth/me`, {
+                method: 'PUT',
+                headers: {
+                    'Content-Type': 'application/json',
+                    Authorization: `Bearer ${token}`,
+                },
+                body: JSON.stringify({
+                    preferredCanteenId: preferredCanteenId || null
+                }),
+            });
+
+            if (response.ok) {
+                toast.success('Preferensi berhasil disimpan');
+            } else {
+                throw new Error('Gagal menyimpan preferensi');
+            }
+        } catch (error) {
+            toast.error('Gagal menyimpan preferensi');
+        } finally {
+            setSavingProfile(false);
+        }
+    };
 
     const handleChangePassword = async (e: React.FormEvent) => {
         e.preventDefault();
@@ -220,10 +293,17 @@ export default function SettingsPage() {
                     Authorization: `Bearer ${token}`,
                 },
                 body: JSON.stringify({
+                    cutoffMode,
+                    cutoffDays,
                     cutoffHours,
+                    maxOrderDaysAhead,
+                    weeklyCutoffDay,
+                    weeklyCutoffHour,
+                    weeklyCutoffMinute,
+                    orderableDays: orderableDays.join(','),
+                    maxWeeksAhead,
                     blacklistStrikes,
                     blacklistDuration,
-                    maxOrderDaysAhead,
                 }),
             });
 
@@ -347,6 +427,35 @@ export default function SettingsPage() {
                             }`}>
                             {user?.role}
                         </span>
+                    </div>
+
+                    {/* Preferred Canteen Selection */}
+                    <div className="col-span-full pt-4 border-t border-white/5">
+                        <label className="block text-callout font-medium text-dark-text-secondary mb-2">
+                            Kantin Lokasi Anda Bekerja
+                        </label>
+                        <div className="flex gap-2">
+                            <select
+                                value={preferredCanteenId}
+                                onChange={(e) => setPreferredCanteenId(e.target.value)}
+                                className="input-field flex-1"
+                            >
+                                <option value="">-- Pilih Kantin Lokasi Kerja --</option>
+                                {canteens.map(c => (
+                                    <option key={c.id} value={c.id}>{c.name}</option>
+                                ))}
+                            </select>
+                            <button
+                                onClick={handleSaveProfile}
+                                disabled={savingProfile}
+                                className="btn-secondary"
+                            >
+                                {savingProfile ? 'Menyimpan...' : 'Simpan'}
+                            </button>
+                        </div>
+                        <p className="text-caption text-dark-text-secondary mt-1">
+                            Kantin ini akan terpilih otomatis saat Anda memesan makanan
+                        </p>
                     </div>
                 </div>
             </div>
@@ -602,30 +711,22 @@ export default function SettingsPage() {
                                 </div>
 
                                 <div className="space-y-5">
-                                    <div>
-                                        <label className="flex items-center gap-2 text-callout font-medium text-dark-text-secondary mb-2">
-                                            <Clock className="w-4 h-4" />
-                                            Cutoff Time (Jam)
-                                        </label>
-                                        <p className="text-caption text-dark-text-secondary mb-2">
-                                            Batas waktu order sebelum shift dimulai
+                                    {/* Note about Cutoff Settings */}
+                                    <div className="p-4 bg-dark-card-secondary rounded-xl">
+                                        <p className="text-callout text-dark-text-secondary">
+                                            <Clock className="w-4 h-4 inline-block mr-2" />
+                                            Pengaturan Mode Cutoff dapat diakses di halaman <span className="text-apple-blue font-medium">Konfigurasi Shift</span>
                                         </p>
-                                        <input
-                                            type="number"
-                                            min={0}
-                                            max={24}
-                                            value={cutoffHours}
-                                            onChange={(e) => setCutoffHours(parseInt(e.target.value) || 0)}
-                                            className="input-field"
-                                        />
                                     </div>
+
+
 
                                     <div>
                                         <label className="block text-callout font-medium text-dark-text-secondary mb-2">
-                                            Batas No-Show (Strike)
+                                            Batas Tidak Diambil (Strike)
                                         </label>
                                         <p className="text-caption text-dark-text-secondary mb-2">
-                                            Jumlah no-show sebelum user di-blacklist
+                                            Jumlah tidak diambil sebelum user di-blacklist
                                         </p>
                                         <input
                                             type="number"
@@ -660,7 +761,7 @@ export default function SettingsPage() {
                                             Durasi Blacklist (Hari)
                                         </label>
                                         <p className="text-caption text-dark-text-secondary mb-2">
-                                            Lama user di-blacklist setelah melebihi batas no-show
+                                            Lama user di-blacklist setelah melebihi batas tidak diambil
                                         </p>
                                         <input
                                             type="number"

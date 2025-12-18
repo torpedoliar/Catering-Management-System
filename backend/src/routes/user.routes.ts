@@ -27,14 +27,23 @@ if (!fs.existsSync(uploadDir)) {
 // Get all users (Admin only)
 router.get('/', authMiddleware, adminMiddleware, async (req: AuthRequest, res: Response) => {
     try {
-        const { search, company, division, department, page = '1', limit = '50' } = req.query;
+        const { search, company, division, department, page = '1', limit = '50', status } = req.query;
 
-        const where: UserWhereFilter = { isActive: true };
+        const where: UserWhereFilter = {};
+
+        // Filter by status: 'active', 'inactive', or 'all' (default: 'all' - show everyone)
+        if (status === 'inactive') {
+            where.isActive = false;
+        } else if (status === 'active') {
+            where.isActive = true;
+        }
+        // When status is 'all' or not specified, don't filter by isActive (show all users)
 
         if (search) {
             where.OR = [
                 { name: { contains: search as string, mode: 'insensitive' } },
                 { externalId: { contains: search as string, mode: 'insensitive' } },
+                { nik: { contains: search as string, mode: 'insensitive' } },
                 { email: { contains: search as string, mode: 'insensitive' } },
                 { company: { contains: search as string, mode: 'insensitive' } },
                 { division: { contains: search as string, mode: 'insensitive' } },
@@ -53,6 +62,7 @@ router.get('/', authMiddleware, adminMiddleware, async (req: AuthRequest, res: R
                 select: {
                     id: true,
                     externalId: true,
+                    nik: true,
                     name: true,
                     email: true,
                     company: true,
@@ -126,7 +136,7 @@ router.get('/:id', authMiddleware, async (req: AuthRequest, res: Response) => {
 // Create user (Admin only)
 router.post('/', authMiddleware, adminMiddleware, upload.single('photo'), validate(createUserSchema), async (req: AuthRequest, res: Response) => {
     try {
-        const { externalId, name, email, password, company, division, department, departmentId, role } = req.body;
+        const { externalId, nik, name, email, password, company, division, department, departmentId, role } = req.body;
 
         if (!externalId || !name) {
             return res.status(400).json({ error: ErrorMessages.MISSING_REQUIRED_FIELDS });
@@ -172,6 +182,7 @@ router.post('/', authMiddleware, adminMiddleware, upload.single('photo'), valida
         const user = await prisma.user.create({
             data: {
                 externalId,
+                nik: nik || null,
                 name,
                 email,
                 password: hashedPassword,
@@ -355,18 +366,25 @@ router.post('/import', authMiddleware, adminMiddleware, apiRateLimitMiddleware('
             rowNumber++;
 
             const externalId = row.getCell(1).text?.toString().trim();
-            const name = row.getCell(2).text?.toString().trim();
-            const company = row.getCell(3).text?.toString().trim();
-            const division = row.getCell(4).text?.toString().trim();
-            const department = row.getCell(5).text?.toString().trim();
-            const password = row.getCell(6).text?.toString().trim();
+            const nik = row.getCell(2).text?.toString().trim();
+            const name = row.getCell(3).text?.toString().trim();
+            const company = row.getCell(4).text?.toString().trim();
+            const division = row.getCell(5).text?.toString().trim();
+            const department = row.getCell(6).text?.toString().trim();
+            const password = row.getCell(7).text?.toString().trim();
 
             if (!externalId || !name || !company || !division || !department) {
                 errors.push({ row: rowNumber + 1, error: 'Missing required fields' });
                 return;
             }
 
-            users.push({ externalId, name, company, division, department, password });
+            // Validate NIK is numeric if provided
+            if (nik && !/^\d+$/.test(nik)) {
+                errors.push({ row: rowNumber + 1, error: 'NIK harus berupa angka' });
+                return;
+            }
+
+            users.push({ externalId, nik, name, company, division, department, password });
         });
 
         // Import users with upsert
@@ -383,6 +401,7 @@ router.post('/import', authMiddleware, adminMiddleware, apiRateLimitMiddleware('
                     where: { externalId: userData.externalId },
                     update: {
                         name: userData.name,
+                        nik: userData.nik || undefined,
                         company: userData.company,
                         division: userData.division,
                         department: userData.department,
@@ -390,6 +409,7 @@ router.post('/import', authMiddleware, adminMiddleware, apiRateLimitMiddleware('
                     },
                     create: {
                         externalId: userData.externalId,
+                        nik: userData.nik || null,
                         name: userData.name,
                         company: userData.company,
                         division: userData.division,
@@ -434,6 +454,7 @@ router.get('/export/template', authMiddleware, adminMiddleware, apiRateLimitMidd
 
         worksheet.columns = [
             { header: 'ID', key: 'externalId', width: 15 },
+            { header: 'NIK', key: 'nik', width: 15 },
             { header: 'Name', key: 'name', width: 30 },
             { header: 'Company', key: 'company', width: 20 },
             { header: 'Division', key: 'division', width: 20 },

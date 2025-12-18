@@ -92,7 +92,8 @@ model DepartmentShift {
 
 model User {
   id           String      @id @default(uuid())
-  externalId   String      @unique // Employee ID from import
+  externalId   String      @unique // HRIS ID (for login)
+  nik          String?     @unique // Company NIK (numeric, for check-in only)
   name         String
   email        String?
   password     String      // Hashed password
@@ -105,19 +106,23 @@ model User {
   noShowCount  Int         @default(0)
   mustChangePassword Boolean @default(true)
   isActive     Boolean     @default(true)
+  preferredCanteenId String? // User's preferred canteen for auto-selection
   createdAt    DateTime    @default(now())
   updatedAt    DateTime    @updatedAt
 
-  departmentRef Department? @relation(fields: [departmentId], references: [id])
-  orders        Order[]
-  blacklists    Blacklist[]
-  messages      Message[]
-  announcements Announcement[]
+  departmentRef      Department? @relation(fields: [departmentId], references: [id])
+  preferredCanteen   Canteen?    @relation("UserPreferredCanteen", fields: [preferredCanteenId], references: [id])
+  orders             Order[]
+  blacklists         Blacklist[]
+  messages           Message[]
+  announcements      Announcement[]
 
   @@index([externalId])
+  @@index([nik])
   @@index([name])
   @@index([company])
   @@index([departmentId])
+  @@index([preferredCanteenId])
   // Composite indexes
   @@index([isActive, role])  // Active users by role query
 
@@ -147,6 +152,41 @@ model Backup {
   @@index([status])
 }
 
+// Canteen location management
+model Canteen {
+  id          String   @id @default(uuid())
+  name        String   @unique
+  location    String?  // Optional address/description
+  capacity    Int?     // Max daily orders (null = unlimited)
+  isActive    Boolean  @default(true)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  orders         Order[]
+  canteenShifts  CanteenShift[]
+  preferredUsers User[] @relation("UserPreferredCanteen")
+
+  @@index([isActive])
+  @@index([name])
+}
+
+// Join table for Canteen-Shift availability with optional capacity per shift
+model CanteenShift {
+  id        String   @id @default(uuid())
+  canteenId String
+  shiftId   String
+  capacity  Int?     // Per-shift capacity (null = use canteen default)
+  isActive  Boolean  @default(true)
+  createdAt DateTime @default(now())
+
+  canteen   Canteen  @relation(fields: [canteenId], references: [id], onDelete: Cascade)
+  shift     Shift    @relation(fields: [shiftId], references: [id], onDelete: Cascade)
+
+  @@unique([canteenId, shiftId])
+  @@index([canteenId])
+  @@index([shiftId])
+}
+
 model Shift {
   id          String   @id @default(uuid())
   name        String   @unique // "Shift 1", "Shift 2", "Shift 3"
@@ -161,6 +201,7 @@ model Shift {
   orders           Order[]
   departments      Department[]      @relation("DepartmentDefaultShift")
   departmentShifts DepartmentShift[]
+  canteenShifts    CanteenShift[]
   holidays         Holiday[]
   messages         Message[]
 }
@@ -184,12 +225,16 @@ model Order {
   createdAt     DateTime    @default(now())
   updatedAt     DateTime    @updatedAt
 
+  canteenId     String?     // Canteen location for this order
+
   user        User        @relation(fields: [userId], references: [id], onDelete: Cascade)
   shift       Shift       @relation(fields: [shiftId], references: [id])
+  canteen     Canteen?    @relation(fields: [canteenId], references: [id])
   messages    Message[]
 
   @@index([userId])
   @@index([shiftId])
+  @@index([canteenId])
   @@index([orderDate])
   @@index([status])
   @@index([qrCode])
@@ -198,6 +243,7 @@ model Order {
   @@index([orderDate, status])         // Dashboard filtering by date and status
   @@index([userId, orderDate])         // User's orders by date
   @@index([shiftId, orderDate, status]) // Shift orders on specific date
+  @@index([canteenId, orderDate, status]) // Canteen orders on specific date
 }
 
 model Blacklist {
@@ -220,10 +266,26 @@ model Blacklist {
 
 model Settings {
   id                 String @id @default("default")
-  cutoffHours        Int    @default(6)      // Hours before shift to stop orders
+  
+  // Cutoff Mode Selection
+  cutoffMode         String @default("per-shift")  // "per-shift" | "weekly"
+  
+  // MODE 1: Per-Shift Cutoff (existing)
+  cutoffDays         Int    @default(0)      // Days before shift to stop orders
+  cutoffHours        Int    @default(6)      // Hours before shift to stop orders (0-23)
+  maxOrderDaysAhead  Int    @default(7)      // Maximum days in advance for ordering
+  
+  // MODE 2: Weekly Cutoff (new)
+  weeklyCutoffDay    Int    @default(5)      // 0=Sun, 1=Mon, ..., 5=Fri, 6=Sat
+  weeklyCutoffHour   Int    @default(17)     // Hour 0-23
+  weeklyCutoffMinute Int    @default(0)      // Minute 0-59
+  orderableDays      String @default("1,2,3,4,5,6")  // CSV: weekdays that can be ordered (1=Mon, 6=Sat)
+  maxWeeksAhead      Int    @default(1)      // 1 or 2 weeks ahead
+  
+  // Blacklist Settings
   blacklistStrikes   Int    @default(3)      // No-shows before blacklist
   blacklistDuration  Int    @default(7)      // Days of blacklist
-  maxOrderDaysAhead  Int    @default(7)      // Maximum days in advance for ordering
+
   
   // NTP Settings
   ntpEnabled         Boolean @default(true)  // Enable NTP sync
@@ -245,7 +307,15 @@ model Settings {
   
   // Check-in Photo Settings
   checkinPhotoEnabled Boolean @default(false) // Enable photo capture during check-in
-  
+
+  // Auto Backup Settings
+  autoBackupEnabled   Boolean   @default(false)
+  autoBackupInterval  Int       @default(7)     // Interval in days
+  lastAutoBackup      DateTime?                 // Timestamp of last auto backup
+
+  // Sunday Auto-Holiday Settings
+  sundayAutoHoliday   Boolean   @default(false) // Automatically mark all Sundays as holidays
+
   createdAt          DateTime @default(now())
   updatedAt          DateTime @updatedAt
 }
@@ -372,12 +442,18 @@ model Message {
   @@index([orderDate])
 }
 
+enum AnnouncementType {
+  ANNOUNCEMENT
+  AGREEMENT
+}
+
 // Announcement model for admin broadcasts to users
 model Announcement {
-  id          String    @id @default(uuid())
-  title       String    // Announcement title
-  content     String    // Announcement content/message
-  priority    String    @default("normal") // "low", "normal", "high", "urgent"
+  id          String           @id @default(uuid())
+  title       String           // Announcement title
+  type        AnnouncementType @default(ANNOUNCEMENT)
+  content     String           // Announcement content/message
+  priority    String           @default("normal") // "low", "normal", "high", "urgent"
   isActive    Boolean   @default(true)
   expiresAt   DateTime? // Optional expiration date
   createdById String    // Admin who created this

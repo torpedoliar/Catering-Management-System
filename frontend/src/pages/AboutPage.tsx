@@ -157,38 +157,7 @@ export default function AboutPage() {
                 </div>
             </div>
 
-            {/* Technical Info */}
-            <div className="card">
-                <div className="flex items-center gap-3 mb-6">
-                    <div className="w-10 h-10 rounded-xl bg-slate-100 flex items-center justify-center">
-                        <Settings className="w-6 h-6 text-slate-500" />
-                    </div>
-                    <h2 className="text-xl font-bold text-[#1a1f37]">Informasi Teknis</h2>
-                </div>
 
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                    <div className="p-4 rounded-xl bg-slate-50">
-                        <h3 className="font-semibold text-[#1a1f37] mb-3">Backend</h3>
-                        <ul className="space-y-2 text-sm text-slate-500">
-                            <li>Node.js + Express</li>
-                            <li>PostgreSQL Database</li>
-                            <li>Prisma ORM</li>
-                            <li>JWT Authentication</li>
-                            <li>Server-Sent Events (SSE)</li>
-                        </ul>
-                    </div>
-                    <div className="p-4 rounded-xl bg-slate-50">
-                        <h3 className="font-semibold text-[#1a1f37] mb-3">Frontend</h3>
-                        <ul className="space-y-2 text-sm text-slate-500">
-                            <li>React + TypeScript</li>
-                            <li>Vite Build Tool</li>
-                            <li>Tailwind CSS</li>
-                            <li>React Router</li>
-                            <li>QRCode.react</li>
-                        </ul>
-                    </div>
-                </div>
-            </div>
 
             {/* Developer Info */}
             <div className="card">

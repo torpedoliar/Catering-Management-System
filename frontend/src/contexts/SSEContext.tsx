@@ -275,7 +275,7 @@ function showEventToast(eventType: string, data: any, currentUserId: string) {
             }
             break;
         case 'order:noshow':
-            toast.error(`No-show: ${data.userName || 'User'}`, { icon: '⚠️' });
+            toast.error(`Tidak diambil: ${data.userName || 'User'}`, { icon: '⚠️' });
             break;
         case 'user:blacklisted':
             toast.error(`${data.userName || 'User'} blacklisted`, { icon: '🚫' });

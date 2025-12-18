@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback } from 'react';
-import { Calendar, Plus, Trash2, ChevronLeft, ChevronRight, X, Utensils, Clock, Copy } from 'lucide-react';
+import { Calendar, Plus, Trash2, ChevronLeft, ChevronRight, X, Utensils, Clock, Copy, Sun, Loader2 } from 'lucide-react';
 import toast from 'react-hot-toast';
 import { api } from '../../contexts/AuthContext';
 import { useSSERefresh, HOLIDAY_EVENTS } from '../../contexts/SSEContext';
@@ -60,6 +60,10 @@ export default function CalendarPage() {
     const [isSaving, setIsSaving] = useState(false);
     const [isDeleting, setIsDeleting] = useState<string | null>(null);
 
+    // Sunday Auto-Holiday state
+    const [sundayAutoHoliday, setSundayAutoHoliday] = useState(false);
+    const [isTogglingSunday, setIsTogglingSunday] = useState(false);
+
     const year = currentDate.getFullYear();
     const month = currentDate.getMonth() + 1;
 
@@ -83,6 +87,35 @@ export default function CalendarPage() {
     useEffect(() => {
         loadCalendarData();
     }, [loadCalendarData]);
+
+    // Load Sunday auto-holiday status
+    const loadSundayStatus = useCallback(async () => {
+        try {
+            const res = await api.get('/api/holidays/sundays/status');
+            setSundayAutoHoliday(res.data.enabled);
+        } catch (error) {
+            console.error('Failed to load Sunday status:', error);
+        }
+    }, []);
+
+    useEffect(() => {
+        loadSundayStatus();
+    }, [loadSundayStatus]);
+
+    // Toggle Sunday auto-holiday
+    const handleToggleSunday = async () => {
+        setIsTogglingSunday(true);
+        try {
+            const res = await api.post('/api/holidays/sundays/toggle', { enabled: !sundayAutoHoliday });
+            setSundayAutoHoliday(!sundayAutoHoliday);
+            toast.success(res.data.message);
+            loadCalendarData();
+        } catch (error: any) {
+            toast.error(error.response?.data?.error || 'Gagal mengubah pengaturan');
+        } finally {
+            setIsTogglingSunday(false);
+        }
+    };
 
     // Auto-refresh on holiday events (SSE)
     useSSERefresh(HOLIDAY_EVENTS, loadCalendarData);
@@ -431,13 +464,35 @@ export default function CalendarPage() {
                         <p className="text-slate-400">Kelola hari libur dan lihat statistik pesanan</p>
                     </div>
                 </div>
-                <button
-                    onClick={() => setShowBulkModal(true)}
-                    className="btn-primary flex items-center gap-2"
-                >
-                    <Copy className="w-4 h-4" />
-                    Bulk Hari Libur
-                </button>
+                <div className="flex items-center gap-3">
+                    {/* Sunday Auto-Holiday Toggle */}
+                    <button
+                        onClick={handleToggleSunday}
+                        disabled={isTogglingSunday}
+                        className={`flex items-center gap-2 px-4 py-2 rounded-lg transition-all ${sundayAutoHoliday
+                                ? 'bg-orange-500/20 text-orange-400 border border-orange-500/50 hover:bg-orange-500/30'
+                                : 'bg-slate-700/50 text-slate-400 border border-slate-600 hover:border-orange-500/50 hover:text-orange-400'
+                            }`}
+                    >
+                        {isTogglingSunday ? (
+                            <Loader2 className="w-4 h-4 animate-spin" />
+                        ) : (
+                            <Sun className="w-4 h-4" />
+                        )}
+                        Libur Minggu
+                        <span className={`text-xs px-1.5 py-0.5 rounded ${sundayAutoHoliday ? 'bg-orange-500/40' : 'bg-slate-600'}`}>
+                            {sundayAutoHoliday ? 'ON' : 'OFF'}
+                        </span>
+                    </button>
+
+                    <button
+                        onClick={() => setShowBulkModal(true)}
+                        className="btn-primary flex items-center gap-2"
+                    >
+                        <Copy className="w-4 h-4" />
+                        Bulk Hari Libur
+                    </button>
+                </div>
             </div>
 
             <div className="grid grid-cols-1 lg:grid-cols-4 gap-6">

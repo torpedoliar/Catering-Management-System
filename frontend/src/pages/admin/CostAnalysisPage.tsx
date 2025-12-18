@@ -391,7 +391,7 @@ export default function CostAnalysisPage() {
                         <span className="text-sm text-white/60">Kerugian</span>
                     </div>
                     <p className="text-2xl font-bold text-red-400">{formatCurrency(stats?.wasteCost || 0)}</p>
-                    <p className="text-xs text-white/40 mt-1">{stats?.noShow || 0} no-show ({stats?.wasteRate || 0}%)</p>
+                    <p className="text-xs text-white/40 mt-1">{stats?.noShow || 0} tidak diambil ({stats?.wasteRate || 0}%)</p>
                 </div>
 
                 <div className="glass-card p-5 rounded-2xl">
@@ -454,7 +454,7 @@ export default function CostAnalysisPage() {
                                     />
                                 )}
 
-                                {/* Waste Cost (No-Show) */}
+                                {/* Waste Cost (Tidak Diambil) */}
                                 {stats && stats.totalCost > 0 && stats.wasteCost > 0 && (
                                     <circle
                                         cx="100"
@@ -535,7 +535,7 @@ export default function CostAnalysisPage() {
                                             <div className="absolute inset-0 flex items-center justify-between px-3">
                                                 <span className="text-xs font-medium text-white/90">{shift.orders} order</span>
                                                 {shift.noShow > 0 && (
-                                                    <span className="text-xs font-medium text-red-200">{shift.noShow} no-show</span>
+                                                    <span className="text-xs font-medium text-red-200">{shift.noShow} tidak diambil</span>
                                                 )}
                                             </div>
                                         </div>
@@ -638,7 +638,7 @@ export default function CostAnalysisPage() {
                                 <tr className="border-b border-white/5">
                                     <th className="text-left px-4 py-3 text-xs text-white/50 font-medium">Shift</th>
                                     <th className="text-center px-4 py-3 text-xs text-white/50 font-medium">Order</th>
-                                    <th className="text-center px-4 py-3 text-xs text-white/50 font-medium">No-Show</th>
+                                    <th className="text-center px-4 py-3 text-xs text-white/50 font-medium">Tidak Diambil</th>
                                     <th className="text-right px-4 py-3 text-xs text-white/50 font-medium">Biaya</th>
                                     <th className="text-right px-4 py-3 text-xs text-white/50 font-medium">Kerugian</th>
                                 </tr>
@@ -747,8 +747,8 @@ export default function CostAnalysisPage() {
                         <ul className="text-sm text-white/60 space-y-1">
                             <li>• <strong>Total Biaya</strong>: Semua pesanan (tidak termasuk yang dibatalkan) × harga per shift</li>
                             <li>• <strong>Biaya Aktual</strong>: Hanya pesanan yang diambil (PICKED_UP)</li>
-                            <li>• <strong>Kerugian</strong>: Pesanan yang tidak diambil (NO_SHOW) × harga makanan</li>
-                            <li>• <strong>Waste Rate</strong>: Persentase no-show dari total pesanan</li>
+                            <li>• <strong>Kerugian</strong>: Pesanan yang tidak diambil (Tidak Diambil) × harga makanan</li>
+                            <li>• <strong>Waste Rate</strong>: Persentase tidak diambil dari total pesanan</li>
                         </ul>
                     </div>
                 </div>

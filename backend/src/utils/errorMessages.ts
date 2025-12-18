@@ -39,8 +39,15 @@ export const ErrorMessages = {
     // Settings
     SETTINGS_NOT_FOUND: 'Pengaturan tidak ditemukan',
     INVALID_SETTINGS_VALUE: 'Nilai pengaturan tidak valid',
-    CUTOFF_HOURS_INVALID: 'Jam cutoff harus antara 0-24',
+    CUTOFF_DAYS_INVALID: 'Hari cutoff harus antara 0-30',
+    CUTOFF_HOURS_INVALID: 'Jam cutoff harus antara 0-23',
     BLACKLIST_STRIKES_INVALID: 'Jumlah strike harus antara 1-10',
+
+    // Weekly Cutoff Mode
+    WEEKLY_CUTOFF_PASSED: 'Waktu pemesanan untuk minggu ini sudah ditutup',
+    DATE_NOT_ORDERABLE: 'Tanggal ini tidak dapat dipesan',
+    WEEK_NOT_ORDERABLE: 'Minggu ini belum dapat dipesan atau sudah lewat',
+    INVALID_ORDERABLE_DAY: 'Hari ini tidak termasuk hari yang dapat dipesan',
 
     // General
     VALIDATION_ERROR: 'Data yang Anda masukkan tidak valid',

@@ -11,9 +11,16 @@ import {
     restoreBackup,
     deleteBackup,
     cleanupOldBackups,
+    getBackupSettings,
+    updateBackupSettings,
+    importBackupFile,
     BACKUP_DIR,
     RETENTION_DAYS
 } from '../services/server.service';
+import multer from 'multer';
+
+// Multer config for backup upload
+const upload = multer({ dest: 'uploads/temp/' });
 
 const router = Router();
 
@@ -36,14 +43,53 @@ router.get('/performance', authMiddleware, adminMiddleware, async (req: AuthRequ
 router.get('/backup', authMiddleware, adminMiddleware, async (req: AuthRequest, res: Response) => {
     try {
         const backups = await listBackups();
+        const settings = await getBackupSettings();
         res.json({
             backups,
+            settings,
             backupDir: BACKUP_DIR,
             retentionDays: RETENTION_DAYS
         });
     } catch (error) {
         console.error('List backups error:', error);
         res.status(500).json({ error: 'Gagal mengambil daftar backup' });
+    }
+});
+
+// Update backup settings
+router.put('/backup/settings', authMiddleware, adminMiddleware, async (req: AuthRequest, res: Response) => {
+    try {
+        const { autoBackupEnabled, autoBackupInterval } = req.body;
+        const settings = await updateBackupSettings(autoBackupEnabled, autoBackupInterval);
+        res.json(settings);
+    } catch (error) {
+        console.error('Update settings error:', error);
+        res.status(500).json({ error: 'Gagal memperbarui pengaturan backup' });
+    }
+});
+
+// Upload backup file
+router.post('/restore/upload', authMiddleware, adminMiddleware, upload.single('backup'), async (req: AuthRequest, res: Response) => {
+    try {
+        if (!req.file) {
+            return res.status(400).json({ error: 'File backup tidak ditemukan' });
+        }
+
+        const userId = req.user!.id;
+        const backup = await importBackupFile(
+            userId,
+            req.file.path,
+            req.file.originalname,
+            req.file.size
+        );
+
+        res.json({
+            message: 'Backup berhasil diunggah',
+            backup
+        });
+    } catch (error: any) {
+        console.error('Upload backup error:', error);
+        res.status(500).json({ error: error.message || 'Gagal mengunggah backup' });
     }
 });
 

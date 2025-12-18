@@ -3,7 +3,7 @@ import { format } from 'date-fns';
 import { id as idLocale } from 'date-fns/locale';
 import { api } from '../../contexts/AuthContext';
 import { useSSE, useSSERefresh, ORDER_EVENTS } from '../../contexts/SSEContext';
-import { ScanLine, Search, CheckCircle2, AlertCircle, Loader2, Wifi, X, User as UserIcon, Building2, Briefcase, Clock, Zap, Calendar, Camera } from 'lucide-react';
+import { ScanLine, Search, CheckCircle2, AlertCircle, Loader2, Wifi, X, User as UserIcon, Building2, Briefcase, Clock, Zap, Calendar, Camera, MapPin } from 'lucide-react';
 import toast from 'react-hot-toast';
 import Webcam from 'react-webcam';
 
@@ -22,6 +22,7 @@ interface CheckInResult {
             photo?: string;
         };
         shift: { name: string };
+        canteen?: { id: string; name: string; location: string | null };
     };
     checkInBy?: string;
     checkInTime?: Date | string;
@@ -54,8 +55,8 @@ function SuccessPopup({ show, data, onClose }: SuccessPopupProps) {
     const checkInTime = data.checkInTime || data.order.checkInTime;
     let formattedTime = 'Baru saja';
     if (checkInTime) {
-        const timeStr = String(checkInTime).replace('Z', '');
-        const date = new Date(timeStr);
+        // Parse the ISO string directly - toLocaleString with timeZone will handle conversion
+        const date = new Date(checkInTime);
         formattedTime = date.toLocaleString('id-ID', {
             weekday: 'long',
             year: 'numeric',
@@ -117,6 +118,17 @@ function SuccessPopup({ show, data, onClose }: SuccessPopupProps) {
                                 <p className="font-semibold text-white">{data.order.user.department || '-'}</p>
                             </div>
                         </div>
+                        {data.order.canteen && (
+                            <div className="p-4 rounded-2xl bg-primary/10 border border-primary/20">
+                                <div className="flex items-center gap-2 text-primary text-xs mb-1">
+                                    <MapPin className="w-3.5 h-3.5" /><span>Lokasi Kantin</span>
+                                </div>
+                                <p className="font-semibold text-white">{data.order.canteen.name}</p>
+                                {data.order.canteen.location && (
+                                    <p className="text-sm text-white/50">{data.order.canteen.location}</p>
+                                )}
+                            </div>
+                        )}
                         <div className={`p-4 rounded-2xl border ${isSuccess ? 'bg-success/10 border-success/20' : 'bg-warning/10 border-warning/20'}`}>
                             <div className={`flex items-center gap-2 text-sm mb-2 ${isSuccess ? 'text-success' : 'text-warning'}`}>
                                 <Clock className="w-4 h-4" /><span>Waktu Check-In</span>
@@ -147,7 +159,7 @@ export default function CheckInPage() {
     const [showSuccessPopup, setShowSuccessPopup] = useState(false);
     const [successData, setSuccessData] = useState<CheckInResult | null>(null);
     const [lastError, setLastError] = useState<string | null>(null);
-    const [todayStats, setTodayStats] = useState({ total: 0, checkedIn: 0, pending: 0 });
+    const [todayStats, setTodayStats] = useState({ total: 0, checkedIn: 0, pending: 0, noShow: 0 });
     const [lastCheckInTime, setLastCheckInTime] = useState<number>(0);
     const [currentTime, setCurrentTime] = useState(new Date());
     const inputRef = useRef<HTMLInputElement>(null);
@@ -165,7 +177,7 @@ export default function CheckInPage() {
     const loadStats = useCallback(async () => {
         try {
             const res = await api.get('/api/orders/stats/today');
-            setTodayStats({ total: res.data.total, checkedIn: res.data.pickedUp, pending: res.data.pending });
+            setTodayStats({ total: res.data.total, checkedIn: res.data.pickedUp, pending: res.data.pending, noShow: res.data.noShow || 0 });
         } catch (error) {
             console.error('Failed to load stats:', error);
         }
@@ -231,10 +243,14 @@ export default function CheckInPage() {
                     headers: { 'Content-Type': 'multipart/form-data' }
                 });
             } else {
-                const isId = /^[A-Z0-9]+$/i.test(searchInput.trim());
+                // Send all possible identifiers - backend will check in order: externalId, nik, name
+                const searchValue = searchInput.trim();
+                const isNumeric = /^\d+$/.test(searchValue);
+                const isId = /^[A-Z0-9]+$/i.test(searchValue);
+
                 const payload = isId
-                    ? { externalId: searchInput.trim() }
-                    : { name: searchInput.trim() };
+                    ? { externalId: searchValue, nik: isNumeric ? searchValue : undefined }
+                    : { name: searchValue };
                 res = await api.post('/api/orders/checkin/manual', payload);
             }
 
@@ -318,7 +334,7 @@ export default function CheckInPage() {
                 <span className="text-sm text-white/40">{connectedClients} terhubung</span>
             </div>
 
-            <div className="grid grid-cols-3 gap-4">
+            <div className="grid grid-cols-4 gap-4">
                 <div className="stat-card text-center">
                     <p className="text-xs text-white/40 uppercase tracking-wider">Total</p>
                     <p className="text-3xl font-bold text-gradient mt-1">{todayStats.total}</p>
@@ -330,6 +346,10 @@ export default function CheckInPage() {
                 <div className="stat-card text-center">
                     <p className="text-xs text-white/40 uppercase tracking-wider">Pending</p>
                     <p className="text-3xl font-bold text-warning mt-1">{todayStats.pending}</p>
+                </div>
+                <div className="stat-card text-center">
+                    <p className="text-xs text-white/40 uppercase tracking-wider">Tidak Diambil</p>
+                    <p className="text-3xl font-bold text-danger mt-1">{todayStats.noShow}</p>
                 </div>
             </div>
 

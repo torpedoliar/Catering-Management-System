@@ -10,6 +10,7 @@ import OrderPage from './pages/OrderPage';
 import HistoryPage from './pages/HistoryPage';
 import SettingsPage from './pages/SettingsPage';
 import AboutPage from './pages/AboutPage';
+import TermsPage from './pages/TermsPage';
 
 // Lazy loaded admin pages (code splitting for better performance)
 const DashboardPage = lazy(() => import('./pages/admin/DashboardPage'));
@@ -24,10 +25,12 @@ const AuditLogPage = lazy(() => import('./pages/admin/AuditLogPage'));
 const MessagesPage = lazy(() => import('./pages/admin/MessagesPage'));
 const CostAnalysisPage = lazy(() => import('./pages/admin/CostAnalysisPage'));
 const AnnouncementPage = lazy(() => import('./pages/admin/AnnouncementPage'));
+const UserAgreementPage = lazy(() => import('./pages/admin/UserAgreementPage'));
 const EmailSettingsPage = lazy(() => import('./pages/admin/EmailSettingsPage'));
 const OrderListPage = lazy(() => import('./pages/admin/OrderListPage'));
 const PerformancePage = lazy(() => import('./pages/admin/PerformancePage'));
 const BackupRestorePage = lazy(() => import('./pages/admin/BackupRestorePage'));
+const CanteenManagementPage = lazy(() => import('./pages/admin/CanteenManagementPage'));
 const CheckInPage = lazy(() => import('./pages/canteen/CheckInPage'));
 
 // Layout
@@ -80,6 +83,7 @@ function AppRoutes() {
                     <Route path="/history" element={<HistoryPage />} />
                     <Route path="/settings" element={<SettingsPage />} />
                     <Route path="/about" element={<AboutPage />} />
+                    <Route path="/terms" element={<TermsPage />} />
                 </Route>
 
                 {/* Admin Routes */}
@@ -89,10 +93,12 @@ function AppRoutes() {
                     <Route path="/admin/shifts" element={<ShiftConfigPage />} />
                     <Route path="/admin/users" element={<UserManagementPage />} />
                     <Route path="/admin/companies" element={<CompanyManagementPage />} />
+                    <Route path="/admin/canteens" element={<CanteenManagementPage />} />
                     <Route path="/admin/blacklist" element={<BlacklistPage />} />
                     <Route path="/admin/export" element={<ExportPage />} />
                     <Route path="/admin/costs" element={<CostAnalysisPage />} />
                     <Route path="/admin/announcements" element={<AnnouncementPage />} />
+                    <Route path="/admin/agreement" element={<UserAgreementPage />} />
                     <Route path="/admin/calendar" element={<CalendarPage />} />
                     <Route path="/admin/time-settings" element={<TimeSettingsPage />} />
                     <Route path="/admin/audit-log" element={<AuditLogPage />} />
@@ -116,7 +122,7 @@ function AppRoutes() {
 
 export default function App() {
     return (
-        <BrowserRouter>
+        <BrowserRouter future={{ v7_startTransition: true, v7_relativeSplatPath: true }}>
             <AuthProvider>
                 <SSEProvider>
                     <AppRoutes />
