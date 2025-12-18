@@ -6,6 +6,7 @@ import { AuthRequest, authMiddleware } from '../middleware/auth.middleware';
 import { getNow } from '../services/time.service';
 import { logAuth, logUserManagement, getRequestContext } from '../services/audit.service';
 import { rateLimiter } from '../services/rate-limiter.service';
+import { cacheService } from '../services/cache.service';
 import { validate } from '../middleware/validate.middleware';
 import { loginSchema, changePasswordSchema } from '../utils/validation';
 
@@ -227,6 +228,11 @@ router.put('/me', authMiddleware, async (req: AuthRequest, res: Response) => {
         await logUserManagement('UPDATE', { id: user.id, name: user.name, role: user.role }, user, context, {
             metadata: { updatedFields: Object.keys(updateData), isProfileUpdate: true }
         });
+
+        // Invalidate canteen cache if preferredCanteenId was changed (to update user counts)
+        if (updateData.preferredCanteenId !== undefined) {
+            await cacheService.delete('canteens:*');
+        }
 
         res.json(user);
     } catch (error) {
