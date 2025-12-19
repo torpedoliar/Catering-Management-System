@@ -27,6 +27,7 @@ interface Settings {
     maxWeeksAhead: number;
     blacklistStrikes: number;
     blacklistDuration: number;
+    enforceCanteenCheckin?: boolean;
 }
 
 export default function ShiftConfigPage() {
@@ -492,6 +493,28 @@ export default function ShiftConfigPage() {
                         </div>
                     </div>
                 )}
+
+                {/* Canteen Check-in Enforcement */}
+                <div className="mb-6 p-4 bg-slate-50 rounded-xl">
+                    <div className="flex items-center justify-between">
+                        <div>
+                            <h3 className="font-medium text-[#1a1f37]">Validasi Lokasi Kantin</h3>
+                            <p className="text-sm text-slate-500">Pesanan hanya bisa di check-in di kantin tempat pemesanan</p>
+                        </div>
+                        <button
+                            type="button"
+                            onClick={() => setSettings(s => s ? { ...s, enforceCanteenCheckin: !s.enforceCanteenCheckin } : null)}
+                            className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors ${settings?.enforceCanteenCheckin ? 'bg-emerald-500' : 'bg-slate-300'}`}
+                        >
+                            <span className={`inline-block h-4 w-4 transform rounded-full bg-white transition-transform ${settings?.enforceCanteenCheckin ? 'translate-x-6' : 'translate-x-1'}`} />
+                        </button>
+                    </div>
+                    {settings?.enforceCanteenCheckin && (
+                        <p className="text-xs text-emerald-600 mt-2">
+                            ✓ Aktif: Operator check-in harus memilih kantin dan hanya bisa memproses pesanan untuk kantin tersebut
+                        </p>
+                    )}
+                </div>
 
                 {/* Blacklist Settings */}
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
