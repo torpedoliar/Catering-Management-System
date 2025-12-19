@@ -168,6 +168,10 @@ export default function CheckInPage() {
     const [showCamera, setShowCamera] = useState(false);
     const [capturedPhoto, setCapturedPhoto] = useState<string | null>(null);
     const [pendingOrder, setPendingOrder] = useState<any>(null);
+    // Canteen check-in enforcement
+    const [enforceCanteenCheckin, setEnforceCanteenCheckin] = useState(false);
+    const [selectedCanteenId, setSelectedCanteenId] = useState<string>('');
+    const [canteens, setCanteens] = useState<{ id: string; name: string; location: string | null }[]>([]);
 
     useEffect(() => {
         const timer = setInterval(() => setCurrentTime(new Date()), 1000);
@@ -189,8 +193,13 @@ export default function CheckInPage() {
     useEffect(() => {
         const fetchSettings = async () => {
             try {
-                const res = await api.get('/api/settings');
-                setPhotoEnabled(res.data.checkinPhotoEnabled || false);
+                const [settingsRes, canteensRes] = await Promise.all([
+                    api.get('/api/settings'),
+                    api.get('/api/canteens')
+                ]);
+                setPhotoEnabled(settingsRes.data.checkinPhotoEnabled || false);
+                setEnforceCanteenCheckin(settingsRes.data.enforceCanteenCheckin || false);
+                setCanteens(canteensRes.data.canteens || []);
             } catch (error) {
                 console.error('Failed to load settings:', error);
             }
@@ -226,6 +235,12 @@ export default function CheckInPage() {
             return;
         }
 
+        // Validate canteen selection if enforcement is enabled
+        if (enforceCanteenCheckin && !selectedCanteenId) {
+            toast.error('Pilih kantin terlebih dahulu');
+            return;
+        }
+
         setIsProcessing(true);
         setLastError(null);
 
@@ -235,6 +250,9 @@ export default function CheckInPage() {
 
             if (method === 'qr') {
                 formData.append('qrCode', searchInput.trim());
+                if (selectedCanteenId) {
+                    formData.append('operatorCanteenId', selectedCanteenId);
+                }
                 if (photoData || capturedPhoto) {
                     const blob = await (await fetch(photoData || capturedPhoto!)).blob();
                     formData.append('photo', blob, 'checkin.webp');
@@ -249,8 +267,8 @@ export default function CheckInPage() {
                 const isId = /^[A-Z0-9]+$/i.test(searchValue);
 
                 const payload = isId
-                    ? { externalId: searchValue, nik: isNumeric ? searchValue : undefined }
-                    : { name: searchValue };
+                    ? { externalId: searchValue, nik: isNumeric ? searchValue : undefined, operatorCanteenId: selectedCanteenId || undefined }
+                    : { name: searchValue, operatorCanteenId: selectedCanteenId || undefined };
                 res = await api.post('/api/orders/checkin/manual', payload);
             }
 
@@ -333,6 +351,39 @@ export default function CheckInPage() {
                 </div>
                 <span className="text-sm text-white/40">{connectedClients} terhubung</span>
             </div>
+
+            {/* Canteen Selection - Only show when enforcement is enabled */}
+            {enforceCanteenCheckin && (
+                <div className="card border-primary-500/30 bg-gradient-to-r from-primary-500/10 to-transparent">
+                    <div className="flex items-center gap-4">
+                        <div className="w-12 h-12 rounded-xl bg-primary-500/20 flex items-center justify-center">
+                            <MapPin className="w-6 h-6 text-primary-400" />
+                        </div>
+                        <div className="flex-1">
+                            <label className="block text-sm font-medium text-white/70 mb-1">
+                                Pos Check-in Saat Ini
+                            </label>
+                            <select
+                                value={selectedCanteenId}
+                                onChange={(e) => setSelectedCanteenId(e.target.value)}
+                                className="input-field w-full bg-dark-800"
+                            >
+                                <option value="">-- Pilih Kantin --</option>
+                                {canteens.map(c => (
+                                    <option key={c.id} value={c.id}>
+                                        {c.name}{c.location ? ` (${c.location})` : ''}
+                                    </option>
+                                ))}
+                            </select>
+                        </div>
+                    </div>
+                    {!selectedCanteenId && (
+                        <p className="text-xs text-warning mt-2">
+                            ⚠️ Pilih kantin untuk memvalidasi lokasi check-in
+                        </p>
+                    )}
+                </div>
+            )}
 
             <div className="grid grid-cols-4 gap-4">
                 <div className="stat-card text-center">

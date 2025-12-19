@@ -665,6 +665,24 @@ router.post('/checkin/qr', authMiddleware, canteenMiddleware, upload.single('pho
             return res.status(400).json({ error: 'Pesanan sudah dibatalkan' });
         }
 
+        // Canteen check-in enforcement validation
+        const { operatorCanteenId } = req.body;
+        const settings = await prisma.settings.findUnique({ where: { id: 'default' } });
+        if (settings?.enforceCanteenCheckin && operatorCanteenId) {
+            if (order.canteenId && order.canteenId !== operatorCanteenId) {
+                const orderCanteen = await prisma.canteen.findUnique({
+                    where: { id: order.canteenId },
+                    select: { id: true, name: true }
+                });
+                return res.status(403).json({
+                    error: 'Lokasi kantin tidak sesuai',
+                    message: `Pesanan ini untuk "${orderCanteen?.name || 'kantin lain'}". Silakan arahkan ke kantin yang benar.`,
+                    orderCanteen: orderCanteen?.name,
+                    orderCanteenId: orderCanteen?.id
+                });
+            }
+        }
+
         // Validate order date and shift time window
         const now = getNow();
         const orderDate = new Date(order.orderDate);
@@ -882,6 +900,24 @@ router.post('/checkin/manual', authMiddleware, canteenMiddleware, async (req: Au
         if (!order) {
             console.log(`[Manual Check-in] No active order found for user ${user.externalId}`);
             return res.status(404).json({ error: 'Tidak ada pesanan aktif untuk pengguna ini hari ini' });
+        }
+
+        // Canteen check-in enforcement validation
+        const { operatorCanteenId } = req.body;
+        const settings = await prisma.settings.findUnique({ where: { id: 'default' } });
+        if (settings?.enforceCanteenCheckin && operatorCanteenId) {
+            if (order.canteenId && order.canteenId !== operatorCanteenId) {
+                const orderCanteen = await prisma.canteen.findUnique({
+                    where: { id: order.canteenId },
+                    select: { id: true, name: true }
+                });
+                return res.status(403).json({
+                    error: 'Lokasi kantin tidak sesuai',
+                    message: `Pesanan ini untuk "${orderCanteen?.name || 'kantin lain'}". Silakan arahkan ke kantin yang benar.`,
+                    orderCanteen: orderCanteen?.name,
+                    orderCanteenId: orderCanteen?.id
+                });
+            }
         }
 
         // Validate order date and shift time window (now is already defined above)

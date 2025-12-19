@@ -67,6 +67,7 @@ router.put('/', authMiddleware, adminMiddleware, async (req: AuthRequest, res: R
             maxWeeksAhead,
             blacklistStrikes,
             blacklistDuration,
+            enforceCanteenCheckin,
         } = req.body;
 
         // Validate per-shift mode values
@@ -117,6 +118,7 @@ router.put('/', authMiddleware, adminMiddleware, async (req: AuthRequest, res: R
                 ...(maxWeeksAhead !== undefined && { maxWeeksAhead }),
                 ...(blacklistStrikes !== undefined && { blacklistStrikes }),
                 ...(blacklistDuration !== undefined && { blacklistDuration }),
+                ...(enforceCanteenCheckin !== undefined && { enforceCanteenCheckin }),
             },
             create: {
                 id: 'default',
