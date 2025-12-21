@@ -24,7 +24,11 @@ export const authMiddleware = (req: AuthRequest, res: Response, next: NextFuncti
         if (!token) {
             return res.status(401).json({ error: 'No token provided' });
         }
-        const secret = process.env.JWT_SECRET || 'default-secret';
+        const secret = process.env.JWT_SECRET;
+        if (!secret) {
+            console.error('CRITICAL: JWT_SECRET environment variable is not set!');
+            return res.status(500).json({ error: 'Server configuration error' });
+        }
 
         const decoded = jwt.verify(token, secret) as {
             id: string;

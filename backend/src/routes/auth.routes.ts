@@ -102,9 +102,15 @@ router.post('/login', validate(loginSchema), async (req, res) => {
             });
         }
 
+        const jwtSecret = process.env.JWT_SECRET;
+        if (!jwtSecret) {
+            console.error('CRITICAL: JWT_SECRET environment variable is not set!');
+            return res.status(500).json({ error: 'Server configuration error' });
+        }
+
         const token = jwt.sign(
             { id: user.id, externalId: user.externalId, role: user.role },
-            process.env.JWT_SECRET || 'default-secret',
+            jwtSecret,
             { expiresIn: '8h' }
         );
 
