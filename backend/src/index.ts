@@ -4,7 +4,8 @@ import compression from 'compression';
 import path from 'path';
 import authRoutes from './routes/auth.routes';
 import userRoutes from './routes/user.routes';
-import orderRoutes from './routes/order.routes';
+import orderRoutes from './routes/order';  // Using new modular structure
+import orderLegacyRoutes from './routes/order.routes'; // Keep for stats/export routes
 import shiftRoutes from './routes/shift.routes';
 import blacklistRoutes from './routes/blacklist.routes';
 import settingsRoutes from './routes/settings.routes';
@@ -51,7 +52,8 @@ app.get('/api/health', (req, res) => {
 // API Routes
 app.use('/api/auth', authRoutes);
 app.use('/api/users', userRoutes);
-app.use('/api/orders', orderRoutes);
+app.use('/api/orders', orderRoutes);          // New modular routes
+app.use('/api/orders', orderLegacyRoutes);    // Legacy routes (stats, export)
 app.use('/api/shifts', shiftRoutes);
 app.use('/api/blacklist', blacklistRoutes);
 app.use('/api/settings', settingsRoutes);
