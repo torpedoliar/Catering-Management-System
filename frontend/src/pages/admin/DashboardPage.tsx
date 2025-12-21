@@ -269,8 +269,6 @@ export default function DashboardPage() {
         companyShiftRecap.push({ company, shifts: shiftsObj, total });
     });
 
-    // Get unique shift names for table header
-    const shiftNames = stats?.byShift?.map(s => s.shiftName) || [];
 
     return (
         <div className="space-y-6 animate-fade-in">
@@ -433,8 +431,8 @@ export default function DashboardPage() {
                 />
             </div>
 
-            {/* Main Grid - Row 1 */}
-            <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+            {/* Main Grid - Row 1: Shift Performance (Full Width) */}
+            <div className="grid grid-cols-1 gap-6">
                 {/* Shift Performance with Donut Charts */}
                 <div className="card">
                     <div className="flex items-center gap-3 mb-6">
@@ -443,7 +441,7 @@ export default function DashboardPage() {
                         </div>
                         <h2 className="text-lg font-bold text-white">Pengambilan Makan per Shift</h2>
                     </div>
-                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                    <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
                         {stats?.byShift?.map((shift) => {
                             // Use allFilteredOrders for accurate count (not todayOrders which is limited to 10)
                             const shiftOrders = allFilteredOrders.filter(o => o.shift.name === shift.shiftName && o.status !== 'CANCELLED');
@@ -501,15 +499,16 @@ export default function DashboardPage() {
                             );
                         })}
                         {(!stats?.byShift || stats.byShift.length === 0) && (
-                            <div className="col-span-2">
+                            <div className="col-span-full">
                                 <p className="text-white/40 text-center py-8">Belum ada order hari ini</p>
                             </div>
                         )}
                     </div>
                 </div>
+            </div>
 
-
-
+            {/* Main Grid - Row 2: Canteen + Department + Users At Risk */}
+            <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
                 {/* Canteen Stats */}
                 <div className="card">
                     <div className="flex items-center gap-3 mb-6">
@@ -550,7 +549,7 @@ export default function DashboardPage() {
                         </div>
                         <h2 className="text-lg font-bold text-white">Rekap per Departemen</h2>
                     </div>
-                    <div className="space-y-2 max-h-[400px] overflow-y-auto">
+                    <div className="space-y-2 max-h-[350px] overflow-y-auto">
                         {stats?.byDepartment && stats.byDepartment.length > 0 ? (
                             stats.byDepartment.map((dept) => (
                                 <div key={dept.name} className="rounded-xl bg-white/5 border border-white/5 overflow-hidden">
@@ -599,51 +598,8 @@ export default function DashboardPage() {
                         )}
                     </div>
                 </div>
-            </div>
 
-            {/* Main Grid - Row 2 */}
-            <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-                {/* Company-Shift Recap */}
-                <div className="card lg:col-span-2">
-                    <div className="flex items-center gap-3 mb-6">
-                        <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-info to-accent-cyan flex items-center justify-center">
-                            <Building2 className="w-5 h-5 text-white" />
-                        </div>
-                        <h2 className="text-lg font-bold text-white">Rekap per Perusahaan</h2>
-                    </div>
-                    {companyShiftRecap.length > 0 ? (
-                        <div className="overflow-x-auto">
-                            <table className="w-full text-sm">
-                                <thead>
-                                    <tr className="border-b border-white/10">
-                                        <th className="text-left py-3 px-2 text-white/50 font-medium">Perusahaan</th>
-                                        {shiftNames.map(name => (
-                                            <th key={name} className="text-center py-3 px-2 text-white/50 font-medium">{name}</th>
-                                        ))}
-                                        <th className="text-center py-3 px-2 text-white/50 font-medium">Total</th>
-                                    </tr>
-                                </thead>
-                                <tbody>
-                                    {companyShiftRecap.map((row) => (
-                                        <tr key={row.company} className="border-b border-white/5 hover:bg-white/5 transition-colors">
-                                            <td className="py-3 px-2 font-medium text-white">{row.company}</td>
-                                            {shiftNames.map(name => (
-                                                <td key={name} className="text-center py-3 px-2 text-white/70">
-                                                    {row.shifts[name] || 0}
-                                                </td>
-                                            ))}
-                                            <td className="text-center py-3 px-2 font-bold text-primary-400">{row.total}</td>
-                                        </tr>
-                                    ))}
-                                </tbody>
-                            </table>
-                        </div>
-                    ) : (
-                        <p className="text-white/40 text-center py-8">Belum ada data</p>
-                    )}
-                </div>
-
-                {/* Users at Risk & Recent Orders */}
+                {/* Users at Risk & Recent Orders - Combined */}
                 <div className="space-y-6">
                     {stats?.usersAtRisk && stats.usersAtRisk.length > 0 && (
                         <div className="card border-warning/30">
@@ -656,7 +612,7 @@ export default function DashboardPage() {
                                     <p className="text-xs text-white/40">{stats.blacklistStrikes - 1} dari {stats.blacklistStrikes} strike</p>
                                 </div>
                             </div>
-                            <div className="space-y-2 max-h-[200px] overflow-y-auto">
+                            <div className="space-y-2 max-h-[160px] overflow-y-auto">
                                 {stats.usersAtRisk.map((user) => (
                                     <div key={user.id} className="flex items-center justify-between p-3 rounded-xl bg-warning/10 border border-warning/20">
                                         <div>
@@ -697,7 +653,47 @@ export default function DashboardPage() {
                 </div>
             </div>
 
-            {/* Row 3 - No Show Users */}
+            {/* Row 3 - Company-Shift Recap (Full Width) */}
+            <div className="card">
+                <div className="flex items-center gap-3 mb-6">
+                    <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-info to-accent-cyan flex items-center justify-center">
+                        <Building2 className="w-5 h-5 text-white" />
+                    </div>
+                    <h2 className="text-lg font-bold text-white">Rekap per Perusahaan</h2>
+                </div>
+                {companyShiftRecap.length > 0 ? (
+                    <div className="overflow-x-auto">
+                        <table className="w-full text-sm">
+                            <thead>
+                                <tr className="border-b border-white/10">
+                                    <th className="text-left py-3 px-2 text-white/50 font-medium">Perusahaan</th>
+                                    {stats?.byShift?.map(s => (
+                                        <th key={s.shiftName} className="text-center py-3 px-2 text-white/50 font-medium">{s.shiftName}</th>
+                                    ))}
+                                    <th className="text-center py-3 px-2 text-white/50 font-medium">Total</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                {companyShiftRecap.map((row) => (
+                                    <tr key={row.company} className="border-b border-white/5 hover:bg-white/5 transition-colors">
+                                        <td className="py-3 px-2 font-medium text-white">{row.company}</td>
+                                        {stats?.byShift?.map(s => (
+                                            <td key={s.shiftName} className="text-center py-3 px-2 text-white/70">
+                                                {row.shifts[s.shiftName] || 0}
+                                            </td>
+                                        ))}
+                                        <td className="text-center py-3 px-2 font-bold text-primary-400">{row.total}</td>
+                                    </tr>
+                                ))}
+                            </tbody>
+                        </table>
+                    </div>
+                ) : (
+                    <p className="text-white/40 text-center py-8">Belum ada data</p>
+                )}
+            </div>
+
+            {/* Row 4 - No Show Users */}
             {
                 ((stats?.noShowUsers?.today && stats.noShowUsers.today.length > 0) ||
                     (stats?.noShowUsers?.yesterday && stats.noShowUsers.yesterday.length > 0)) && (

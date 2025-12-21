@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback, useMemo } from 'react';
+import { useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import { QRCodeSVG } from 'qrcode.react';
 import { useAuth, api } from '../contexts/AuthContext';
 import { useSSE, useSSERefresh, ORDER_EVENTS, USER_EVENTS, HOLIDAY_EVENTS, SHIFT_EVENTS, SETTINGS_EVENTS } from '../contexts/SSEContext';
@@ -85,6 +85,15 @@ export default function OrderPage() {
     const [cancelReason, setCancelReason] = useState('');
     const [isCancelling, setIsCancelling] = useState(false);
 
+    // Use ref to track if canteen has been initialized to prevent infinite loop
+    const canteenInitializedRef = useRef(false);
+    const userPreferredCanteenRef = useRef(user?.preferredCanteenId);
+
+    // Update ref when user changes
+    useEffect(() => {
+        userPreferredCanteenRef.current = user?.preferredCanteenId;
+    }, [user?.preferredCanteenId]);
+
     const loadData = useCallback(async () => {
         try {
             const [shiftsRes, orderRes, settingsRes, canteensRes] = await Promise.all([
@@ -99,10 +108,11 @@ export default function OrderPage() {
             setTodayOrder(orderRes.data.order);
             setMaxOrderDaysAhead(settingsRes.data.maxOrderDaysAhead || 7);
             setCanteens(canteensRes.data.canteens || []);
-            // Auto-select user's preferred canteen if available, otherwise default to first one
-            if (canteensRes.data.canteens?.length > 0 && !selectedCanteen) {
+            // Auto-select user's preferred canteen only on first load
+            if (canteensRes.data.canteens?.length > 0 && !canteenInitializedRef.current) {
+                canteenInitializedRef.current = true;
                 // Check if user has a preferred canteen and it exists in the active canteens list
-                const preferred = canteensRes.data.canteens.find((c: Canteen) => c.id === user?.preferredCanteenId);
+                const preferred = canteensRes.data.canteens.find((c: Canteen) => c.id === userPreferredCanteenRef.current);
 
                 if (preferred) {
                     setSelectedCanteen(preferred.id);
@@ -115,7 +125,16 @@ export default function OrderPage() {
         } finally {
             setIsLoading(false);
         }
-    }, [selectedDate, selectedCanteen, user]);
+    }, [selectedDate]);
+
+    // Use ref for maxOrderDaysAhead to prevent re-renders triggering loadBulkData
+    const maxOrderDaysAheadRef = useRef(maxOrderDaysAhead);
+    useEffect(() => {
+        maxOrderDaysAheadRef.current = maxOrderDaysAhead;
+    }, [maxOrderDaysAhead]);
+
+    // Track if bulk data has been loaded to prevent duplicate calls
+    const bulkDataLoadedRef = useRef(false);
 
     // Load available dates for bulk ordering
     const loadBulkData = useCallback(async () => {
@@ -138,6 +157,7 @@ export default function OrderPage() {
             const shiftsRes = await api.get(`/api/shifts/for-user?date=${formatLocalDate(today)}`);
             const cutoffMode = shiftsRes.data.cutoffMode || 'per-shift';
             const apiOrderableDates = shiftsRes.data.orderableDates || [];
+            const currentMaxDays = maxOrderDaysAheadRef.current;
 
             // Determine which dates to show
             let datesToProcess: string[] = [];
@@ -148,9 +168,9 @@ export default function OrderPage() {
             } else {
                 // Per-shift mode: generate dates based on maxOrderDaysAhead
                 const endDate = new Date(today);
-                endDate.setDate(endDate.getDate() + maxOrderDaysAhead);
+                endDate.setDate(endDate.getDate() + currentMaxDays);
 
-                for (let i = 0; i <= maxOrderDaysAhead; i++) {
+                for (let i = 0; i <= currentMaxDays; i++) {
                     const date = new Date(today);
                     date.setDate(date.getDate() + i);
                     datesToProcess.push(formatLocalDate(date));
@@ -169,11 +189,23 @@ export default function OrderPage() {
                 }
             });
 
+            // Batch fetch shifts for all dates at once - use the first date's shifts as template
+            // since shift configuration is typically the same across dates
+            const firstDateShiftsRes = shiftsRes; // Already fetched above
+
             for (const dateStr of datesToProcess) {
                 const date = new Date(dateStr + 'T00:00:00');
 
-                // Get shifts for this date
-                const dateShiftsRes = await api.get(`/api/shifts/for-user?date=${dateStr}`);
+                // For dates other than today, fetch their specific shifts (holidays may differ)
+                let dateShifts = firstDateShiftsRes.data.shifts;
+                if (dateStr !== formatLocalDate(today)) {
+                    try {
+                        const dateShiftsRes = await api.get(`/api/shifts/for-user?date=${dateStr}`);
+                        dateShifts = dateShiftsRes.data.shifts;
+                    } catch {
+                        // Use first date's shifts as fallback
+                    }
+                }
 
                 // Check if user already has an order for this date
                 const existingOrder = ordersRes.data.orders?.find((o: Order) => {
@@ -187,17 +219,18 @@ export default function OrderPage() {
                     formatted: date.toLocaleDateString('id-ID', { day: 'numeric', month: 'short', year: 'numeric' }),
                     dayName: date.toLocaleDateString('id-ID', { weekday: 'long' }),
                     isToday: dateStr === formatLocalDate(today),
-                    shifts: dateShiftsRes.data.shifts,
+                    shifts: dateShifts,
                     hasOrder: !!existingOrder,
                     existingOrder,
                 });
             }
 
             setAvailableDates(dates);
+            bulkDataLoadedRef.current = true;
         } catch (error) {
             console.error('Failed to load bulk data:', error);
         }
-    }, [isBulkMode, maxOrderDaysAhead]);
+    }, []); // Empty dependency array - only run once on mount and when explicitly called
 
     useEffect(() => {
         loadData();
