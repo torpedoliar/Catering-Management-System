@@ -3,6 +3,7 @@ import { sseManager } from '../controllers/sse.controller';
 import { getNow, getToday, getTomorrow } from './time.service';
 import { createAuditLog } from './audit.service';
 import { prisma } from '../lib/prisma';
+import { isOvernightShift, hasDaytimeShiftEndedToday, isTimeAfter } from '../utils/shift-utils';
 
 interface NoShowResult {
     processedOrders: number;
@@ -18,46 +19,7 @@ function getCurrentTime(): string {
     return `${now.getHours().toString().padStart(2, '0')}:${now.getMinutes().toString().padStart(2, '0')}`;
 }
 
-/**
- * Compare two time strings (HH:mm format)
- * Returns true if time1 is after time2
- */
-function isTimeAfter(time1: string, time2: string): boolean {
-    const [h1, m1] = time1.split(':').map(Number);
-    const [h2, m2] = time2.split(':').map(Number);
-    return h1 > h2 || (h1 === h2 && m1 > m2);
-}
-
-/**
- * Check if a shift is an overnight shift (ends the next day)
- * e.g., 23:00 - 07:00 is overnight because endTime < startTime
- */
-function isOvernightShift(startTime: string, endTime: string): boolean {
-    const [startH, startM] = startTime.split(':').map(Number);
-    const [endH, endM] = endTime.split(':').map(Number);
-    // If end time is before or equal to start time, it's overnight
-    return endH < startH || (endH === startH && endM <= startM);
-}
-
-/**
- * Check if an overnight shift has ended
- * For overnight shifts (e.g., 23:00-07:00):
- * - The shift starts today and ends tomorrow
- * - We should only mark as no-show AFTER the shift ends tomorrow
- * - So on the order date, we should NOT mark as no-show (shift hasn't even started/ended)
- */
-function hasShiftEnded(shift: { startTime: string; endTime: string }, currentTime: string): boolean {
-    const isOvernight = isOvernightShift(shift.startTime, shift.endTime);
-
-    if (isOvernight) {
-        // For overnight shifts, we should NEVER mark as no-show on the same day as orderDate
-        // because the shift ends on the NEXT day
-        return false;
-    }
-
-    // For regular daytime shifts, just check if current time is after end time
-    return isTimeAfter(currentTime, shift.endTime);
-}
+// Note: isTimeAfter, isOvernightShift, and hasDaytimeShiftEndedToday are imported from shift-utils.ts
 
 /**
  * Process all no-show orders for shifts that have ended
@@ -92,7 +54,7 @@ export async function processNoShows(): Promise<NoShowResult> {
         });
 
         // Filter to only daytime shifts that have ended today
-        const daytimeShiftsEnded = allShifts.filter(shift => hasShiftEnded(shift, currentTime));
+        const daytimeShiftsEnded = allShifts.filter(shift => hasDaytimeShiftEndedToday(shift, currentTime));
 
         // Filter overnight shifts that ended today (orders from yesterday)
         const overnightShiftsThatEndedToday = allShifts.filter(shift => {

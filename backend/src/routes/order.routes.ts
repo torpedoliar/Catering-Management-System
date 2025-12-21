@@ -19,6 +19,7 @@ import multer from 'multer';
 import sharp from 'sharp';
 import fs from 'fs';
 import path from 'path';
+import { isOvernightShift } from '../utils/shift-utils';
 
 const router = Router();
 
@@ -361,6 +362,74 @@ router.post('/bulk', authMiddleware, blacklistMiddleware, apiRateLimitMiddleware
         const successOrders: BulkOrderSuccess[] = [];
         const failedOrders: BulkOrderFailure[] = [];
 
+        // ========== BATCH PRE-FETCH DATA (N+1 Query Optimization) ==========
+
+        // Helper to parse date safely
+        const parseDateSafe = (dateStr: string): Date | null => {
+            const parts = dateStr.split('-');
+            if (parts.length === 3) {
+                const d = new Date(+parts[0], +parts[1] - 1, +parts[2], 0, 0, 0, 0);
+                return isNaN(d.getTime()) ? null : d;
+            }
+            const d = new Date(dateStr);
+            return isNaN(d.getTime()) ? null : d;
+        };
+
+        // Parse all dates and collect all shiftIds
+        const allParsedDates = orderRequests
+            .map((o: { date: string; shiftId: string }) => ({ ...o, parsed: parseDateSafe(o.date) }))
+            .filter(o => o.parsed !== null);
+
+        const allDates = allParsedDates.map(o => o.parsed as Date);
+        const allShiftIds = [...new Set(orderRequests.map((o: { shiftId: string }) => o.shiftId))];
+
+        // Calculate date range for batch queries
+        const minDate = allDates.length > 0
+            ? new Date(Math.min(...allDates.map(d => d.getTime())))
+            : today;
+        const maxDateForQuery = allDates.length > 0
+            ? new Date(Math.max(...allDates.map(d => d.getTime())))
+            : today;
+        maxDateForQuery.setDate(maxDateForQuery.getDate() + 1); // For lt comparison
+
+        // Batch 1: Fetch existing orders for this user in date range
+        const existingOrders = await prisma.order.findMany({
+            where: {
+                userId,
+                orderDate: { gte: minDate, lt: maxDateForQuery },
+                status: { not: 'CANCELLED' },
+            },
+            select: { orderDate: true }
+        });
+        const existingDatesSet = new Set(
+            existingOrders.map(o => o.orderDate.toISOString().split('T')[0])
+        );
+
+        // Batch 2: Fetch all holidays in date range
+        const holidays = await prisma.holiday.findMany({
+            where: {
+                date: { gte: minDate, lt: maxDateForQuery },
+                isActive: true,
+            },
+            include: { shift: true }
+        });
+        // Create map: dateStr -> holiday[]
+        const holidayMap = new Map<string, typeof holidays>();
+        holidays.forEach(h => {
+            const key = h.date.toISOString().split('T')[0];
+            if (!holidayMap.has(key)) holidayMap.set(key, []);
+            holidayMap.get(key)!.push(h);
+        });
+
+        // Batch 3: Fetch all needed shifts
+        const shifts = await prisma.shift.findMany({
+            where: { id: { in: allShiftIds } }
+        });
+        const shiftMap = new Map(shifts.map(s => [s.id, s]));
+
+        // ========== END BATCH PRE-FETCH ==========
+
+
         for (const orderReq of orderRequests) {
             const { date: orderDateParam, shiftId } = orderReq;
 
@@ -436,19 +505,10 @@ router.post('/bulk', authMiddleware, blacklistMiddleware, apiRateLimitMiddleware
                 }
             }
 
-            // Check existing order for this date
-            const nextDay = new Date(orderDate);
-            nextDay.setDate(nextDay.getDate() + 1);
+            // Check existing order for this date (using cached data)
+            const dateStr = orderDate.toISOString().split('T')[0];
 
-            const existingOrder = await prisma.order.findFirst({
-                where: {
-                    userId,
-                    orderDate: { gte: orderDate, lt: nextDay },
-                    status: { not: 'CANCELLED' },
-                },
-            });
-
-            if (existingOrder) {
+            if (existingDatesSet.has(dateStr)) {
                 failedOrders.push({
                     date: orderDateParam,
                     shiftId,
@@ -457,31 +517,14 @@ router.post('/bulk', authMiddleware, blacklistMiddleware, apiRateLimitMiddleware
                 continue;
             }
 
-            // Check holiday
-            const holidayDateStart = new Date(orderDate);
-            holidayDateStart.setHours(0, 0, 0, 0);
-            const holidayDateEnd = new Date(orderDate);
-            holidayDateEnd.setHours(23, 59, 59, 999);
+            // Check holiday (using cached data)
+            const dayHolidays = holidayMap.get(dateStr) || [];
+            const matchedHoliday = dayHolidays.find(h => !h.shiftId || h.shiftId === shiftId);
 
-            const holiday = await prisma.holiday.findFirst({
-                where: {
-                    date: {
-                        gte: holidayDateStart,
-                        lte: holidayDateEnd
-                    },
-                    isActive: true,
-                    OR: [
-                        { shiftId: null },
-                        { shiftId: shiftId }
-                    ]
-                },
-                include: { shift: true }
-            });
-
-            if (holiday) {
-                const message = holiday.shiftId
-                    ? `Libur ${holiday.shift?.name}: ${holiday.name}`
-                    : `Hari libur: ${holiday.name}`;
+            if (matchedHoliday) {
+                const message = matchedHoliday.shiftId
+                    ? `Libur ${matchedHoliday.shift?.name}: ${matchedHoliday.name}`
+                    : `Hari libur: ${matchedHoliday.name}`;
                 failedOrders.push({
                     date: orderDateParam,
                     shiftId,
@@ -490,8 +533,8 @@ router.post('/bulk', authMiddleware, blacklistMiddleware, apiRateLimitMiddleware
                 continue;
             }
 
-            // Get and validate shift
-            const shift = await prisma.shift.findUnique({ where: { id: shiftId } });
+            // Get and validate shift (using cached data)
+            const shift = shiftMap.get(shiftId);
             if (!shift) {
                 failedOrders.push({
                     date: orderDateParam,
@@ -875,11 +918,9 @@ router.post('/checkin/manual', authMiddleware, canteenMiddleware, async (req: Au
 
         // First priority: check if yesterday's overnight shift order is valid (still in progress)
         if (yesterdayOrder) {
-            const [startHour] = yesterdayOrder.shift.startTime.split(':').map(Number);
-            const [endHour, endMinute] = yesterdayOrder.shift.endTime.split(':').map(Number);
-            const isOvernightShift = endHour < startHour || (endHour === startHour && endMinute === 0);
+            const isOvernight = isOvernightShift(yesterdayOrder.shift.startTime, yesterdayOrder.shift.endTime);
 
-            if (isOvernightShift && isOrderValidForCheckin(yesterdayOrder)) {
+            if (isOvernight && isOrderValidForCheckin(yesterdayOrder)) {
                 console.log(`[Manual Check-in] Using yesterday's overnight shift order: ${yesterdayOrder.id}`);
                 order = yesterdayOrder;
             }
