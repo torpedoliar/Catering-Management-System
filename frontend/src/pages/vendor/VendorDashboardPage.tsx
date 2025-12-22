@@ -207,7 +207,7 @@ export default function VendorDashboardPage() {
             {/* Header */}
             <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
                 <div>
-                    <h1 className="text-2xl font-bold text-slate-800">Rekap Mingguan</h1>
+                    <h1 className="text-2xl font-bold text-slate-800">Rekap Order Makanan</h1>
                     <p className="text-slate-500">Data order makanan per minggu</p>
                 </div>
 

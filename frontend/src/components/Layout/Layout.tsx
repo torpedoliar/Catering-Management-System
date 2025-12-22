@@ -88,7 +88,7 @@ export default function Layout({ children }: LayoutProps) {
     ];
 
     const vendorLinks = [
-        { path: '/vendor', icon: FileSpreadsheet, label: 'Rekap Mingguan' },
+        { path: '/vendor', icon: FileSpreadsheet, label: 'Rekap Order Makanan' },
     ];
 
     // Icon color mapping - glassmorphism style for dark theme
