@@ -6,39 +6,50 @@ import { getNow } from '../services/time.service';
 const router = Router();
 
 /**
- * Get the ISO week number for a date
+ * Get the US week number for a date (Sunday = first day of week)
+ * Week 1 is the week containing Jan 1st
  */
 function getWeekNumber(date: Date): number {
-    const d = new Date(Date.UTC(date.getFullYear(), date.getMonth(), date.getDate()));
-    const dayNum = d.getUTCDay() || 7;
-    d.setUTCDate(d.getUTCDate() + 4 - dayNum);
-    const yearStart = new Date(Date.UTC(d.getUTCFullYear(), 0, 1));
-    return Math.ceil((((d.getTime() - yearStart.getTime()) / 86400000) + 1) / 7);
+    const d = new Date(date.getFullYear(), date.getMonth(), date.getDate());
+
+    // Get Jan 1st of the same year
+    const jan1 = new Date(d.getFullYear(), 0, 1);
+
+    // Get the Sunday of the week containing Jan 1st
+    const jan1Day = jan1.getDay(); // 0=Sunday
+    const week1Start = new Date(jan1);
+    week1Start.setDate(jan1.getDate() - jan1Day);
+
+    // Calculate the difference in days
+    const diffDays = Math.floor((d.getTime() - week1Start.getTime()) / 86400000);
+
+    // Calculate week number (1-based)
+    return Math.floor(diffDays / 7) + 1;
 }
 
 /**
- * Get start and end dates for a specific week of a year
+ * Get start and end dates for a specific week of a year (US: Sunday to Saturday)
  */
 function getWeekDates(week: number, year: number): { start: Date; end: Date; dates: Date[] } {
-    // Find Jan 4th (always in week 1 per ISO)
-    const jan4 = new Date(year, 0, 4);
-    const jan4Day = jan4.getDay() || 7; // Sunday = 7
+    // Get Jan 1st
+    const jan1 = new Date(year, 0, 1);
+    const jan1Day = jan1.getDay(); // 0=Sunday
 
-    // Find Monday of week 1
-    const week1Monday = new Date(jan4);
-    week1Monday.setDate(jan4.getDate() - jan4Day + 1);
-
-    // Calculate Monday of the requested week
-    const start = new Date(week1Monday);
-    start.setDate(week1Monday.getDate() + (week - 1) * 7);
-    start.setHours(0, 0, 0, 0);
+    // Find Sunday of week 1 (the week containing Jan 1st)
+    const week1Sunday = new Date(jan1);
+    week1Sunday.setDate(jan1.getDate() - jan1Day);
 
     // Calculate Sunday of the requested week
+    const start = new Date(week1Sunday);
+    start.setDate(week1Sunday.getDate() + (week - 1) * 7);
+    start.setHours(0, 0, 0, 0);
+
+    // Calculate Saturday of the requested week
     const end = new Date(start);
     end.setDate(start.getDate() + 6);
     end.setHours(23, 59, 59, 999);
 
-    // Generate all 7 dates
+    // Generate all 7 dates (Sunday to Saturday)
     const dates: Date[] = [];
     for (let i = 0; i < 7; i++) {
         const d = new Date(start);
