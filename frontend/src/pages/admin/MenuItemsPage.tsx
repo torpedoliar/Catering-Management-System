@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react';
 import { Plus, Edit2, Trash2, Pizza, Store, Image, Check, X, Filter } from 'lucide-react';
-import { useAuth } from '../../contexts/AuthContext';
+import { api } from '../../contexts/AuthContext';
+import toast from 'react-hot-toast';
 
 interface Vendor {
     id: string;
@@ -20,7 +21,6 @@ interface MenuItem {
 }
 
 export default function MenuItemsPage() {
-    const { token } = useAuth();
     const [menuItems, setMenuItems] = useState<MenuItem[]>([]);
     const [vendors, setVendors] = useState<Vendor[]>([]);
     const [loading, setLoading] = useState(true);
@@ -32,8 +32,6 @@ export default function MenuItemsPage() {
     const [filterVendor, setFilterVendor] = useState('');
     const [filterCategory, setFilterCategory] = useState('');
 
-    const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:3012';
-
     const categories = ['Nasi', 'Mie', 'Lauk', 'Sayur', 'Buah', 'Minuman', 'Snack', 'Lainnya'];
 
     useEffect(() => {
@@ -43,18 +41,14 @@ export default function MenuItemsPage() {
     const loadData = async () => {
         try {
             const [menuRes, vendorRes] = await Promise.all([
-                fetch(`${API_URL}/api/menu-items?includeInactive=true`, {
-                    headers: { Authorization: `Bearer ${token}` }
-                }),
-                fetch(`${API_URL}/api/vendors`, {
-                    headers: { Authorization: `Bearer ${token}` }
-                })
+                api.get('/api/menu-items?includeInactive=true'),
+                api.get('/api/vendors')
             ]);
-
-            if (menuRes.ok) setMenuItems(await menuRes.json());
-            if (vendorRes.ok) setVendors(await vendorRes.json());
+            setMenuItems(menuRes.data || []);
+            setVendors(vendorRes.data || []);
         } catch (error) {
             console.error('Load data error:', error);
+            toast.error('Gagal memuat data');
         } finally {
             setLoading(false);
         }
@@ -90,23 +84,18 @@ export default function MenuItemsPage() {
             form.append('vendorId', formData.vendorId);
             if (imageFile) form.append('image', imageFile);
 
-            const url = editingItem ? `${API_URL}/api/menu-items/${editingItem.id}` : `${API_URL}/api/menu-items`;
-            const res = await fetch(url, {
-                method: editingItem ? 'PUT' : 'POST',
-                headers: { Authorization: `Bearer ${token}` },
-                body: form
-            });
-
-            if (res.ok) {
-                setShowModal(false);
-                loadData();
+            if (editingItem) {
+                await api.put(`/api/menu-items/${editingItem.id}`, form);
             } else {
-                const data = await res.json();
-                alert(data.error || 'Failed to save menu item');
+                await api.post('/api/menu-items', form);
             }
-        } catch (error) {
+
+            setShowModal(false);
+            toast.success(editingItem ? 'Menu berhasil diperbarui' : 'Menu berhasil dibuat');
+            loadData();
+        } catch (error: any) {
             console.error('Save menu item error:', error);
-            alert('Failed to save menu item');
+            toast.error(error.response?.data?.error || 'Gagal menyimpan menu');
         } finally {
             setSaving(false);
         }
@@ -117,14 +106,12 @@ export default function MenuItemsPage() {
             const form = new FormData();
             form.append('isActive', (!item.isActive).toString());
 
-            await fetch(`${API_URL}/api/menu-items/${item.id}`, {
-                method: 'PUT',
-                headers: { Authorization: `Bearer ${token}` },
-                body: form
-            });
+            await api.put(`/api/menu-items/${item.id}`, form);
+            toast.success(item.isActive ? 'Menu dinonaktifkan' : 'Menu diaktifkan');
             loadData();
         } catch (error) {
             console.error('Toggle active error:', error);
+            toast.error('Gagal mengubah status');
         }
     };
 
@@ -132,19 +119,12 @@ export default function MenuItemsPage() {
         if (!confirm(`Hapus menu "${item.name}"?`)) return;
 
         try {
-            const res = await fetch(`${API_URL}/api/menu-items/${item.id}`, {
-                method: 'DELETE',
-                headers: { Authorization: `Bearer ${token}` }
-            });
-
-            if (res.ok) {
-                loadData();
-            } else {
-                const data = await res.json();
-                alert(data.error || 'Failed to delete menu item');
-            }
-        } catch (error) {
+            await api.delete(`/api/menu-items/${item.id}`);
+            toast.success('Menu berhasil dihapus');
+            loadData();
+        } catch (error: any) {
             console.error('Delete menu item error:', error);
+            toast.error(error.response?.data?.error || 'Gagal menghapus menu');
         }
     };
 
@@ -209,7 +189,7 @@ export default function MenuItemsPage() {
                     <div key={item.id} className={`card overflow-hidden ${!item.isActive ? 'opacity-60' : ''}`}>
                         <div className="h-40 bg-slate-100 flex items-center justify-center">
                             {item.imageUrl ? (
-                                <img src={`${API_URL}${item.imageUrl}`} alt={item.name} className="w-full h-full object-cover" />
+                                <img src={item.imageUrl} alt={item.name} className="w-full h-full object-cover" />
                             ) : (
                                 <Pizza className="w-12 h-12 text-slate-300" />
                             )}

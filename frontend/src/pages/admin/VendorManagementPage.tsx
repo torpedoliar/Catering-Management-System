@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react';
 import { Plus, Edit2, Trash2, Store, Phone, Check, X, Image } from 'lucide-react';
-import { useAuth } from '../../contexts/AuthContext';
+import { api } from '../../contexts/AuthContext';
+import toast from 'react-hot-toast';
 
 interface Vendor {
     id: string;
@@ -13,7 +14,6 @@ interface Vendor {
 }
 
 export default function VendorManagementPage() {
-    const { token } = useAuth();
     const [vendors, setVendors] = useState<Vendor[]>([]);
     const [loading, setLoading] = useState(true);
     const [showModal, setShowModal] = useState(false);
@@ -22,22 +22,17 @@ export default function VendorManagementPage() {
     const [logoFile, setLogoFile] = useState<File | null>(null);
     const [saving, setSaving] = useState(false);
 
-    const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:3012';
-
     useEffect(() => {
         loadVendors();
     }, []);
 
     const loadVendors = async () => {
         try {
-            const res = await fetch(`${API_URL}/api/vendors?includeInactive=true`, {
-                headers: { Authorization: `Bearer ${token}` }
-            });
-            if (res.ok) {
-                setVendors(await res.json());
-            }
+            const res = await api.get('/api/vendors?includeInactive=true');
+            setVendors(res.data || []);
         } catch (error) {
             console.error('Load vendors error:', error);
+            toast.error('Gagal memuat data vendor');
         } finally {
             setLoading(false);
         }
@@ -71,25 +66,18 @@ export default function VendorManagementPage() {
             form.append('contact', formData.contact.trim());
             if (logoFile) form.append('logo', logoFile);
 
-            const url = editingVendor ? `${API_URL}/api/vendors/${editingVendor.id}` : `${API_URL}/api/vendors`;
-            const method = editingVendor ? 'PUT' : 'POST';
-
-            const res = await fetch(url, {
-                method,
-                headers: { Authorization: `Bearer ${token}` },
-                body: form
-            });
-
-            if (res.ok) {
-                setShowModal(false);
-                loadVendors();
+            if (editingVendor) {
+                await api.put(`/api/vendors/${editingVendor.id}`, form);
             } else {
-                const data = await res.json();
-                alert(data.error || 'Failed to save vendor');
+                await api.post('/api/vendors', form);
             }
-        } catch (error) {
+
+            setShowModal(false);
+            toast.success(editingVendor ? 'Vendor berhasil diperbarui' : 'Vendor berhasil dibuat');
+            loadVendors();
+        } catch (error: any) {
             console.error('Save vendor error:', error);
-            alert('Failed to save vendor');
+            toast.error(error.response?.data?.error || 'Gagal menyimpan vendor');
         } finally {
             setSaving(false);
         }
@@ -100,14 +88,12 @@ export default function VendorManagementPage() {
             const form = new FormData();
             form.append('isActive', (!vendor.isActive).toString());
 
-            await fetch(`${API_URL}/api/vendors/${vendor.id}`, {
-                method: 'PUT',
-                headers: { Authorization: `Bearer ${token}` },
-                body: form
-            });
+            await api.put(`/api/vendors/${vendor.id}`, form);
+            toast.success(vendor.isActive ? 'Vendor dinonaktifkan' : 'Vendor diaktifkan');
             loadVendors();
         } catch (error) {
             console.error('Toggle active error:', error);
+            toast.error('Gagal mengubah status vendor');
         }
     };
 
@@ -115,19 +101,12 @@ export default function VendorManagementPage() {
         if (!confirm(`Hapus vendor "${vendor.name}"?`)) return;
 
         try {
-            const res = await fetch(`${API_URL}/api/vendors/${vendor.id}`, {
-                method: 'DELETE',
-                headers: { Authorization: `Bearer ${token}` }
-            });
-
-            if (res.ok) {
-                loadVendors();
-            } else {
-                const data = await res.json();
-                alert(data.error || 'Failed to delete vendor');
-            }
-        } catch (error) {
+            await api.delete(`/api/vendors/${vendor.id}`);
+            toast.success('Vendor berhasil dihapus');
+            loadVendors();
+        } catch (error: any) {
             console.error('Delete vendor error:', error);
+            toast.error(error.response?.data?.error || 'Gagal menghapus vendor');
         }
     };
 
@@ -160,7 +139,7 @@ export default function VendorManagementPage() {
                         <div className="flex items-start gap-4">
                             <div className="w-16 h-16 rounded-xl bg-slate-100 flex items-center justify-center overflow-hidden flex-shrink-0">
                                 {vendor.logoUrl ? (
-                                    <img src={`${API_URL}${vendor.logoUrl}`} alt={vendor.name} className="w-full h-full object-cover" />
+                                    <img src={vendor.logoUrl} alt={vendor.name} className="w-full h-full object-cover" />
                                 ) : (
                                     <Store className="w-8 h-8 text-slate-400" />
                                 )}

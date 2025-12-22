@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react';
 import { ChevronLeft, ChevronRight, Calendar, Store, Pizza, UtensilsCrossed } from 'lucide-react';
-import { useAuth } from '../contexts/AuthContext';
+import { api } from '../contexts/AuthContext';
 
 interface Vendor {
     id: string;
@@ -41,12 +41,9 @@ interface Shift {
 }
 
 export default function FoodMenuPage() {
-    const { token } = useAuth();
     const [weekData, setWeekData] = useState<{ week: number; year: number; weekStart: string; weekEnd: string; shifts: Shift[]; dailyMenus: DailyMenuData[] } | null>(null);
     const [loading, setLoading] = useState(true);
     const [selectedWeek, setSelectedWeek] = useState<{ week: number; year: number } | null>(null);
-
-    const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:3012';
 
     useEffect(() => {
         loadData();
@@ -56,15 +53,12 @@ export default function FoodMenuPage() {
         setLoading(true);
         try {
             const weekParam = selectedWeek ? `?week=${selectedWeek.week}&year=${selectedWeek.year}` : '';
-            const res = await fetch(`${API_URL}/api/weekly-menu${weekParam}`, {
-                headers: { Authorization: `Bearer ${token}` }
-            });
+            const res = await api.get(`/api/weekly-menu${weekParam}`);
 
-            if (res.ok) {
-                const data = await res.json();
-                setWeekData(data);
+            if (res.data) {
+                setWeekData(res.data);
                 if (!selectedWeek) {
-                    setSelectedWeek({ week: data.week, year: data.year });
+                    setSelectedWeek({ week: res.data.week, year: res.data.year });
                 }
             }
         } catch (error) {
@@ -172,7 +166,7 @@ export default function FoodMenuPage() {
                                             <div key={menu.id} className="flex gap-4 p-3 bg-slate-50 rounded-xl">
                                                 {menu.menuItem.imageUrl ? (
                                                     <img
-                                                        src={`${API_URL}${menu.menuItem.imageUrl}`}
+                                                        src={menu.menuItem.imageUrl}
                                                         alt={menu.menuItem.name}
                                                         className="w-24 h-24 object-cover rounded-lg flex-shrink-0"
                                                     />
@@ -194,7 +188,7 @@ export default function FoodMenuPage() {
                                                     <div className="flex items-center gap-2 mt-2">
                                                         {menu.menuItem.vendor.logoUrl ? (
                                                             <img
-                                                                src={`${API_URL}${menu.menuItem.vendor.logoUrl}`}
+                                                                src={menu.menuItem.vendor.logoUrl}
                                                                 alt={menu.menuItem.vendor.name}
                                                                 className="w-5 h-5 rounded object-cover"
                                                             />

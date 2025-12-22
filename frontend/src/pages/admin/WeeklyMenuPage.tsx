@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react';
-import { ChevronLeft, ChevronRight, Copy, Trash2, Pizza, Store, Calendar } from 'lucide-react';
-import { useAuth } from '../../contexts/AuthContext';
+import { ChevronLeft, ChevronRight, Copy, Trash2, Pizza, Store } from 'lucide-react';
+import { api } from '../../contexts/AuthContext';
+import toast from 'react-hot-toast';
 
 interface Vendor {
     id: string;
@@ -41,7 +42,6 @@ interface Shift {
 }
 
 export default function WeeklyMenuPage() {
-    const { token } = useAuth();
     const [weekData, setWeekData] = useState<{ week: number; year: number; weekStart: string; weekEnd: string; shifts: Shift[]; dailyMenus: DailyMenuData[] } | null>(null);
     const [menuItems, setMenuItems] = useState<MenuItem[]>([]);
     const [loading, setLoading] = useState(true);
@@ -50,8 +50,6 @@ export default function WeeklyMenuPage() {
     const [showCopyModal, setShowCopyModal] = useState(false);
     const [copyTarget, setCopyTarget] = useState({ week: 1, year: 2025 });
     const [menuMode, setMenuMode] = useState<'SAME_ALL_SHIFTS' | 'DIFFERENT_PER_SHIFT'>('SAME_ALL_SHIFTS');
-
-    const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:3012';
 
     useEffect(() => {
         loadData();
@@ -62,25 +60,21 @@ export default function WeeklyMenuPage() {
         try {
             const weekParam = selectedWeek ? `?week=${selectedWeek.week}&year=${selectedWeek.year}` : '';
             const [weekRes, menuRes] = await Promise.all([
-                fetch(`${API_URL}/api/weekly-menu${weekParam}`, {
-                    headers: { Authorization: `Bearer ${token}` }
-                }),
-                fetch(`${API_URL}/api/menu-items`, {
-                    headers: { Authorization: `Bearer ${token}` }
-                })
+                api.get(`/api/weekly-menu${weekParam}`),
+                api.get('/api/menu-items')
             ]);
 
-            if (weekRes.ok) {
-                const data = await weekRes.json();
-                setWeekData(data);
+            if (weekRes.data) {
+                setWeekData(weekRes.data);
                 if (!selectedWeek) {
-                    setSelectedWeek({ week: data.week, year: data.year });
-                    setCopyTarget({ week: data.week + 1, year: data.year });
+                    setSelectedWeek({ week: weekRes.data.week, year: weekRes.data.year });
+                    setCopyTarget({ week: weekRes.data.week + 1, year: weekRes.data.year });
                 }
             }
-            if (menuRes.ok) setMenuItems(await menuRes.json());
+            setMenuItems(menuRes.data || []);
         } catch (error) {
             console.error('Load data error:', error);
+            toast.error('Gagal memuat data');
         } finally {
             setLoading(false);
         }
@@ -106,25 +100,20 @@ export default function WeeklyMenuPage() {
         if (!selectedWeek) return;
 
         try {
-            await fetch(`${API_URL}/api/weekly-menu`, {
-                method: 'POST',
-                headers: {
-                    'Content-Type': 'application/json',
-                    Authorization: `Bearer ${token}`
-                },
-                body: JSON.stringify({
-                    weekNumber: selectedWeek.week,
-                    year: selectedWeek.year,
-                    dayOfWeek,
-                    shiftId: menuMode === 'DIFFERENT_PER_SHIFT' ? shiftId : null,
-                    menuMode,
-                    menuItemId
-                })
+            await api.post('/api/weekly-menu', {
+                weekNumber: selectedWeek.week,
+                year: selectedWeek.year,
+                dayOfWeek,
+                shiftId: menuMode === 'DIFFERENT_PER_SHIFT' ? shiftId : null,
+                menuMode,
+                menuItemId
             });
             setShowMenuSelector(null);
+            toast.success('Menu berhasil ditambahkan');
             loadData();
         } catch (error) {
             console.error('Set menu error:', error);
+            toast.error('Gagal menambahkan menu');
         }
     };
 
@@ -132,13 +121,12 @@ export default function WeeklyMenuPage() {
         if (!confirm('Hapus menu ini?')) return;
 
         try {
-            await fetch(`${API_URL}/api/weekly-menu/${menuId}`, {
-                method: 'DELETE',
-                headers: { Authorization: `Bearer ${token}` }
-            });
+            await api.delete(`/api/weekly-menu/${menuId}`);
+            toast.success('Menu dihapus');
             loadData();
         } catch (error) {
             console.error('Delete menu error:', error);
+            toast.error('Gagal menghapus menu');
         }
     };
 
@@ -146,30 +134,17 @@ export default function WeeklyMenuPage() {
         if (!selectedWeek) return;
 
         try {
-            const res = await fetch(`${API_URL}/api/weekly-menu/copy`, {
-                method: 'POST',
-                headers: {
-                    'Content-Type': 'application/json',
-                    Authorization: `Bearer ${token}`
-                },
-                body: JSON.stringify({
-                    fromWeek: selectedWeek.week,
-                    fromYear: selectedWeek.year,
-                    toWeek: copyTarget.week,
-                    toYear: copyTarget.year
-                })
+            const res = await api.post('/api/weekly-menu/copy', {
+                fromWeek: selectedWeek.week,
+                fromYear: selectedWeek.year,
+                toWeek: copyTarget.week,
+                toYear: copyTarget.year
             });
-
-            if (res.ok) {
-                const data = await res.json();
-                alert(data.message);
-                setShowCopyModal(false);
-            } else {
-                const data = await res.json();
-                alert(data.error || 'Failed to copy week');
-            }
-        } catch (error) {
+            toast.success(res.data?.message || 'Menu berhasil dicopy');
+            setShowCopyModal(false);
+        } catch (error: any) {
             console.error('Copy week error:', error);
+            toast.error(error.response?.data?.error || 'Gagal copy menu');
         }
     };
 
@@ -269,7 +244,7 @@ export default function WeeklyMenuPage() {
                                                     {menu ? (
                                                         <div className="bg-slate-50 rounded-lg p-2 relative group">
                                                             {menu.menuItem.imageUrl && (
-                                                                <img src={`${API_URL}${menu.menuItem.imageUrl}`} alt="" className="w-full h-16 object-cover rounded mb-2" />
+                                                                <img src={menu.menuItem.imageUrl} alt="" className="w-full h-16 object-cover rounded mb-2" />
                                                             )}
                                                             <p className="text-xs font-medium text-slate-800 line-clamp-2">{menu.menuItem.name}</p>
                                                             <p className="text-[10px] text-slate-400 flex items-center gap-1 mt-1">
@@ -350,7 +325,7 @@ export default function WeeklyMenuPage() {
                                         className="p-3 border border-slate-200 rounded-xl hover:border-teal-400 hover:bg-teal-50 transition-colors text-left"
                                     >
                                         {item.imageUrl && (
-                                            <img src={`${API_URL}${item.imageUrl}`} alt="" className="w-full h-20 object-cover rounded-lg mb-2" />
+                                            <img src={item.imageUrl} alt="" className="w-full h-20 object-cover rounded-lg mb-2" />
                                         )}
                                         <p className="text-sm font-medium text-slate-800 line-clamp-2">{item.name}</p>
                                         <p className="text-xs text-slate-400 mt-1">{item.vendor.name}</p>
