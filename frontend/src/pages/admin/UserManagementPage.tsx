@@ -662,60 +662,65 @@ export default function UserManagementPage() {
                                 />
                             </div>
 
-                            {/* Company Dropdown */}
-                            <div>
-                                <label className="block text-sm text-slate-500 mb-1">Perusahaan</label>
-                                <select
-                                    value={selectedCompany}
-                                    onChange={(e) => {
-                                        setSelectedCompany(e.target.value);
-                                        setSelectedDivision('');
-                                        setFormData(f => ({ ...f, departmentId: '' }));
-                                    }}
-                                    className="input-field"
-                                >
-                                    <option value="">Pilih Perusahaan...</option>
-                                    {companies.map(c => (
-                                        <option key={c.id} value={c.id}>{c.name}</option>
-                                    ))}
-                                </select>
-                            </div>
+                            {/* Company, Division, Department - hidden for VENDOR role */}
+                            {formData.role !== 'VENDOR' && (
+                                <>
+                                    {/* Company Dropdown */}
+                                    <div>
+                                        <label className="block text-sm text-slate-500 mb-1">Perusahaan</label>
+                                        <select
+                                            value={selectedCompany}
+                                            onChange={(e) => {
+                                                setSelectedCompany(e.target.value);
+                                                setSelectedDivision('');
+                                                setFormData(f => ({ ...f, departmentId: '' }));
+                                            }}
+                                            className="input-field"
+                                        >
+                                            <option value="">Pilih Perusahaan...</option>
+                                            {companies.map(c => (
+                                                <option key={c.id} value={c.id}>{c.name}</option>
+                                            ))}
+                                        </select>
+                                    </div>
 
-                            {/* Division Dropdown */}
-                            {selectedCompany && (
-                                <div>
-                                    <label className="block text-sm text-slate-500 mb-1">Divisi</label>
-                                    <select
-                                        value={selectedDivision}
-                                        onChange={(e) => {
-                                            setSelectedDivision(e.target.value);
-                                            setFormData(f => ({ ...f, departmentId: '' }));
-                                        }}
-                                        className="input-field"
-                                    >
-                                        <option value="">Pilih Divisi...</option>
-                                        {currentCompany?.divisions.map(d => (
-                                            <option key={d.id} value={d.id}>{d.name}</option>
-                                        ))}
-                                    </select>
-                                </div>
-                            )}
+                                    {/* Division Dropdown */}
+                                    {selectedCompany && (
+                                        <div>
+                                            <label className="block text-sm text-slate-500 mb-1">Divisi</label>
+                                            <select
+                                                value={selectedDivision}
+                                                onChange={(e) => {
+                                                    setSelectedDivision(e.target.value);
+                                                    setFormData(f => ({ ...f, departmentId: '' }));
+                                                }}
+                                                className="input-field"
+                                            >
+                                                <option value="">Pilih Divisi...</option>
+                                                {currentCompany?.divisions.map(d => (
+                                                    <option key={d.id} value={d.id}>{d.name}</option>
+                                                ))}
+                                            </select>
+                                        </div>
+                                    )}
 
-                            {/* Department Dropdown */}
-                            {selectedDivision && (
-                                <div>
-                                    <label className="block text-sm text-slate-500 mb-1">Departemen</label>
-                                    <select
-                                        value={formData.departmentId}
-                                        onChange={(e) => setFormData(f => ({ ...f, departmentId: e.target.value }))}
-                                        className="input-field"
-                                    >
-                                        <option value="">Pilih Departemen...</option>
-                                        {currentDivision?.departments.map(d => (
-                                            <option key={d.id} value={d.id}>{d.name}</option>
-                                        ))}
-                                    </select>
-                                </div>
+                                    {/* Department Dropdown */}
+                                    {selectedDivision && (
+                                        <div>
+                                            <label className="block text-sm text-slate-500 mb-1">Departemen</label>
+                                            <select
+                                                value={formData.departmentId}
+                                                onChange={(e) => setFormData(f => ({ ...f, departmentId: e.target.value }))}
+                                                className="input-field"
+                                            >
+                                                <option value="">Pilih Departemen...</option>
+                                                {currentDivision?.departments.map(d => (
+                                                    <option key={d.id} value={d.id}>{d.name}</option>
+                                                ))}
+                                            </select>
+                                        </div>
+                                    )}
+                                </>
                             )}
 
                             {/* Role */}
