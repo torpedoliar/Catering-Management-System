@@ -372,6 +372,7 @@ router.post('/import', authMiddleware, adminMiddleware, apiRateLimitMiddleware('
             const division = row.getCell(5).text?.toString().trim();
             const department = row.getCell(6).text?.toString().trim();
             const password = row.getCell(7).text?.toString().trim();
+            const canteenId = row.getCell(8).text?.toString().trim();
 
             if (!externalId || !name || !company || !division || !department) {
                 errors.push({ row: rowNumber + 1, error: 'Missing required fields' });
@@ -384,11 +385,26 @@ router.post('/import', authMiddleware, adminMiddleware, apiRateLimitMiddleware('
                 return;
             }
 
-            users.push({ externalId, nik, name, company, division, department, password });
+            users.push({ externalId, nik, name, company, division, department, password, canteenId });
         });
 
+        // Auto-create canteens that don't exist
+        const uniqueCanteenIds = [...new Set(users.map(u => u.canteenId).filter(Boolean))] as string[];
+        for (const cid of uniqueCanteenIds) {
+            await prisma.canteen.upsert({
+                where: { id: cid },
+                update: {}, // Don't modify existing canteens
+                create: {
+                    id: cid,
+                    name: cid,
+                    location: 'Auto-created from user import',
+                    isActive: true
+                }
+            });
+        }
+
         // Import users with upsert
-        const results = { created: 0, updated: 0, failed: 0 };
+        const results = { created: 0, updated: 0, failed: 0, canteensCreated: uniqueCanteenIds.length };
         const defaultPassword = await bcrypt.hash('default123', 10);
 
         for (const userData of users) {
@@ -406,6 +422,7 @@ router.post('/import', authMiddleware, adminMiddleware, apiRateLimitMiddleware('
                         division: userData.division,
                         department: userData.department,
                         isActive: true,
+                        preferredCanteenId: userData.canteenId || undefined,
                     },
                     create: {
                         externalId: userData.externalId,
@@ -417,6 +434,7 @@ router.post('/import', authMiddleware, adminMiddleware, apiRateLimitMiddleware('
                         password: hashedPwd,
                         role: 'USER',
                         mustChangePassword: true,
+                        preferredCanteenId: userData.canteenId || null,
                     },
                 });
                 results.created++;
@@ -460,6 +478,7 @@ router.get('/export/template', authMiddleware, adminMiddleware, apiRateLimitMidd
             { header: 'Division', key: 'division', width: 20 },
             { header: 'Department', key: 'department', width: 20 },
             { header: 'Password', key: 'password', width: 20 },
+            { header: 'Canteen ID', key: 'canteenId', width: 20 },
         ];
 
         // Style header

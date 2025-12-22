@@ -79,6 +79,7 @@ export interface ImportUserData {
     division: string;
     department: string;
     password?: string;
+    canteenId?: string;  // Optional canteen ID for preferred canteen assignment
 }
 
 export interface ImportResult {
