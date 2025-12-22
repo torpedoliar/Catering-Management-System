@@ -74,6 +74,10 @@ router.get('/', authMiddleware, adminMiddleware, async (req: AuthRequest, res: R
                     isActive: true,
                     createdAt: true,
                     photo: true,
+                    preferredCanteenId: true,
+                    preferredCanteen: {
+                        select: { id: true, name: true, location: true }
+                    },
                     blacklists: {
                         where: { isActive: true },
                         select: { id: true, endDate: true },

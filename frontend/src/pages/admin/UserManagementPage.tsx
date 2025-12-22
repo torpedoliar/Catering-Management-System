@@ -21,6 +21,11 @@ interface User {
     isActive: boolean;
     photo?: string;
     preferredCanteenId?: string | null;
+    preferredCanteen?: {
+        id: string;
+        name: string;
+        location: string | null;
+    } | null;
 }
 
 interface Canteen {
@@ -795,6 +800,7 @@ export default function UserManagementPage() {
                                         <th className="table-header">Perusahaan</th>
                                         <th className="table-header">Divisi</th>
                                         <th className="table-header">Departemen</th>
+                                        <th className="table-header">Kantin</th>
                                         <th className="table-header">Role</th>
                                         <th className="table-header">Strike</th>
                                         <th className="table-header">Status</th>
@@ -826,6 +832,15 @@ export default function UserManagementPage() {
                                             <td className="table-cell text-dark-text-secondary">{user.company}</td>
                                             <td className="table-cell text-dark-text-secondary">{user.division}</td>
                                             <td className="table-cell text-dark-text-secondary">{user.department}</td>
+                                            <td className="table-cell">
+                                                {user.preferredCanteen ? (
+                                                    <span className="px-2.5 py-1 rounded-full text-xs font-medium bg-cyan-50 text-cyan-600">
+                                                        {user.preferredCanteen.name}
+                                                    </span>
+                                                ) : (
+                                                    <span className="text-dark-text-secondary">-</span>
+                                                )}
+                                            </td>
                                             <td className="table-cell">
                                                 {user.role === 'ADMIN' ? (
                                                     <span className="px-2.5 py-1 rounded-full text-xs font-medium bg-purple-50 text-purple-600">Admin</span>
