@@ -729,6 +729,7 @@ export default function UserManagementPage() {
                                     <option value="USER">User</option>
                                     <option value="ADMIN">Admin</option>
                                     <option value="CANTEEN">Canteen</option>
+                                    <option value="VENDOR">Vendor</option>
                                 </select>
                             </div>
 
@@ -846,6 +847,8 @@ export default function UserManagementPage() {
                                                     <span className="px-2.5 py-1 rounded-full text-xs font-medium bg-purple-50 text-purple-600">Admin</span>
                                                 ) : user.role === 'CANTEEN' ? (
                                                     <span className="px-2.5 py-1 rounded-full text-xs font-medium bg-amber-50 text-amber-600">Canteen</span>
+                                                ) : user.role === 'VENDOR' ? (
+                                                    <span className="px-2.5 py-1 rounded-full text-xs font-medium bg-teal-50 text-teal-600">Vendor</span>
                                                 ) : (
                                                     <span className="px-2.5 py-1 rounded-full text-xs font-medium bg-blue-50 text-blue-600">User</span>
                                                 )}

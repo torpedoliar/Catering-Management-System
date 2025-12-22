@@ -14,6 +14,7 @@ enum Role {
   USER
   ADMIN
   CANTEEN
+  VENDOR
 }
 
 enum OrderStatus {

@@ -28,7 +28,7 @@ export const createUserSchema = z.object({
     division: z.string().min(1, 'Divisi wajib diisi'),
     department: z.string().min(1, 'Departemen wajib diisi'),
     departmentId: z.string().uuid().optional().nullable(),
-    role: z.enum(['USER', 'ADMIN', 'CANTEEN']).optional().default('USER'),
+    role: z.enum(['USER', 'ADMIN', 'CANTEEN', 'VENDOR']).optional().default('USER'),
 });
 
 export const updateUserSchema = z.object({
@@ -39,7 +39,7 @@ export const updateUserSchema = z.object({
     division: z.string().min(1).optional(),
     department: z.string().min(1).optional(),
     departmentId: z.string().uuid().optional().nullable(),
-    role: z.enum(['USER', 'ADMIN', 'CANTEEN']).optional(),
+    role: z.enum(['USER', 'ADMIN', 'CANTEEN', 'VENDOR']).optional(),
     isActive: z.boolean().optional(),
 });
 

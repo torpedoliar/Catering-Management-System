@@ -20,6 +20,7 @@ import announcementRoutes from './routes/announcement.routes';
 import emailRoutes from './routes/email.routes';
 import serverRoutes from './routes/server.routes';
 import canteenRoutes from './routes/canteen.routes';
+import vendorRoutes from './routes/vendor.routes';
 
 import { sseManager } from './controllers/sse.controller';
 import { startScheduler } from './services/scheduler';
@@ -68,6 +69,7 @@ app.use('/api/messages', messageRoutes);
 app.use('/api/announcements', announcementRoutes);
 app.use('/api/email', emailRoutes);
 app.use('/api/server', serverRoutes);
+app.use('/api/vendor', vendorRoutes);
 
 
 

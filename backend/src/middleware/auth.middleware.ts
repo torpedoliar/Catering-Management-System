@@ -56,3 +56,10 @@ export const canteenMiddleware = (req: AuthRequest, res: Response, next: NextFun
     }
     next();
 };
+
+export const vendorMiddleware = (req: AuthRequest, res: Response, next: NextFunction) => {
+    if (req.user?.role !== 'VENDOR' && req.user?.role !== 'ADMIN') {
+        return res.status(403).json({ error: 'Vendor or Admin access required' });
+    }
+    next();
+};

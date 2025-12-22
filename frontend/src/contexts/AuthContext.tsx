@@ -33,7 +33,7 @@ interface User {
     company: string;
     division: string;
     department: string;
-    role: 'USER' | 'ADMIN' | 'CANTEEN';
+    role: 'USER' | 'ADMIN' | 'CANTEEN' | 'VENDOR';
     noShowCount: number;
     mustChangePassword?: boolean;
     isBlacklisted?: boolean;
