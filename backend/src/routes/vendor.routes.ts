@@ -238,6 +238,22 @@ router.get('/available-weeks', authMiddleware, vendorMiddleware, async (req: Aut
 
         const weeks: { week: number; year: number; label: string }[] = [];
 
+        // Add future weeks (up to 4 weeks ahead)
+        let futureDate = new Date(now);
+        for (let i = 4; i >= 1; i--) {
+            futureDate = new Date(now);
+            futureDate.setDate(now.getDate() + (i * 7));
+
+            const w = getWeekNumber(futureDate);
+            const y = futureDate.getFullYear();
+
+            weeks.push({
+                week: w,
+                year: y,
+                label: `Week ${w}, ${y}`
+            });
+        }
+
         // Current week
         weeks.push({
             week: currentWeek,
