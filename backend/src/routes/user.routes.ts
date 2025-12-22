@@ -140,7 +140,7 @@ router.get('/:id', authMiddleware, async (req: AuthRequest, res: Response) => {
 // Create user (Admin only)
 router.post('/', authMiddleware, adminMiddleware, upload.single('photo'), validate(createUserSchema), async (req: AuthRequest, res: Response) => {
     try {
-        const { externalId, nik, name, email, password, company, division, department, departmentId, role } = req.body;
+        const { externalId, nik, name, email, password, company, division, department, departmentId, role, vendorId } = req.body;
 
         if (!externalId || !name) {
             return res.status(400).json({ error: ErrorMessages.MISSING_REQUIRED_FIELDS });
@@ -196,6 +196,7 @@ router.post('/', authMiddleware, adminMiddleware, upload.single('photo'), valida
                 departmentId: departmentId || null,
                 role: role || 'USER',
                 photo: photoUrl,
+                vendorId: role === 'VENDOR' ? vendorId || null : null,
             },
         });
 
@@ -215,7 +216,7 @@ router.post('/', authMiddleware, adminMiddleware, upload.single('photo'), valida
 // Update user (Admin only) - Modified to handle file upload
 router.put('/:id', authMiddleware, adminMiddleware, upload.single('photo'), async (req: AuthRequest, res: Response) => {
     try {
-        const { name, email, company, division, department, departmentId, role, isActive, preferredCanteenId } = req.body;
+        const { name, email, company, division, department, departmentId, role, isActive, preferredCanteenId, vendorId } = req.body;
 
         let photoUrl = undefined;
         if (req.file) {
@@ -238,6 +239,7 @@ router.put('/:id', authMiddleware, adminMiddleware, upload.single('photo'), asyn
             ...(isActive !== undefined && { isActive }),
             ...(photoUrl && { photo: photoUrl }),
             ...(preferredCanteenId !== undefined && { preferredCanteenId: preferredCanteenId || null }),
+            ...(vendorId !== undefined && { vendorId: role === 'VENDOR' ? vendorId || null : null }),
         };
 
         if (departmentId !== undefined) {

@@ -67,6 +67,9 @@ export default function UserManagementPage() {
     // Canteens for preferred canteen dropdown
     const [canteens, setCanteens] = useState<Canteen[]>([]);
 
+    // Vendors for VENDOR role dropdown
+    const [vendors, setVendors] = useState<{ id: string; name: string }[]>([]);
+
     // Filter state
     const [filterCompany, setFilterCompany] = useState('');
     const [filterDivision, setFilterDivision] = useState('');
@@ -92,7 +95,8 @@ export default function UserManagementPage() {
         departmentId: '',
         role: 'USER',
         password: '',
-        preferredCanteenId: ''
+        preferredCanteenId: '',
+        vendorId: ''
     });
     const [selectedCompany, setSelectedCompany] = useState('');
     const [selectedDivision, setSelectedDivision] = useState('');
@@ -143,10 +147,20 @@ export default function UserManagementPage() {
         }
     };
 
+    const loadVendors = async () => {
+        try {
+            const res = await api.get('/api/vendors');
+            setVendors(res.data || []);
+        } catch (error) {
+            console.error('Failed to load vendors:', error);
+        }
+    };
+
     useEffect(() => {
         loadUsers();
         loadCompanies();
         loadCanteens();
+        loadVendors();
     }, [loadUsers]);
 
     // Auto-refresh on blacklist events (SSE)
@@ -219,7 +233,8 @@ export default function UserManagementPage() {
             departmentId: user.departmentId || '',
             role: user.role,
             password: '',
-            preferredCanteenId: user.preferredCanteenId || ''
+            preferredCanteenId: user.preferredCanteenId || '',
+            vendorId: (user as any).vendorId || ''
         });
         const apiUrl = import.meta.env.VITE_API_URL ?? 'http://localhost:3012';
         setPhotoPreview(user.photo ? `${apiUrl}${user.photo}` : null);
@@ -355,7 +370,8 @@ export default function UserManagementPage() {
             departmentId: '',
             role: 'USER',
             password: '',
-            preferredCanteenId: ''
+            preferredCanteenId: '',
+            vendorId: ''
         });
         setPhotoPreview(null);
         setPhotoFile(null);
@@ -750,6 +766,24 @@ export default function UserManagementPage() {
                                         <option value="">Tidak Ada</option>
                                         {canteens.filter(c => c.isActive).map(c => (
                                             <option key={c.id} value={c.id}>{c.name} {c.location ? `(${c.location})` : ''}</option>
+                                        ))}
+                                    </select>
+                                </div>
+                            )}
+
+                            {/* Vendor Selection - show only for VENDOR role */}
+                            {formData.role === 'VENDOR' && (
+                                <div>
+                                    <label className="block text-sm text-slate-500 mb-1">Vendor *</label>
+                                    <select
+                                        value={formData.vendorId}
+                                        onChange={(e) => setFormData(f => ({ ...f, vendorId: e.target.value }))}
+                                        className="input-field"
+                                        required
+                                    >
+                                        <option value="">Pilih Vendor</option>
+                                        {vendors.map(v => (
+                                            <option key={v.id} value={v.id}>{v.name}</option>
                                         ))}
                                     </select>
                                 </div>

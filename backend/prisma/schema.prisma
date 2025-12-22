@@ -108,11 +108,13 @@ model User {
   mustChangePassword Boolean @default(true)
   isActive     Boolean     @default(true)
   preferredCanteenId String? // User's preferred canteen for auto-selection
+  vendorId           String? // Link to Vendor for VENDOR role users
   createdAt    DateTime    @default(now())
   updatedAt    DateTime    @updatedAt
 
   departmentRef      Department? @relation(fields: [departmentId], references: [id])
   preferredCanteen   Canteen?    @relation("UserPreferredCanteen", fields: [preferredCanteenId], references: [id])
+  vendor             Vendor?     @relation(fields: [vendorId], references: [id])
   orders             Order[]
   blacklists         Blacklist[]
   messages           Message[]
@@ -483,6 +485,7 @@ model Vendor {
   updatedAt   DateTime   @updatedAt
 
   menuItems   MenuItem[]
+  users       User[]
 
   @@index([isActive])
   @@index([name])
