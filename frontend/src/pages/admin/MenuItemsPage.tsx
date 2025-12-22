@@ -252,10 +252,21 @@ export default function MenuItemsPage() {
                 ))}
             </div>
 
-            {filteredItems.length === 0 && (
+            {filteredItems.length === 0 && vendors.length > 0 && (
                 <div className="text-center py-12 text-slate-500">
                     <Pizza className="w-12 h-12 mx-auto mb-4 text-slate-300" />
                     <p>Belum ada menu item</p>
+                </div>
+            )}
+
+            {vendors.length === 0 && (
+                <div className="text-center py-12">
+                    <Store className="w-12 h-12 mx-auto mb-4 text-amber-400" />
+                    <p className="text-slate-600 font-medium">Belum ada vendor</p>
+                    <p className="text-sm text-slate-400 mt-1">Buat vendor terlebih dahulu sebelum menambahkan menu item</p>
+                    <a href="/admin/vendors" className="inline-block mt-4 btn-primary">
+                        Buat Vendor
+                    </a>
                 </div>
             )}
 
