@@ -20,6 +20,14 @@ interface User {
     isBlacklisted: boolean;
     isActive: boolean;
     photo?: string;
+    preferredCanteenId?: string | null;
+}
+
+interface Canteen {
+    id: string;
+    name: string;
+    location: string | null;
+    isActive: boolean;
 }
 
 interface Department {
@@ -51,6 +59,9 @@ export default function UserManagementPage() {
     // Company structure for dropdowns
     const [companies, setCompanies] = useState<Company[]>([]);
 
+    // Canteens for preferred canteen dropdown
+    const [canteens, setCanteens] = useState<Canteen[]>([]);
+
     // Filter state
     const [filterCompany, setFilterCompany] = useState('');
     const [filterDivision, setFilterDivision] = useState('');
@@ -75,7 +86,8 @@ export default function UserManagementPage() {
         email: '',
         departmentId: '',
         role: 'USER',
-        password: ''
+        password: '',
+        preferredCanteenId: ''
     });
     const [selectedCompany, setSelectedCompany] = useState('');
     const [selectedDivision, setSelectedDivision] = useState('');
@@ -117,9 +129,19 @@ export default function UserManagementPage() {
         }
     };
 
+    const loadCanteens = async () => {
+        try {
+            const res = await api.get('/api/canteens');
+            setCanteens(res.data.canteens || []);
+        } catch (error) {
+            console.error('Failed to load canteens:', error);
+        }
+    };
+
     useEffect(() => {
         loadUsers();
         loadCompanies();
+        loadCanteens();
     }, [loadUsers]);
 
     // Auto-refresh on blacklist events (SSE)
@@ -191,7 +213,8 @@ export default function UserManagementPage() {
             email: user.email || '',
             departmentId: user.departmentId || '',
             role: user.role,
-            password: ''
+            password: '',
+            preferredCanteenId: user.preferredCanteenId || ''
         });
         const apiUrl = import.meta.env.VITE_API_URL ?? 'http://localhost:3012';
         setPhotoPreview(user.photo ? `${apiUrl}${user.photo}` : null);
@@ -228,6 +251,7 @@ export default function UserManagementPage() {
             if (formData.nik) data.append('nik', formData.nik);
             if (formData.email) data.append('email', formData.email);
             if (formData.departmentId) data.append('departmentId', formData.departmentId);
+            data.append('preferredCanteenId', formData.preferredCanteenId || '');
             data.append('role', formData.role);
 
             if (photoFile) {
@@ -325,7 +349,8 @@ export default function UserManagementPage() {
             email: '',
             departmentId: '',
             role: 'USER',
-            password: ''
+            password: '',
+            preferredCanteenId: ''
         });
         setPhotoPreview(null);
         setPhotoFile(null);
@@ -699,6 +724,21 @@ export default function UserManagementPage() {
                                     <option value="USER">User</option>
                                     <option value="ADMIN">Admin</option>
                                     <option value="CANTEEN">Canteen</option>
+                                </select>
+                            </div>
+
+                            {/* Default Canteen */}
+                            <div>
+                                <label className="block text-sm text-slate-500 mb-1">Kantin Default</label>
+                                <select
+                                    value={formData.preferredCanteenId}
+                                    onChange={(e) => setFormData(f => ({ ...f, preferredCanteenId: e.target.value }))}
+                                    className="input-field"
+                                >
+                                    <option value="">Tidak Ada</option>
+                                    {canteens.filter(c => c.isActive).map(c => (
+                                        <option key={c.id} value={c.id}>{c.name} {c.location ? `(${c.location})` : ''}</option>
+                                    ))}
                                 </select>
                             </div>
 

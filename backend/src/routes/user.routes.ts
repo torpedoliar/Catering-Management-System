@@ -211,7 +211,7 @@ router.post('/', authMiddleware, adminMiddleware, upload.single('photo'), valida
 // Update user (Admin only) - Modified to handle file upload
 router.put('/:id', authMiddleware, adminMiddleware, upload.single('photo'), async (req: AuthRequest, res: Response) => {
     try {
-        const { name, email, company, division, department, departmentId, role, isActive } = req.body;
+        const { name, email, company, division, department, departmentId, role, isActive, preferredCanteenId } = req.body;
 
         let photoUrl = undefined;
         if (req.file) {
@@ -233,6 +233,7 @@ router.put('/:id', authMiddleware, adminMiddleware, upload.single('photo'), asyn
             ...(role && { role }),
             ...(isActive !== undefined && { isActive }),
             ...(photoUrl && { photo: photoUrl }),
+            ...(preferredCanteenId !== undefined && { preferredCanteenId: preferredCanteenId || null }),
         };
 
         if (departmentId !== undefined) {
