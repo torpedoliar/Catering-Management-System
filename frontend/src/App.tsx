@@ -11,6 +11,7 @@ import HistoryPage from './pages/HistoryPage';
 import SettingsPage from './pages/SettingsPage';
 import AboutPage from './pages/AboutPage';
 import TermsPage from './pages/TermsPage';
+import FoodMenuPage from './pages/FoodMenuPage';
 
 // Lazy loaded admin pages (code splitting for better performance)
 const DashboardPage = lazy(() => import('./pages/admin/DashboardPage'));
@@ -33,6 +34,9 @@ const BackupRestorePage = lazy(() => import('./pages/admin/BackupRestorePage'));
 const CanteenManagementPage = lazy(() => import('./pages/admin/CanteenManagementPage'));
 const CheckInPage = lazy(() => import('./pages/canteen/CheckInPage'));
 const VendorDashboardPage = lazy(() => import('./pages/vendor/VendorDashboardPage'));
+const VendorManagementPage = lazy(() => import('./pages/admin/VendorManagementPage'));
+const MenuItemsPage = lazy(() => import('./pages/admin/MenuItemsPage'));
+const WeeklyMenuPage = lazy(() => import('./pages/admin/WeeklyMenuPage'));
 
 // Layout
 import Layout from './components/Layout/Layout';
@@ -81,6 +85,7 @@ function AppRoutes() {
                 {/* User Routes */}
                 <Route element={<ProtectedRoute><Outlet /></ProtectedRoute>}>
                     <Route path="/" element={<OrderPage />} />
+                    <Route path="/menu" element={<FoodMenuPage />} />
                     <Route path="/history" element={<HistoryPage />} />
                     <Route path="/settings" element={<SettingsPage />} />
                     <Route path="/about" element={<AboutPage />} />
@@ -107,6 +112,9 @@ function AppRoutes() {
                     <Route path="/admin/email-settings" element={<EmailSettingsPage />} />
                     <Route path="/admin/performance" element={<PerformancePage />} />
                     <Route path="/admin/backup" element={<BackupRestorePage />} />
+                    <Route path="/admin/vendors" element={<VendorManagementPage />} />
+                    <Route path="/admin/menu-items" element={<MenuItemsPage />} />
+                    <Route path="/admin/weekly-menu" element={<WeeklyMenuPage />} />
                 </Route>
 
                 {/* Canteen Routes */}

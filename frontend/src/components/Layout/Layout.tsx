@@ -32,7 +32,9 @@ import {
     Activity,
     DatabaseBackup,
     FileText,
-    MapPin
+    MapPin,
+    Store,
+    Pizza
 } from 'lucide-react';
 
 interface LayoutProps {
@@ -59,6 +61,7 @@ export default function Layout({ children }: LayoutProps) {
 
     const userLinks = [
         { path: '/', icon: Home, label: 'Pesan Makanan' },
+        { path: '/menu', icon: UtensilsCrossed, label: 'Lihat Menu' },
         { path: '/history', icon: History, label: 'Riwayat' },
         { path: '/settings', icon: Settings, label: 'Pengaturan' },
         { path: '/about', icon: Info, label: 'Tentang' },
@@ -72,6 +75,9 @@ export default function Layout({ children }: LayoutProps) {
         { path: '/admin/messages', icon: MessageSquare, label: 'Pesan' },
         { path: '/admin/announcements', icon: Bell, label: 'Pengumuman' },
         { path: '/admin/agreement', icon: FileText, label: 'Syarat & Ketentuan' },
+        { path: '/admin/vendors', icon: Store, label: 'Vendor' },
+        { path: '/admin/menu-items', icon: Pizza, label: 'Menu Items' },
+        { path: '/admin/weekly-menu', icon: UtensilsCrossed, label: 'Menu Mingguan' },
         { path: '/admin/companies', icon: Building2, label: 'Perusahaan' },
         { path: '/admin/canteens', icon: MapPin, label: 'Manajemen Kantin' },
         { path: '/admin/users', icon: Users, label: 'Pengguna' },

@@ -205,6 +205,7 @@ model Shift {
   canteenShifts    CanteenShift[]
   holidays         Holiday[]
   messages         Message[]
+  weeklyMenus      WeeklyMenu[]
 }
 
 model Order {
@@ -468,4 +469,69 @@ model Announcement {
   @@index([isActive])
   @@index([createdAt])
   @@index([expiresAt])
+}
+
+// Food Vendor for menu management
+model Vendor {
+  id          String     @id @default(uuid())
+  name        String     @unique
+  description String?
+  contact     String?
+  logoUrl     String?
+  isActive    Boolean    @default(true)
+  createdAt   DateTime   @default(now())
+  updatedAt   DateTime   @updatedAt
+
+  menuItems   MenuItem[]
+
+  @@index([isActive])
+  @@index([name])
+}
+
+// Menu item for weekly menu
+model MenuItem {
+  id          String       @id @default(uuid())
+  name        String
+  description String?
+  imageUrl    String?
+  category    String?      // "Nasi", "Mie", "Lauk", "Sayur", "Buah"
+  vendorId    String
+  isActive    Boolean      @default(true)
+  createdAt   DateTime     @default(now())
+  updatedAt   DateTime     @updatedAt
+
+  vendor      Vendor       @relation(fields: [vendorId], references: [id], onDelete: Cascade)
+  weeklyMenus WeeklyMenu[]
+
+  @@index([vendorId])
+  @@index([isActive])
+  @@index([category])
+}
+
+// Menu mode for weekly menu
+enum MenuMode {
+  SAME_ALL_SHIFTS      // Same menu for all shifts in a day
+  DIFFERENT_PER_SHIFT  // Different menu per shift
+}
+
+// Weekly menu assignment
+model WeeklyMenu {
+  id          String    @id @default(uuid())
+  weekNumber  Int
+  year        Int
+  dayOfWeek   Int       // 0=Sunday...6=Saturday
+  shiftId     String?   // NULL if SAME_ALL_SHIFTS
+  menuMode    MenuMode  @default(SAME_ALL_SHIFTS)
+  menuItemId  String
+  notes       String?
+  createdAt   DateTime  @default(now())
+  createdBy   String
+
+  menuItem    MenuItem  @relation(fields: [menuItemId], references: [id], onDelete: Cascade)
+  shift       Shift?    @relation(fields: [shiftId], references: [id], onDelete: SetNull)
+
+  @@unique([weekNumber, year, dayOfWeek, shiftId])
+  @@index([weekNumber, year])
+  @@index([menuItemId])
+  @@index([shiftId])
 }
