@@ -733,20 +733,22 @@ export default function UserManagementPage() {
                                 </select>
                             </div>
 
-                            {/* Default Canteen */}
-                            <div>
-                                <label className="block text-sm text-slate-500 mb-1">Kantin Default</label>
-                                <select
-                                    value={formData.preferredCanteenId}
-                                    onChange={(e) => setFormData(f => ({ ...f, preferredCanteenId: e.target.value }))}
-                                    className="input-field"
-                                >
-                                    <option value="">Tidak Ada</option>
-                                    {canteens.filter(c => c.isActive).map(c => (
-                                        <option key={c.id} value={c.id}>{c.name} {c.location ? `(${c.location})` : ''}</option>
-                                    ))}
-                                </select>
-                            </div>
+                            {/* Default Canteen - hidden for VENDOR role */}
+                            {formData.role !== 'VENDOR' && (
+                                <div>
+                                    <label className="block text-sm text-slate-500 mb-1">Kantin Default</label>
+                                    <select
+                                        value={formData.preferredCanteenId}
+                                        onChange={(e) => setFormData(f => ({ ...f, preferredCanteenId: e.target.value }))}
+                                        className="input-field"
+                                    >
+                                        <option value="">Tidak Ada</option>
+                                        {canteens.filter(c => c.isActive).map(c => (
+                                            <option key={c.id} value={c.id}>{c.name} {c.location ? `(${c.location})` : ''}</option>
+                                        ))}
+                                    </select>
+                                </div>
+                            )}
 
                             {/* Password - only for new users */}
                             {!editingUser && (

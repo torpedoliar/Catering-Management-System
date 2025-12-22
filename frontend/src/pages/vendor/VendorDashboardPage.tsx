@@ -321,7 +321,7 @@ export default function VendorDashboardPage() {
             {data && (
                 <div className="card overflow-hidden">
                     <div className="p-4 border-b border-slate-100">
-                        <h2 className="font-semibold text-slate-800">Detail Order per Hari</h2>
+                        <h2 className="font-semibold text-slate-800">Total Order Keseluruhan Harian</h2>
                     </div>
                     <div className="overflow-x-auto">
                         <table className="w-full">
