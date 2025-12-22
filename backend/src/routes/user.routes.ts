@@ -403,8 +403,63 @@ router.post('/import', authMiddleware, adminMiddleware, apiRateLimitMiddleware('
             });
         }
 
+        // Auto-create Company > Division > Department hierarchy
+        // Build a map for quick lookup: "company|division|department" -> departmentId
+        const orgStructureMap = new Map<string, string>();
+        const uniqueOrgPaths = [...new Set(users.map(u => `${u.company}|${u.division}|${u.department}`))];
+
+        let companiesCreated = 0;
+        let divisionsCreated = 0;
+        let departmentsCreated = 0;
+
+        for (const orgPath of uniqueOrgPaths) {
+            const [companyName, divisionName, departmentName] = orgPath.split('|');
+
+            // 1. Upsert Company
+            let company = await prisma.company.findUnique({ where: { name: companyName } });
+            if (!company) {
+                company = await prisma.company.create({
+                    data: { name: companyName, isActive: true }
+                });
+                companiesCreated++;
+            }
+
+            // 2. Upsert Division (unique within company)
+            let division = await prisma.division.findFirst({
+                where: { companyId: company.id, name: divisionName }
+            });
+            if (!division) {
+                division = await prisma.division.create({
+                    data: { name: divisionName, companyId: company.id, isActive: true }
+                });
+                divisionsCreated++;
+            }
+
+            // 3. Upsert Department (unique within division)
+            let department = await prisma.department.findFirst({
+                where: { divisionId: division.id, name: departmentName }
+            });
+            if (!department) {
+                department = await prisma.department.create({
+                    data: { name: departmentName, divisionId: division.id, isActive: true }
+                });
+                departmentsCreated++;
+            }
+
+            // Store departmentId for lookup
+            orgStructureMap.set(orgPath, department.id);
+        }
+
         // Import users with upsert
-        const results = { created: 0, updated: 0, failed: 0, canteensCreated: uniqueCanteenIds.length };
+        const results = {
+            created: 0,
+            updated: 0,
+            failed: 0,
+            canteensCreated: uniqueCanteenIds.length,
+            companiesCreated,
+            divisionsCreated,
+            departmentsCreated
+        };
         const defaultPassword = await bcrypt.hash('default123', 10);
 
         for (const userData of users) {
@@ -412,6 +467,10 @@ router.post('/import', authMiddleware, adminMiddleware, apiRateLimitMiddleware('
                 const hashedPwd = userData.password
                     ? await bcrypt.hash(userData.password, 10)
                     : defaultPassword;
+
+                // Get departmentId from org structure map
+                const orgPath = `${userData.company}|${userData.division}|${userData.department}`;
+                const departmentId = orgStructureMap.get(orgPath);
 
                 await prisma.user.upsert({
                     where: { externalId: userData.externalId },
@@ -421,6 +480,7 @@ router.post('/import', authMiddleware, adminMiddleware, apiRateLimitMiddleware('
                         company: userData.company,
                         division: userData.division,
                         department: userData.department,
+                        departmentId: departmentId || undefined,
                         isActive: true,
                         preferredCanteenId: userData.canteenId || undefined,
                     },
@@ -431,6 +491,7 @@ router.post('/import', authMiddleware, adminMiddleware, apiRateLimitMiddleware('
                         company: userData.company,
                         division: userData.division,
                         department: userData.department,
+                        departmentId: departmentId || null,
                         password: hashedPwd,
                         role: 'USER',
                         mustChangePassword: true,
