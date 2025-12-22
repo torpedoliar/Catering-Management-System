@@ -147,6 +147,20 @@ router.get('/weekly-summary', authMiddleware, vendorMiddleware, async (req: Auth
                 };
             }
 
+            // Group by canteen AND shift for detailed breakdown
+            const byCanteenShift: Record<string, Record<string, number>> = {};
+            canteens.forEach(c => {
+                byCanteenShift[c.id] = {};
+                shifts.forEach(s => {
+                    const count = dayOrders.filter(o =>
+                        o.canteenId === c.id &&
+                        o.shiftId === s.id &&
+                        o.status !== 'CANCELLED'
+                    ).length;
+                    byCanteenShift[c.id][s.id] = count;
+                });
+            });
+
             const total = dayOrders.filter(o => o.status !== 'CANCELLED').length;
 
             return {
@@ -158,6 +172,7 @@ router.get('/weekly-summary', authMiddleware, vendorMiddleware, async (req: Auth
                 isPast: date < now,
                 byShift,
                 byCanteen,
+                byCanteenShift,
                 total
             };
         });
