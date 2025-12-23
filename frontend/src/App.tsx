@@ -35,7 +35,6 @@ const CanteenManagementPage = lazy(() => import('./pages/admin/CanteenManagement
 const CheckInPage = lazy(() => import('./pages/canteen/CheckInPage'));
 const VendorDashboardPage = lazy(() => import('./pages/vendor/VendorDashboardPage'));
 const VendorManagementPage = lazy(() => import('./pages/admin/VendorManagementPage'));
-const MenuItemsPage = lazy(() => import('./pages/admin/MenuItemsPage'));
 const WeeklyMenuPage = lazy(() => import('./pages/admin/WeeklyMenuPage'));
 
 // Layout
@@ -113,7 +112,6 @@ function AppRoutes() {
                     <Route path="/admin/performance" element={<PerformancePage />} />
                     <Route path="/admin/backup" element={<BackupRestorePage />} />
                     <Route path="/admin/vendors" element={<VendorManagementPage />} />
-                    <Route path="/admin/menu-items" element={<MenuItemsPage />} />
                     <Route path="/admin/weekly-menu" element={<WeeklyMenuPage />} />
                 </Route>
 

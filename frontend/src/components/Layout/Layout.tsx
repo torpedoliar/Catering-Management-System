@@ -33,8 +33,7 @@ import {
     DatabaseBackup,
     FileText,
     MapPin,
-    Store,
-    Pizza
+    Store
 } from 'lucide-react';
 
 interface LayoutProps {
@@ -76,7 +75,6 @@ export default function Layout({ children }: LayoutProps) {
         { path: '/admin/announcements', icon: Bell, label: 'Pengumuman' },
         { path: '/admin/agreement', icon: FileText, label: 'Syarat & Ketentuan' },
         { path: '/admin/vendors', icon: Store, label: 'Vendor' },
-        { path: '/admin/menu-items', icon: Pizza, label: 'Menu Items' },
         { path: '/admin/weekly-menu', icon: UtensilsCrossed, label: 'Menu Mingguan' },
         { path: '/admin/companies', icon: Building2, label: 'Perusahaan' },
         { path: '/admin/canteens', icon: MapPin, label: 'Manajemen Kantin' },
