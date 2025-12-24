@@ -1,6 +1,7 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import { ChevronLeft, ChevronRight, Calendar, Store, Pizza, UtensilsCrossed } from 'lucide-react';
 import { api } from '../contexts/AuthContext';
+import { useSSERefresh, MENU_EVENTS } from '../contexts/SSEContext';
 
 interface Vendor {
     id: string;
@@ -49,7 +50,7 @@ export default function FoodMenuPage() {
         loadData();
     }, [selectedWeek]);
 
-    const loadData = async () => {
+    const loadData = useCallback(async () => {
         setLoading(true);
         try {
             const weekParam = selectedWeek ? `?week=${selectedWeek.week}&year=${selectedWeek.year}` : '';
@@ -66,7 +67,10 @@ export default function FoodMenuPage() {
         } finally {
             setLoading(false);
         }
-    };
+    }, [selectedWeek]);
+
+    // SSE integration for real-time updates
+    useSSERefresh(MENU_EVENTS, loadData);
 
     const navigateWeek = (direction: number) => {
         if (!selectedWeek) return;

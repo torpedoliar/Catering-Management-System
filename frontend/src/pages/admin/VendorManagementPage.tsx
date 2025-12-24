@@ -1,6 +1,7 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import { Plus, Edit2, Trash2, Store, Phone, Check, X, Image } from 'lucide-react';
 import { api } from '../../contexts/AuthContext';
+import { useSSERefresh, VENDOR_EVENTS } from '../../contexts/SSEContext';
 import toast from 'react-hot-toast';
 
 interface Vendor {
@@ -26,7 +27,7 @@ export default function VendorManagementPage() {
         loadVendors();
     }, []);
 
-    const loadVendors = async () => {
+    const loadVendors = useCallback(async () => {
         try {
             const res = await api.get('/api/vendors?includeInactive=true');
             setVendors(res.data || []);
@@ -36,7 +37,10 @@ export default function VendorManagementPage() {
         } finally {
             setLoading(false);
         }
-    };
+    }, []);
+
+    // SSE integration for real-time updates
+    useSSERefresh(VENDOR_EVENTS, loadVendors);
 
     const openModal = (vendor?: Vendor) => {
         if (vendor) {

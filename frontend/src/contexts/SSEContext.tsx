@@ -45,6 +45,13 @@ const ALL_EVENTS = [
     'announcement:created',
     'announcement:updated',
     'announcement:deleted',
+    'vendor:created',
+    'vendor:updated',
+    'vendor:deleted',
+    'menu:created',
+    'menu:updated',
+    'menu:deleted',
+    'weekly-menu:updated',
     'data:refresh',
 ];
 
@@ -319,4 +326,6 @@ export const SHIFT_EVENTS = ['shift:updated'];
 export const HOLIDAY_EVENTS = ['holiday:updated'];
 export const CANTEEN_EVENTS = ['canteen:created', 'canteen:updated', 'canteen:deleted'];
 export const ANNOUNCEMENT_EVENTS = ['announcement:created', 'announcement:updated', 'announcement:deleted'];
-export const ALL_DATA_EVENTS = [...ORDER_EVENTS, ...USER_EVENTS, ...SETTINGS_EVENTS, ...SHIFT_EVENTS, ...HOLIDAY_EVENTS, ...CANTEEN_EVENTS, ...ANNOUNCEMENT_EVENTS, 'data:refresh'];
+export const VENDOR_EVENTS = ['vendor:created', 'vendor:updated', 'vendor:deleted'];
+export const MENU_EVENTS = ['menu:created', 'menu:updated', 'menu:deleted', 'weekly-menu:updated'];
+export const ALL_DATA_EVENTS = [...ORDER_EVENTS, ...USER_EVENTS, ...SETTINGS_EVENTS, ...SHIFT_EVENTS, ...HOLIDAY_EVENTS, ...CANTEEN_EVENTS, ...ANNOUNCEMENT_EVENTS, ...VENDOR_EVENTS, ...MENU_EVENTS, 'data:refresh'];

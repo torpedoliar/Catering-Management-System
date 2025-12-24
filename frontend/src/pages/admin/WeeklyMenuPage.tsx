@@ -1,6 +1,7 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import { ChevronLeft, ChevronRight, Copy, Trash2, Pizza, Store, Plus, Edit2, Image, X } from 'lucide-react';
 import { api } from '../../contexts/AuthContext';
+import { useSSERefresh, VENDOR_EVENTS, MENU_EVENTS } from '../../contexts/SSEContext';
 import toast from 'react-hot-toast';
 
 interface Vendor {
@@ -62,11 +63,7 @@ export default function WeeklyMenuPage() {
     const [imageFile, setImageFile] = useState<File | null>(null);
     const [savingMenuItem, setSavingMenuItem] = useState(false);
 
-    useEffect(() => {
-        loadData();
-    }, [selectedWeek]);
-
-    const loadData = async () => {
+    const loadData = useCallback(async () => {
         setLoading(true);
         try {
             const weekParam = selectedWeek ? `?week=${selectedWeek.week}&year=${selectedWeek.year}` : '';
@@ -91,7 +88,14 @@ export default function WeeklyMenuPage() {
         } finally {
             setLoading(false);
         }
-    };
+    }, [selectedWeek]);
+
+    useEffect(() => {
+        loadData();
+    }, [loadData]);
+
+    // SSE integration for real-time updates
+    useSSERefresh([...VENDOR_EVENTS, ...MENU_EVENTS], loadData);
 
     const navigateWeek = (direction: number) => {
         if (!selectedWeek) return;

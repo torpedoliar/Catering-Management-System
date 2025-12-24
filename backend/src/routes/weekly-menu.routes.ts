@@ -1,6 +1,7 @@
 import { Router, Response } from 'express';
 import { prisma } from '../lib/prisma';
 import { AuthRequest, authMiddleware, adminMiddleware } from '../middleware/auth.middleware';
+import { sseManager } from '../controllers/sse.controller';
 import { getNow } from '../services/time.service';
 
 const router = Router();
@@ -240,6 +241,15 @@ router.post('/', authMiddleware, adminMiddleware, async (req: AuthRequest, res: 
             }
         });
 
+        // Broadcast SSE event
+        sseManager.broadcast('weekly-menu:updated', {
+            action: 'set',
+            weekNumber,
+            year,
+            dayOfWeek,
+            weeklyMenu
+        });
+
         res.status(201).json(weeklyMenu);
     } catch (error) {
         console.error('Set weekly menu error:', error);
@@ -311,6 +321,14 @@ router.delete('/:id', authMiddleware, adminMiddleware, async (req: AuthRequest, 
         }
 
         await prisma.weeklyMenu.delete({ where: { id } });
+
+        // Broadcast SSE event
+        sseManager.broadcast('weekly-menu:updated', {
+            action: 'deleted',
+            weekNumber: existing.weekNumber,
+            year: existing.year,
+            weeklyMenuId: id
+        });
 
         res.json({ message: 'Weekly menu entry deleted successfully' });
     } catch (error) {

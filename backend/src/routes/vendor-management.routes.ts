@@ -1,6 +1,7 @@
 import { Router, Response } from 'express';
 import { prisma } from '../lib/prisma';
 import { AuthRequest, authMiddleware, adminMiddleware } from '../middleware/auth.middleware';
+import { sseManager } from '../controllers/sse.controller';
 import multer from 'multer';
 import sharp from 'sharp';
 import path from 'path';
@@ -124,6 +125,9 @@ router.post('/', authMiddleware, adminMiddleware, upload.single('logo'), async (
             }
         });
 
+        // Broadcast SSE event
+        sseManager.broadcast('vendor:created', { vendor });
+
         res.status(201).json(vendor);
     } catch (error) {
         console.error('Create vendor error:', error);
@@ -186,6 +190,9 @@ router.put('/:id', authMiddleware, adminMiddleware, upload.single('logo'), async
             }
         });
 
+        // Broadcast SSE event
+        sseManager.broadcast('vendor:updated', { vendor });
+
         res.json(vendor);
     } catch (error) {
         console.error('Update vendor error:', error);
@@ -226,6 +233,9 @@ router.delete('/:id', authMiddleware, adminMiddleware, async (req: AuthRequest, 
         }
 
         await prisma.vendor.delete({ where: { id } });
+
+        // Broadcast SSE event
+        sseManager.broadcast('vendor:deleted', { vendorId: id, vendorName: existing.name });
 
         res.json({ message: 'Vendor deleted successfully' });
     } catch (error) {

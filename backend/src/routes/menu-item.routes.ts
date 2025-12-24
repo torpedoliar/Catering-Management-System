@@ -1,6 +1,7 @@
 import { Router, Response } from 'express';
 import { prisma } from '../lib/prisma';
 import { AuthRequest, authMiddleware, adminMiddleware } from '../middleware/auth.middleware';
+import { sseManager } from '../controllers/sse.controller';
 import multer from 'multer';
 import sharp from 'sharp';
 import path from 'path';
@@ -150,6 +151,9 @@ router.post('/', authMiddleware, adminMiddleware, upload.single('image'), async 
             }
         });
 
+        // Broadcast SSE event
+        sseManager.broadcast('menu:created', { menuItem });
+
         res.status(201).json(menuItem);
     } catch (error) {
         console.error('Create menu item error:', error);
@@ -218,6 +222,9 @@ router.put('/:id', authMiddleware, adminMiddleware, upload.single('image'), asyn
             }
         });
 
+        // Broadcast SSE event
+        sseManager.broadcast('menu:updated', { menuItem });
+
         res.json(menuItem);
     } catch (error) {
         console.error('Update menu item error:', error);
@@ -258,6 +265,9 @@ router.delete('/:id', authMiddleware, adminMiddleware, async (req: AuthRequest, 
         }
 
         await prisma.menuItem.delete({ where: { id } });
+
+        // Broadcast SSE event
+        sseManager.broadcast('menu:deleted', { menuItemId: id, menuItemName: existing.name });
 
         res.json({ message: 'Menu item deleted successfully' });
     } catch (error) {
