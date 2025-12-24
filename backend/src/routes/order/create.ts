@@ -23,12 +23,13 @@ import {
     OrderService,
     validate,
     createOrderSchema,
+    apiRateLimitMiddleware,
 } from './shared';
 
 const router = Router();
 
-// Create order (with blacklist validation, cutoff validated per selected date inside)
-router.post('/', authMiddleware, blacklistMiddleware, validate(createOrderSchema), async (req: AuthRequest, res: Response) => {
+// Create order (with blacklist validation, rate limiting, cutoff validated per selected date inside)
+router.post('/', authMiddleware, blacklistMiddleware, apiRateLimitMiddleware('default'), validate(createOrderSchema), async (req: AuthRequest, res: Response) => {
     const context = getRequestContext(req);
 
     try {
