@@ -33,7 +33,8 @@ import {
     DatabaseBackup,
     FileText,
     MapPin,
-    Store
+    Store,
+    ArrowUpCircle
 } from 'lucide-react';
 
 interface LayoutProps {
@@ -254,6 +255,7 @@ export default function Layout({ children }: LayoutProps) {
                                 <NavLink path="/admin/performance" icon={Activity} label="Performa Server" colorIndex={4} />
                                 <NavLink path="/admin/uptime" icon={Clock} label="Uptime History" colorIndex={6} />
                                 <NavLink path="/admin/backup" icon={DatabaseBackup} label="Backup Database" colorIndex={5} />
+                                <NavLink path="/admin/update" icon={ArrowUpCircle} label="System Update" colorIndex={7} />
                             </div>
                         )}
                     </div>
