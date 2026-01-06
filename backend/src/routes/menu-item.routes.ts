@@ -235,6 +235,7 @@ router.put('/:id', authMiddleware, adminMiddleware, upload.single('image'), asyn
 /**
  * DELETE /api/menu-items/:id
  * Delete a menu item (Admin only)
+ * Automatically removes from all weekly menus (cascade delete)
  */
 router.delete('/:id', authMiddleware, adminMiddleware, async (req: AuthRequest, res: Response) => {
     try {
@@ -249,11 +250,14 @@ router.delete('/:id', authMiddleware, adminMiddleware, async (req: AuthRequest, 
             return res.status(404).json({ error: 'Menu item not found' });
         }
 
-        // Check if menu item is used in weekly menus
+        // Cascade delete: Remove from all weekly menus first
+        let weeklyMenusDeleted = 0;
         if (existing._count.weeklyMenus > 0) {
-            return res.status(400).json({
-                error: `Cannot delete menu item used in ${existing._count.weeklyMenus} weekly menus. Remove from weekly menus first or deactivate.`
+            const deleteResult = await prisma.weeklyMenu.deleteMany({
+                where: { menuItemId: id }
             });
+            weeklyMenusDeleted = deleteResult.count;
+            console.log(`Cascade deleted ${weeklyMenusDeleted} weekly menu entries for menu item: ${existing.name}`);
         }
 
         // Delete image file
@@ -266,10 +270,25 @@ router.delete('/:id', authMiddleware, adminMiddleware, async (req: AuthRequest, 
 
         await prisma.menuItem.delete({ where: { id } });
 
-        // Broadcast SSE event
-        sseManager.broadcast('menu:deleted', { menuItemId: id, menuItemName: existing.name });
+        // Broadcast SSE events
+        sseManager.broadcast('menu:deleted', {
+            menuItemId: id,
+            menuItemName: existing.name,
+            weeklyMenusDeleted
+        });
 
-        res.json({ message: 'Menu item deleted successfully' });
+        if (weeklyMenusDeleted > 0) {
+            sseManager.broadcast('weekly-menu:updated', {
+                action: 'cascade-delete',
+                menuItemId: id,
+                deletedCount: weeklyMenusDeleted
+            });
+        }
+
+        res.json({
+            message: 'Menu item deleted successfully',
+            weeklyMenusDeleted
+        });
     } catch (error) {
         console.error('Delete menu item error:', error);
         res.status(500).json({ error: 'Failed to delete menu item' });
