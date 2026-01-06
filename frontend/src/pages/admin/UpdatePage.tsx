@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback } from 'react';
-import { RefreshCw, Download, CheckCircle, AlertTriangle, XCircle, ArrowUpCircle, Clock, GitBranch, Loader2 } from 'lucide-react';
+import { RefreshCw, Download, CheckCircle, ArrowUpCircle, GitBranch } from 'lucide-react';
 import toast from 'react-hot-toast';
 
 const API_URL = import.meta.env.VITE_API_URL ?? 'http://localhost:3012';
@@ -13,21 +13,11 @@ interface VersionInfo {
     branch: string;
 }
 
-interface UpdateStatus {
-    isUpdating: boolean;
-    currentStep: string;
-    progress: number;
-    error: string | null;
-    logs: string[];
-    lastUpdate: string | null;
-}
-
 export default function UpdatePage() {
     const [currentVersion, setCurrentVersion] = useState<VersionInfo | null>(null);
     const [latestVersion, setLatestVersion] = useState<VersionInfo | null>(null);
     const [updateAvailable, setUpdateAvailable] = useState(false);
     const [isChecking, setIsChecking] = useState(false);
-    const [updateStatus, setUpdateStatus] = useState<UpdateStatus | null>(null);
     const [isLoading, setIsLoading] = useState(true);
 
     const getToken = () => localStorage.getItem('token');
@@ -74,73 +64,6 @@ export default function UpdatePage() {
             toast.error('Gagal memeriksa update');
         } finally {
             setIsChecking(false);
-        }
-    };
-
-    const startUpdate = async () => {
-        if (!confirm('Apakah Anda yakin ingin memperbarui aplikasi? Proses ini akan menarik kode terbaru dari GitHub dan memperbarui database schema.')) {
-            return;
-        }
-
-        try {
-            const res = await fetch(`${API_URL}/api/version/update`, {
-                method: 'POST',
-                headers: { 'Authorization': `Bearer ${getToken()}` }
-            });
-
-            if (!res.ok) throw new Error('Failed to start update');
-
-            toast.success('Update dimulai...');
-            pollUpdateStatus();
-        } catch (error) {
-            console.error('Start update error:', error);
-            toast.error('Gagal memulai update');
-        }
-    };
-
-    const pollUpdateStatus = async () => {
-        const interval = setInterval(async () => {
-            try {
-                const res = await fetch(`${API_URL}/api/version/update-status`, {
-                    headers: { 'Authorization': `Bearer ${getToken()}` }
-                });
-
-                if (res.ok) {
-                    const status = await res.json();
-                    setUpdateStatus(status);
-
-                    if (!status.isUpdating && status.progress === 100) {
-                        clearInterval(interval);
-                        toast.success('Update selesai! Silakan restart container.');
-                    } else if (!status.isUpdating && status.error) {
-                        clearInterval(interval);
-                        toast.error('Update gagal: ' + status.error);
-                    }
-                }
-            } catch (error) {
-                // Server might be restarting
-                console.log('Polling update status...');
-            }
-        }, 2000);
-
-        // Stop polling after 5 minutes
-        setTimeout(() => clearInterval(interval), 300000);
-    };
-
-    const restartServer = async () => {
-        if (!confirm('Apakah Anda yakin ingin restart server? Aplikasi akan tidak tersedia beberapa saat.')) {
-            return;
-        }
-
-        try {
-            await fetch(`${API_URL}/api/version/restart`, {
-                method: 'POST',
-                headers: { 'Authorization': `Bearer ${getToken()}` }
-            });
-            toast.success('Server sedang restart...');
-        } catch (error) {
-            // Expected - server is restarting
-            toast.success('Server sedang restart...');
         }
     };
 
@@ -245,23 +168,16 @@ export default function UpdatePage() {
                                 </div>
                             )}
 
-                            <button
-                                onClick={startUpdate}
-                                disabled={updateStatus?.isUpdating}
-                                className="mt-4 bg-green-600 hover:bg-green-700 text-white px-6 py-2.5 rounded-xl font-medium transition-colors flex items-center gap-2"
-                            >
-                                {updateStatus?.isUpdating ? (
-                                    <>
-                                        <Loader2 className="w-4 h-4 animate-spin" />
-                                        Updating...
-                                    </>
-                                ) : (
-                                    <>
-                                        <ArrowUpCircle className="w-4 h-4" />
-                                        Update Sekarang
-                                    </>
-                                )}
-                            </button>
+                            <div className="mt-4 p-4 bg-white border border-green-300 rounded-xl">
+                                <p className="text-sm font-medium text-green-800 mb-2">
+                                    Untuk update, jalankan script berikut di server:
+                                </p>
+                                <div className="bg-slate-900 rounded-lg p-3 font-mono text-sm text-green-400">
+                                    <div>cd /path/to/project</div>
+                                    <div className="text-amber-400">.\update.ps1</div>
+                                    <div className="text-slate-500"># atau di Linux: ./update.sh</div>
+                                </div>
+                            </div>
                         </div>
                     </div>
                 </div>
@@ -284,89 +200,31 @@ export default function UpdatePage() {
                 </div>
             )}
 
-            {/* Update Progress */}
-            {updateStatus && (updateStatus.isUpdating || updateStatus.logs.length > 0) && (
-                <div className="card p-6">
-                    <h2 className="text-lg font-semibold text-[#1a1f37] mb-4 flex items-center gap-2">
-                        <Clock className="w-5 h-5 text-blue-500" />
-                        Progress Update
-                    </h2>
-
-                    <div className="mb-4">
-                        <div className="flex justify-between text-sm text-slate-600 mb-2">
-                            <span>{updateStatus.currentStep}</span>
-                            <span>{updateStatus.progress}%</span>
-                        </div>
-                        <div className="w-full h-3 bg-slate-200 rounded-full overflow-hidden">
-                            <div
-                                className={`h-full transition-all duration-500 ${updateStatus.error ? 'bg-red-500' :
-                                        updateStatus.progress === 100 ? 'bg-green-500' : 'bg-blue-500'
-                                    }`}
-                                style={{ width: `${updateStatus.progress}%` }}
-                            />
-                        </div>
-                    </div>
-
-                    {/* Logs */}
-                    <div className="bg-slate-900 rounded-xl p-4 max-h-64 overflow-y-auto font-mono text-sm">
-                        {updateStatus.logs.map((log, i) => (
-                            <div key={i} className={`${log.includes('ERROR') ? 'text-red-400' :
-                                    log.includes('OK') || log.includes('completed') ? 'text-green-400' :
-                                        'text-slate-300'
-                                }`}>
-                                {log}
-                            </div>
-                        ))}
-                    </div>
-
-                    {updateStatus.error && (
-                        <div className="mt-4 p-4 bg-red-50 border border-red-200 rounded-xl flex items-start gap-3">
-                            <XCircle className="w-5 h-5 text-red-500 flex-shrink-0 mt-0.5" />
-                            <div>
-                                <p className="font-medium text-red-800">Update Gagal</p>
-                                <p className="text-sm text-red-600">{updateStatus.error}</p>
-                            </div>
-                        </div>
-                    )}
-
-                    {updateStatus.progress === 100 && !updateStatus.error && (
-                        <div className="mt-4 p-4 bg-amber-50 border border-amber-200 rounded-xl">
-                            <div className="flex items-start gap-3">
-                                <AlertTriangle className="w-5 h-5 text-amber-500 flex-shrink-0 mt-0.5" />
-                                <div>
-                                    <p className="font-medium text-amber-800">Restart Diperlukan</p>
-                                    <p className="text-sm text-amber-600 mb-3">
-                                        Update selesai. Restart container untuk menerapkan perubahan.
-                                    </p>
-                                    <button
-                                        onClick={restartServer}
-                                        className="bg-amber-500 hover:bg-amber-600 text-white px-4 py-2 rounded-lg text-sm font-medium transition-colors"
-                                    >
-                                        Restart Server
-                                    </button>
-                                </div>
-                            </div>
-                        </div>
-                    )}
-                </div>
-            )}
-
             {/* Instructions */}
             <div className="card p-6">
-                <h2 className="text-lg font-semibold text-[#1a1f37] mb-4">Cara Manual Update</h2>
+                <h2 className="text-lg font-semibold text-[#1a1f37] mb-4">Cara Update Aplikasi</h2>
                 <div className="space-y-3 text-sm text-slate-600">
-                    <p>Jika update otomatis gagal, Anda bisa melakukan update manual:</p>
-                    <ol className="list-decimal list-inside space-y-2 pl-2">
-                        <li>SSH ke server atau akses terminal</li>
-                        <li>Masuk ke direktori project</li>
-                        <li>Jalankan: <code className="bg-slate-100 px-2 py-0.5 rounded">git pull origin main</code></li>
-                        <li>Jalankan: <code className="bg-slate-100 px-2 py-0.5 rounded">docker-compose down</code></li>
-                        <li>Jalankan: <code className="bg-slate-100 px-2 py-0.5 rounded">docker-compose build --no-cache</code></li>
-                        <li>Jalankan: <code className="bg-slate-100 px-2 py-0.5 rounded">docker-compose up -d</code></li>
-                        <li>Jalankan: <code className="bg-slate-100 px-2 py-0.5 rounded">docker exec catering-backend npx prisma db push</code></li>
-                    </ol>
+                    <p>Untuk update aplikasi, jalankan script berikut di server/host machine:</p>
+
+                    <div className="bg-slate-900 rounded-xl p-4 font-mono text-sm">
+                        <div className="text-slate-400"># Masuk ke direktori project</div>
+                        <div className="text-green-400">cd /path/to/Catering-Management</div>
+                        <div className="mt-2 text-slate-400"># Jalankan script update</div>
+                        <div className="text-amber-400">.\update.ps1</div>
+                        <div className="text-slate-500"># atau di Linux: ./update.sh</div>
+                    </div>
+
+                    <p className="mt-4">Script akan otomatis:</p>
+                    <ul className="list-disc list-inside space-y-1 pl-2 text-slate-500">
+                        <li>Backup database</li>
+                        <li>Pull kode terbaru dari GitHub</li>
+                        <li>Rebuild containers</li>
+                        <li>Sync database schema dengan <code className="bg-slate-100 px-1">prisma db push</code></li>
+                        <li>Cleanup backup lama</li>
+                    </ul>
                 </div>
             </div>
         </div>
     );
 }
+
