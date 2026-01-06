@@ -1,0 +1,12 @@
+{
+    "version": "1.5.1",
+    "releaseDate": "2026-01-06",
+    "minDatabaseVersion": "1.0.0",
+    "changelog": [
+        "Removed shift hours from vendor dashboard",
+        "Added version update system with UI trigger",
+        "Added update scripts (update.ps1, update.sh)"
+    ],
+    "repository": "https://github.com/torpedoliar/Catering-Management-System",
+    "branch": "main"
+}
