@@ -5,10 +5,56 @@ Panduan lengkap untuk deploy aplikasi dengan Nginx Proxy Manager (NPM) sebagai r
 ---
 
 ## Daftar Isi
-1. [Migrasi dari Nginx Bawaan](#migrasi-dari-nginx-bawaan-ke-npm)
-2. [Fresh Install](#fresh-install-instalasi-baru)
-3. [Install NPM](#step-0-install-nginx-proxy-manager)
-4. [Konfigurasi NPM](#step-7-konfigurasi-nginx-proxy-manager)
+1. [Arsitektur](#arsitektur)
+2. [Migrasi dari Nginx Bawaan](#migrasi-dari-nginx-bawaan-ke-npm)
+3. [Fresh Install](#fresh-install-instalasi-baru)
+4. [Install NPM](#step-0-install-nginx-proxy-manager)
+5. [Konfigurasi NPM](#step-7-konfigurasi-nginx-proxy-manager)
+
+---
+
+## Arsitektur
+
+```mermaid
+flowchart TB
+    subgraph Internet
+        USER[👤 User Browser]
+    end
+    
+    subgraph Server["🖥️ Linux Server"]
+        subgraph NPM["Nginx Proxy Manager :80/:443"]
+            HTTPS[HTTPS/SSL Termination]
+        end
+        
+        subgraph Docker["Docker Network: catering-network"]
+            FE["📱 Frontend\n:3011"]
+            BE["⚙️ Backend\n:3012"]
+            DB[("🗄️ PostgreSQL\n:5432")]
+            REDIS["📦 Redis\n:6379"]
+            UPLOADS["📁 /uploads"]
+        end
+    end
+    
+    USER -->|https://domain.com| HTTPS
+    HTTPS -->|"/ (root)"| FE
+    HTTPS -->|"/api/*"| BE
+    HTTPS -->|"/api/sse"| BE
+    HTTPS -->|"/uploads/*"| UPLOADS
+    
+    FE -->|API calls| BE
+    BE --> DB
+    BE --> REDIS
+    BE --> UPLOADS
+```
+
+### Routing Table
+
+| Request Path | Forward To | Port | Keterangan |
+|--------------|------------|------|------------|
+| `/` | catering-frontend | 3011 | React SPA |
+| `/api/*` | catering-backend | 3012 | REST API |
+| `/api/sse` | catering-backend | 3012 | Server-Sent Events |
+| `/uploads/*` | catering-backend | 3012 | Static files |
 
 ---
 
