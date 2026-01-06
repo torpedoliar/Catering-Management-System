@@ -309,9 +309,31 @@ router.put('/:id', authMiddleware, adminMiddleware, upload.single('photo'), asyn
 
 import { OrderService } from '../services/order.service';
 
-// Delete user (Admin only)
+// Delete user (Admin only) - HARD DELETE with password confirmation
 router.delete('/:id', authMiddleware, adminMiddleware, async (req: AuthRequest, res: Response) => {
     try {
+        const { password } = req.body;
+
+        // Require password confirmation
+        if (!password) {
+            return res.status(400).json({ error: 'Password konfirmasi diperlukan' });
+        }
+
+        // Verify admin password
+        const admin = await prisma.user.findUnique({
+            where: { id: req.user!.id },
+            select: { password: true }
+        });
+
+        if (!admin) {
+            return res.status(401).json({ error: 'Admin tidak ditemukan' });
+        }
+
+        const isPasswordValid = await bcrypt.compare(password, admin.password);
+        if (!isPasswordValid) {
+            return res.status(401).json({ error: 'Password salah' });
+        }
+
         const user = await prisma.user.findUnique({
             where: { id: req.params.id },
         });
@@ -320,28 +342,35 @@ router.delete('/:id', authMiddleware, adminMiddleware, async (req: AuthRequest, 
             return res.status(404).json({ error: ErrorMessages.USER_NOT_FOUND });
         }
 
+        // Prevent deleting yourself
+        if (user.id === req.user!.id) {
+            return res.status(400).json({ error: 'Tidak dapat menghapus akun sendiri' });
+        }
+
         // Auto-cancel all pending orders for this user BEFORE deleting
-        // This ensures food is not prepared for a deleted user
-        await OrderService.cancelUserOrders(user.id, 'User dihapus dari sistem oleh Admin');
+        await OrderService.cancelUserOrders(user.id, 'User dihapus permanen dari sistem oleh Admin');
 
-        const timestamp = new Date().getTime();
-        const deletedExternalId = `${user.externalId}_deleted_${timestamp}`;
-        // Ensure email is also unique if it exists, tough email is optional/nullable in some schemas, better safe
-        const deletedEmail = user.email ? `${user.email}_deleted_${timestamp}` : user.email;
+        // Hard delete: Remove related records first, then delete user
+        await prisma.$transaction(async (tx) => {
+            // Delete related blacklists
+            await tx.blacklist.deleteMany({ where: { userId: user.id } });
 
-        await prisma.user.update({
-            where: { id: req.params.id },
-            data: {
-                isActive: false,
-                externalId: deletedExternalId, // Free up the ID
-                email: deletedEmail
-            },
+            // Delete related messages
+            await tx.message.deleteMany({ where: { userId: user.id } });
+
+            // Delete orders (already cancelled above)
+            await tx.order.deleteMany({ where: { userId: user.id } });
+
+            // Finally delete the user
+            await tx.user.delete({ where: { id: user.id } });
         });
 
         // Log audit
-        await logUserManagement('DELETE', req.user || null, user, getRequestContext(req));
+        await logUserManagement('DELETE', req.user || null, user, getRequestContext(req), {
+            metadata: { deleteType: 'HARD_DELETE' }
+        });
 
-        res.json({ message: 'Pengguna berhasil dinonaktifkan' });
+        res.json({ message: 'Pengguna berhasil dihapus permanen' });
     } catch (error) {
         console.error('Delete user error:', error);
         res.status(500).json({ error: ErrorMessages.SERVER_ERROR });

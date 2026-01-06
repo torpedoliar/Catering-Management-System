@@ -87,6 +87,7 @@ export default function UserManagementPage() {
 
     // Delete confirmation
     const [deleteTarget, setDeleteTarget] = useState<{ id: string, name: string } | null>(null);
+    const [deletePassword, setDeletePassword] = useState('');
     const [formData, setFormData] = useState({
         externalId: '',
         nik: '',
@@ -347,14 +348,22 @@ export default function UserManagementPage() {
     const confirmDelete = async () => {
         if (!deleteTarget) return;
 
+        if (!deletePassword) {
+            toast.error('Masukkan password untuk konfirmasi');
+            return;
+        }
+
         try {
-            await api.delete(`/api/users/${deleteTarget.id}`);
-            toast.success('User deleted');
+            await api.delete(`/api/users/${deleteTarget.id}`, {
+                data: { password: deletePassword }
+            });
+            toast.success('User berhasil dihapus permanen');
             setDeleteTarget(null);
+            setDeletePassword('');
             loadUsers();
         } catch (error: any) {
             console.error('Delete user error:', error);
-            toast.error(error.response?.data?.error || 'Failed to delete user');
+            toast.error(error.response?.data?.error || 'Gagal menghapus user');
         }
     };
 
@@ -990,14 +999,36 @@ export default function UserManagementPage() {
             {deleteTarget && (
                 <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-50">
                     <div className="bg-white rounded-2xl p-6 max-w-md w-full mx-4 shadow-2xl">
-                        <h3 className="text-lg font-semibold text-[#1a1f37] mb-4">Konfirmasi Hapus</h3>
-                        <p className="text-slate-600 mb-6">
-                            Apakah Anda yakin ingin menghapus user <strong>"{deleteTarget.name}"</strong>?
-                            User akan dinonaktifkan.
-                        </p>
+                        <h3 className="text-lg font-semibold text-red-600 mb-4 flex items-center gap-2">
+                            <Trash2 className="w-5 h-5" />
+                            Hapus Permanen
+                        </h3>
+                        <div className="bg-red-50 border border-red-200 rounded-lg p-3 mb-4">
+                            <p className="text-sm text-red-700">
+                                <strong>⚠️ PERINGATAN:</strong> User <strong>"{deleteTarget.name}"</strong> akan dihapus permanen dari sistem beserta semua data terkait (pesanan, blacklist, dll). Tindakan ini tidak dapat dibatalkan!
+                            </p>
+                        </div>
+
+                        <div className="space-y-4 mb-6">
+                            <div>
+                                <label className="block text-sm text-slate-500 mb-1">Password Admin (Konfirmasi) *</label>
+                                <input
+                                    type="password"
+                                    value={deletePassword}
+                                    onChange={(e) => setDeletePassword(e.target.value)}
+                                    className="input-field"
+                                    placeholder="Masukkan password Anda"
+                                    autoFocus
+                                />
+                            </div>
+                        </div>
+
                         <div className="flex gap-3 justify-end">
                             <button
-                                onClick={() => setDeleteTarget(null)}
+                                onClick={() => {
+                                    setDeleteTarget(null);
+                                    setDeletePassword('');
+                                }}
                                 className="px-4 py-2 rounded-xl bg-slate-100 text-slate-700 hover:bg-slate-200 transition-colors font-medium"
                             >
                                 Batal
@@ -1006,7 +1037,7 @@ export default function UserManagementPage() {
                                 onClick={confirmDelete}
                                 className="px-4 py-2 rounded-xl bg-red-500 text-white hover:bg-red-600 transition-colors font-medium"
                             >
-                                Hapus
+                                Hapus Permanen
                             </button>
                         </div>
                     </div>
