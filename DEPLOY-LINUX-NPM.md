@@ -1,5 +1,15 @@
 # Deploy Catering Management System ke Linux dengan Nginx Proxy Manager
 
+Panduan lengkap untuk deploy aplikasi dengan Nginx Proxy Manager (NPM) sebagai reverse proxy.
+
+---
+
+## Daftar Isi
+1. [Migrasi dari Nginx Bawaan](#migrasi-dari-nginx-bawaan-ke-npm)
+2. [Fresh Install](#fresh-install-instalasi-baru)
+3. [Install NPM](#step-0-install-nginx-proxy-manager)
+4. [Konfigurasi NPM](#step-7-konfigurasi-nginx-proxy-manager)
+
 ---
 
 ## Migrasi dari Nginx Bawaan ke NPM
@@ -16,7 +26,7 @@ docker compose down
 # 3. Pull update terbaru
 git pull origin main
 
-# 4. Backup docker-compose lama (opsional)
+# 4. Backup docker-compose lama
 cp docker-compose.yml docker-compose.yml.backup
 
 # 5. Ganti ke NPM version
@@ -24,20 +34,15 @@ cp docker-compose.npm.yml docker-compose.yml
 
 # 6. Update environment
 nano .env
-# Tambahkan/edit:
-# CORS_ORIGIN=https://catering.yourdomain.com
-# VITE_API_URL=https://catering.yourdomain.com
+# Edit: CORS_ORIGIN=https://yourdomain.com
 
 # 7. Start dengan config baru
 docker compose up -d
-
-# 8. Verify
-docker compose ps
 ```
 
-> ⚠️ Data database **tidak akan hilang** karena tersimpan di Docker volume.
+> ⚠️ Data database **tidak akan hilang**.
 
-**Rollback jika ada masalah:**
+**Rollback:**
 ```bash
 docker compose down
 cp docker-compose.yml.backup docker-compose.yml
@@ -50,12 +55,58 @@ Setelah migrasi, lanjut ke **STEP 7** untuk konfigurasi NPM.
 
 ## Fresh Install (Instalasi Baru)
 
-## Persyaratan
-
-- Ubuntu 20.04+ / Debian 11+ / CentOS 8+
+### Persyaratan
+- Ubuntu 20.04+ / Debian 11+
 - RAM minimal 2GB
 - Docker & Docker Compose
-- Nginx Proxy Manager sudah terinstall
+
+---
+
+## STEP 0: Install Nginx Proxy Manager
+
+```bash
+# Buat folder NPM
+mkdir -p ~/npm && cd ~/npm
+
+# Buat docker-compose.yml untuk NPM
+cat > docker-compose.yml << 'EOF'
+version: '3.8'
+services:
+  npm:
+    image: 'jc21/nginx-proxy-manager:latest'
+    container_name: nginx-proxy-manager
+    restart: unless-stopped
+    ports:
+      - '80:80'
+      - '81:81'
+      - '443:443'
+    volumes:
+      - ./data:/data
+      - ./letsencrypt:/etc/letsencrypt
+EOF
+
+# Start NPM
+docker compose up -d
+
+# Tunggu 30 detik
+sleep 30
+
+# Verify
+docker ps | grep nginx-proxy-manager
+```
+
+**Akses NPM Admin:**
+```
+http://YOUR_SERVER_IP:81
+```
+
+**Login default:**
+| Field | Value |
+|-------|-------|
+| Email | `admin@example.com` |
+| Password | `changeme` |
+
+> ⚠️ Ganti password setelah login pertama!
 
 ---
 
@@ -80,13 +131,8 @@ exit
 ## STEP 2: Clone Project
 
 ```bash
-# Masuk ke folder Documents
 cd ~/Documents
-
-# Clone repository
 git clone https://github.com/torpedoliar/Catering-Management-System.git
-
-# Masuk ke folder project
 cd Catering-Management-System
 ```
 
@@ -95,47 +141,34 @@ cd Catering-Management-System
 ## STEP 3: Setup Environment
 
 ```bash
-# Buat file .env dengan password aman
 cat > .env << 'EOF'
 DB_PASSWORD=GantiDenganPasswordAman123
-JWT_SECRET=GantiDenganSecretPanjangMinimal64KarakterAcakDisini1234567890
+JWT_SECRET=GantiDenganSecretPanjangMinimal64Karakter1234567890ABCDEF
 CORS_ORIGIN=https://catering.yourdomain.com
-VITE_API_URL=https://catering.yourdomain.com
+VITE_API_URL=
 EOF
 
-# Set permission
 chmod 600 .env
 ```
 
-> ⚠️ **PENTING:** Ganti `catering.yourdomain.com` dengan domain Anda!
+> ⚠️ Ganti `catering.yourdomain.com` dengan domain Anda!
 
 ---
 
-## STEP 4: Setup Docker Compose untuk NPM
+## STEP 4: Setup Docker Compose
 
 ```bash
-# Copy docker-compose NPM version
 cp docker-compose.npm.yml docker-compose.yml
-
-# Verify file
-cat docker-compose.yml | head -20
 ```
 
 ---
 
-## STEP 5: Build dan Start Containers
+## STEP 5: Build dan Start
 
 ```bash
-# Build images (5-10 menit pertama kali)
 docker compose build
-
-# Start semua containers
 docker compose up -d
-
-# Tunggu sampai selesai
 sleep 15
-
-# Cek status
 docker compose ps
 ```
 
@@ -144,32 +177,22 @@ docker compose ps
 ## STEP 6: Setup Database
 
 ```bash
-# Sync database schema
+# Sync schema
 docker compose exec backend npx prisma db push --accept-data-loss
 
-# Generate Prisma client
-docker compose exec backend npx prisma generate
-
-# Seed admin user
+# Seed admin
 docker compose exec backend node -e "
 const { PrismaClient } = require('@prisma/client');
 const bcrypt = require('bcryptjs');
 const prisma = new PrismaClient();
-
 async function seed() {
     const hash = await bcrypt.hash('admin123', 10);
     await prisma.user.upsert({
         where: { username: 'ADMIN001' },
         update: {},
-        create: {
-            username: 'ADMIN001',
-            name: 'Administrator',
-            password: hash,
-            role: 'ADMIN',
-            isActive: true
-        }
+        create: { username: 'ADMIN001', name: 'Administrator', password: hash, role: 'ADMIN', isActive: true }
     });
-    console.log('Admin created: ADMIN001');
+    console.log('Admin created');
     await prisma.\$disconnect();
 }
 seed();
@@ -180,78 +203,109 @@ seed();
 
 ## STEP 7: Konfigurasi Nginx Proxy Manager
 
-### 7.1 Login ke NPM
+### 7.1 Cek IP Container
+
+```bash
+docker inspect catering-frontend | grep IPAddress
+docker inspect catering-backend | grep IPAddress
+```
+
+Catat IP-nya (contoh: `172.18.0.5` dan `172.18.0.4`)
+
+### 7.2 Login NPM
 Buka: `http://YOUR_SERVER_IP:81`
 
-### 7.2 Buat Proxy Host Baru
+### 7.3 Buat Proxy Host
 
+Klik **"Add Proxy Host"**
+
+#### Tab "Details"
 | Field | Value |
 |-------|-------|
 | Domain Names | `catering.yourdomain.com` |
 | Scheme | `http` |
-| Forward Hostname/IP | `YOUR_SERVER_IP` |
+| Forward Hostname/IP | `172.18.0.X` *(IP frontend)* |
 | Forward Port | `3011` |
 | Block Common Exploits | ✓ |
 | Websockets Support | ✓ |
 
-### 7.3 Tambah Custom Locations (Advanced Tab)
+### 7.4 Tab "Custom Locations"
 
-Salin dan paste ini ke **Custom Nginx Configuration**:
+Klik **"Add Location"** 3 kali:
+
+**Location 1 - SSE:**
+| Field | Value |
+|-------|-------|
+| Location | `/api/sse` |
+| Scheme | `http` |
+| Forward Hostname/IP | `172.18.0.X` *(IP backend)* |
+| Forward Port | `3012` |
+
+Klik ⚙️ (gear) → Centang **Websockets Support**
+
+**Location 2 - API:**
+| Field | Value |
+|-------|-------|
+| Location | `/api` |
+| Scheme | `http` |
+| Forward Hostname/IP | `172.18.0.X` *(IP backend)* |
+| Forward Port | `3012` |
+
+**Location 3 - Uploads:**
+| Field | Value |
+|-------|-------|
+| Location | `/uploads` |
+| Scheme | `http` |
+| Forward Hostname/IP | `172.18.0.X` *(IP backend)* |
+| Forward Port | `3012` |
+
+### 7.5 Tab "Advanced"
+
+Paste konfigurasi ini:
 
 ```nginx
-# SSE Support - WAJIB untuk realtime
+# SSE Support - WAJIB
 location /api/sse {
-    proxy_pass http://YOUR_SERVER_IP:3012;
-    proxy_http_version 1.1;
-    proxy_set_header Connection '';
-    proxy_set_header Host $host;
-    proxy_set_header X-Real-IP $remote_addr;
-    proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
-    proxy_set_header X-Forwarded-Proto $scheme;
     proxy_buffering off;
     proxy_cache off;
     proxy_read_timeout 86400;
+    proxy_set_header Connection '';
     chunked_transfer_encoding off;
 }
 
-# API dengan upload support
+# API dengan upload
 location /api/ {
-    proxy_pass http://YOUR_SERVER_IP:3012;
-    proxy_http_version 1.1;
-    proxy_set_header Upgrade $http_upgrade;
-    proxy_set_header Connection 'upgrade';
-    proxy_set_header Host $host;
-    proxy_set_header X-Real-IP $remote_addr;
-    proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
-    proxy_set_header X-Forwarded-Proto $scheme;
-    proxy_read_timeout 300;
     client_max_body_size 50M;
+    proxy_read_timeout 300;
 }
 
-# Static uploads
+# Static uploads cache
 location /uploads/ {
-    proxy_pass http://YOUR_SERVER_IP:3012/uploads/;
     expires 1d;
+    add_header Cache-Control "public, immutable";
 }
 ```
 
-> ⚠️ Ganti `YOUR_SERVER_IP` dengan IP server Anda!
+### 7.6 Tab "SSL" (Recommended)
 
-### 7.4 Enable SSL
-- Tab **SSL**
-- Request new SSL Certificate
-- Force SSL: ✓
-- HTTP/2 Support: ✓
+| Setting | Value |
+|---------|-------|
+| SSL Certificate | Request new SSL Certificate |
+| Force SSL | ✓ |
+| HTTP/2 Support | ✓ |
+| Email for Let's Encrypt | your@email.com |
+
+Klik **Save**
 
 ---
 
 ## STEP 8: Verifikasi
 
 ```bash
-# Test dari server
+# Test health
 curl -s http://localhost:3012/api/health
 
-# Test dari luar (ganti domain)
+# Test via domain (ganti dengan domain Anda)
 curl -s https://catering.yourdomain.com/api/health
 ```
 
@@ -259,7 +313,6 @@ curl -s https://catering.yourdomain.com/api/health
 
 ## STEP 9: Akses Aplikasi
 
-Buka browser:
 ```
 https://catering.yourdomain.com
 ```
@@ -276,36 +329,34 @@ https://catering.yourdomain.com
 # Lihat logs
 docker compose logs -f
 
-# Restart container
+# Restart
 docker compose restart backend
-
-# Stop semua
-docker compose down
 
 # Update aplikasi
 git pull origin main
-docker compose build
-docker compose up -d
+docker compose up -d --build
+
+# Stop semua
+docker compose down
 ```
 
 ---
 
 ## Troubleshooting
 
-### Container tidak start
+### SSE tidak connect (realtime tidak jalan)
+- Pastikan Location `/api/sse` sudah dibuat di NPM
+- Pastikan Advanced config `proxy_buffering off` sudah ada
+
+### Upload gagal (Error 413)
+- Pastikan `client_max_body_size 50M` di Advanced config
+
+### CORS Error
+- Pastikan `CORS_ORIGIN` di .env sesuai domain NPM
+- Jangan pakai trailing slash
+
+### Container restart terus
 ```bash
 docker compose logs backend
 docker compose logs frontend
-```
-
-### SSE tidak connect
-- Pastikan config `/api/sse` sudah benar di NPM
-- Cek `proxy_buffering off` sudah diset
-
-### Upload gagal (Error 413)
-- Set `client_max_body_size 50M` di NPM
-
-### Database connection error
-```bash
-docker compose restart backend
 ```
