@@ -233,7 +233,13 @@ Klik **"Add Proxy Host"**
 
 > 💡 Gunakan nama container `catering-frontend` atau IP address dari hasil `docker inspect`
 
-### 7.4 Tab "Custom Locations"
+### 7.4 Konfigurasi Routing API
+
+> ⚠️ **PENTING:** Pilih **SALAH SATU** metode di bawah, jangan keduanya!
+
+---
+
+#### OPSI A: Gunakan Custom Locations (Recommended - Lebih Mudah)
 
 Klik **"Add Location"** 3 kali:
 
@@ -263,32 +269,53 @@ Klik ⚙️ (gear) → Centang **Websockets Support**
 | Forward Hostname/IP | `catering-backend` atau `172.18.0.X` |
 | Forward Port | `3012` |
 
-### 7.5 Tab "Advanced"
+Klik **Save** → Selesai! Lanjut ke **7.5 SSL**.
 
-Paste konfigurasi ini:
+---
+
+#### OPSI B: Gunakan Advanced Config (Untuk konfigurasi lebih lengkap)
+
+> ⚠️ **Jika menggunakan opsi ini, JANGAN buat Custom Locations di atas!**
+
+1. Kosongkan tab **Custom Locations**
+2. Pergi ke tab dengan ikon ⚙️ (gear) di kanan atas
+3. Paste konfigurasi ini di **Custom Nginx Configuration**:
 
 ```nginx
-# SSE Support - WAJIB
+# SSE Support - WAJIB untuk realtime
 location /api/sse {
+    proxy_pass http://catering-backend:3012;
+    proxy_http_version 1.1;
     proxy_buffering off;
     proxy_cache off;
     proxy_read_timeout 86400;
     proxy_set_header Connection '';
+    proxy_set_header Host $host;
+    proxy_set_header X-Real-IP $remote_addr;
     chunked_transfer_encoding off;
 }
 
-# API dengan upload
+# API dengan upload support
 location /api/ {
+    proxy_pass http://catering-backend:3012;
+    proxy_http_version 1.1;
+    proxy_set_header Host $host;
+    proxy_set_header X-Real-IP $remote_addr;
     client_max_body_size 50M;
     proxy_read_timeout 300;
 }
 
-# Static uploads cache
+# Static uploads
 location /uploads/ {
+    proxy_pass http://catering-backend:3012/uploads/;
     expires 1d;
     add_header Cache-Control "public, immutable";
 }
 ```
+
+Klik **Save**.
+
+---
 
 ### 7.6 Tab "SSL" (Recommended)
 
