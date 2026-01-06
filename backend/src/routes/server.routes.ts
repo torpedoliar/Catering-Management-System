@@ -261,8 +261,22 @@ router.get('/uptime/daily-stats', authMiddleware, adminMiddleware, async (req: A
         }
 
         const start = new Date(startDate as string);
-        const end = new Date(endDate as string);
-        end.setHours(23, 59, 59, 999);
+        start.setHours(0, 0, 0, 0);
+
+        let end = new Date(endDate as string);
+        const now = new Date();
+
+        // If end date is today or future, cap at current time
+        const endDateOnly = new Date(end);
+        endDateOnly.setHours(0, 0, 0, 0);
+        const todayOnly = new Date(now);
+        todayOnly.setHours(0, 0, 0, 0);
+
+        if (endDateOnly >= todayOnly) {
+            end = now;
+        } else {
+            end.setHours(23, 59, 59, 999);
+        }
 
         const dailyStats = await calculateDailyStats(start, end);
         res.json({ dailyStats });
@@ -282,8 +296,22 @@ router.get('/uptime/summary', authMiddleware, adminMiddleware, async (req: AuthR
         }
 
         const start = new Date(startDate as string);
-        const end = new Date(endDate as string);
-        end.setHours(23, 59, 59, 999);
+        start.setHours(0, 0, 0, 0);
+
+        let end = new Date(endDate as string);
+        const now = new Date();
+
+        // If end date is today or future, cap at current time
+        const endDateOnly = new Date(end);
+        endDateOnly.setHours(0, 0, 0, 0);
+        const todayOnly = new Date(now);
+        todayOnly.setHours(0, 0, 0, 0);
+
+        if (endDateOnly >= todayOnly) {
+            end = now;
+        } else {
+            end.setHours(23, 59, 59, 999);
+        }
 
         const summary = await getUptimeSummary(start, end);
         const downtimePeriods = await getDowntimePeriods(start, end);
