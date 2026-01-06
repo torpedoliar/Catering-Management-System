@@ -146,8 +146,8 @@ router.post('/', authMiddleware, adminMiddleware, upload.single('photo'), valida
             return res.status(400).json({ error: ErrorMessages.MISSING_REQUIRED_FIELDS });
         }
 
-        // Must provide either departmentId OR legacy fields
-        if (!departmentId && (!company || !division || !department)) {
+        // Must provide either departmentId OR legacy fields (except for VENDOR role)
+        if (role !== 'VENDOR' && !departmentId && (!company || !division || !department)) {
             return res.status(400).json({ error: 'Departemen harus dipilih' });
         }
 
