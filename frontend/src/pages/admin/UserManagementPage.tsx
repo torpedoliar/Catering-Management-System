@@ -576,8 +576,8 @@ export default function UserManagementPage() {
 
             {/* Edit/Add Modal */}
             {(editingUser || showAddModal) && (
-                <div className="fixed inset-0 bg-black/40 z-50 flex items-center justify-center p-4">
-                    <div className="bg-white rounded-2xl p-6 w-full max-w-lg shadow-2xl animate-scale-in">
+                <div className="fixed inset-0 bg-black/40 z-50 flex items-start sm:items-center justify-center p-4 overflow-y-auto">
+                    <div className="bg-white rounded-2xl p-6 w-full max-w-lg shadow-2xl animate-scale-in my-4 sm:my-0 max-h-[95vh] overflow-y-auto">
                         <div className="flex items-center justify-between mb-6">
                             <h2 className="text-xl font-bold text-[#1a1f37]">
                                 {editingUser ? 'Edit Pengguna' : 'Tambah Pengguna Baru'}

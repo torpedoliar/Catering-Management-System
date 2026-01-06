@@ -24,9 +24,10 @@ export const createUserSchema = z.object({
     name: z.string().min(2, 'Nama minimal 2 karakter').max(100),
     email: z.string().email('Format email tidak valid').optional().nullable(),
     password: z.string().min(6, 'Password minimal 6 karakter').optional(),
-    company: z.string().min(1, 'Perusahaan wajib diisi'),
-    division: z.string().min(1, 'Divisi wajib diisi'),
-    department: z.string().min(1, 'Departemen wajib diisi'),
+    // These are optional because they can be auto-populated from departmentId
+    company: z.string().optional().nullable(),
+    division: z.string().optional().nullable(),
+    department: z.string().optional().nullable(),
     departmentId: z.string().uuid().optional().nullable(),
     role: z.enum(['USER', 'ADMIN', 'CANTEEN', 'VENDOR']).optional().default('USER'),
     vendorId: z.string().uuid().optional().nullable(),
