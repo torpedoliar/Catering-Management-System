@@ -1,5 +1,55 @@
 # Deploy Catering Management System ke Linux dengan Nginx Proxy Manager
 
+---
+
+## Migrasi dari Nginx Bawaan ke NPM
+
+Jika server Anda **sudah ada deployment sebelumnya** menggunakan nginx bawaan:
+
+```bash
+# 1. Masuk ke folder project
+cd ~/Documents/Catering-Management-System
+
+# 2. Stop containers lama
+docker compose down
+
+# 3. Pull update terbaru
+git pull origin main
+
+# 4. Backup docker-compose lama (opsional)
+cp docker-compose.yml docker-compose.yml.backup
+
+# 5. Ganti ke NPM version
+cp docker-compose.npm.yml docker-compose.yml
+
+# 6. Update environment
+nano .env
+# Tambahkan/edit:
+# CORS_ORIGIN=https://catering.yourdomain.com
+# VITE_API_URL=https://catering.yourdomain.com
+
+# 7. Start dengan config baru
+docker compose up -d
+
+# 8. Verify
+docker compose ps
+```
+
+> ⚠️ Data database **tidak akan hilang** karena tersimpan di Docker volume.
+
+**Rollback jika ada masalah:**
+```bash
+docker compose down
+cp docker-compose.yml.backup docker-compose.yml
+docker compose up -d
+```
+
+Setelah migrasi, lanjut ke **STEP 7** untuk konfigurasi NPM.
+
+---
+
+## Fresh Install (Instalasi Baru)
+
 ## Persyaratan
 
 - Ubuntu 20.04+ / Debian 11+ / CentOS 8+
