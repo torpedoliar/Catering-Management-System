@@ -296,4 +296,153 @@ router.get('/available-weeks', authMiddleware, vendorMiddleware, async (req: Aut
     }
 });
 
+/**
+ * Get shift status based on current time
+ */
+function getShiftStatus(
+    shiftStart: string,
+    shiftEnd: string,
+    orderDate: Date,
+    now: Date
+): 'completed' | 'in_progress' | 'upcoming' {
+    const dateStr = orderDate.toISOString().split('T')[0];
+    const todayStr = now.toISOString().split('T')[0];
+
+    // Parse shift times
+    const [startH, startM] = shiftStart.split(':').map(Number);
+    const [endH, endM] = shiftEnd.split(':').map(Number);
+
+    const shiftStartDate = new Date(orderDate);
+    shiftStartDate.setHours(startH, startM, 0, 0);
+
+    const shiftEndDate = new Date(orderDate);
+    // Handle overnight shift (end < start means next day)
+    if (endH < startH || (endH === startH && endM < startM)) {
+        shiftEndDate.setDate(shiftEndDate.getDate() + 1);
+    }
+    shiftEndDate.setHours(endH, endM, 0, 0);
+
+    // If order date is in the past (before today), it's completed
+    if (dateStr < todayStr) {
+        return 'completed';
+    }
+
+    // If order date is in the future, it's upcoming
+    if (dateStr > todayStr) {
+        return 'upcoming';
+    }
+
+    // Order is today - check time
+    if (now > shiftEndDate) return 'completed';
+    if (now >= shiftStartDate && now <= shiftEndDate) return 'in_progress';
+    return 'upcoming';
+}
+
+/**
+ * GET /api/vendor/pickup-stats
+ * Get pickup statistics with shift status for date range
+ */
+router.get('/pickup-stats', authMiddleware, vendorMiddleware, async (req: AuthRequest, res: Response) => {
+    try {
+        const now = getNow();
+        const { startDate, endDate } = req.query;
+
+        // Default to today if not provided
+        const start = startDate
+            ? new Date(startDate as string)
+            : new Date(now.getFullYear(), now.getMonth(), now.getDate());
+        start.setHours(0, 0, 0, 0);
+
+        let end = endDate
+            ? new Date(endDate as string)
+            : new Date(now.getFullYear(), now.getMonth(), now.getDate());
+        end.setHours(23, 59, 59, 999);
+
+        // Fetch shifts and orders
+        const [shifts, orders] = await Promise.all([
+            prisma.shift.findMany({
+                where: { isActive: true },
+                orderBy: { startTime: 'asc' },
+                select: { id: true, name: true, startTime: true, endTime: true }
+            }),
+            prisma.order.findMany({
+                where: {
+                    orderDate: { gte: start, lte: end }
+                },
+                select: {
+                    id: true,
+                    orderDate: true,
+                    shiftId: true,
+                    status: true
+                }
+            })
+        ]);
+
+        // Generate all dates in range
+        const dates: Date[] = [];
+        const currentDate = new Date(start);
+        while (currentDate <= end) {
+            dates.push(new Date(currentDate));
+            currentDate.setDate(currentDate.getDate() + 1);
+        }
+
+        // Process each date
+        const result = dates.map(date => {
+            const dateStr = date.toISOString().split('T')[0];
+            const dayOrders = orders.filter(o =>
+                o.orderDate.toISOString().split('T')[0] === dateStr
+            );
+
+            // Process each shift
+            const shiftsData = shifts.map(shift => {
+                const shiftOrders = dayOrders.filter(o => o.shiftId === shift.id);
+                const ordered = shiftOrders.filter(o => o.status !== 'CANCELLED').length;
+                const pickedUp = shiftOrders.filter(o => o.status === 'PICKED_UP').length;
+                const noShow = shiftOrders.filter(o => o.status === 'NO_SHOW').length;
+                const cancelled = shiftOrders.filter(o => o.status === 'CANCELLED').length;
+                const pickupRate = ordered > 0 ? Math.round((pickedUp / ordered) * 10000) / 100 : 0;
+
+                return {
+                    shiftId: shift.id,
+                    shiftName: shift.name,
+                    startTime: shift.startTime,
+                    endTime: shift.endTime,
+                    status: getShiftStatus(shift.startTime, shift.endTime, date, now),
+                    stats: {
+                        ordered,
+                        pickedUp,
+                        noShow,
+                        cancelled,
+                        pickupRate
+                    }
+                };
+            });
+
+            return {
+                date: dateStr,
+                dayName: dayNames[date.getDay()],
+                shifts: shiftsData
+            };
+        });
+
+        // Calculate summary
+        const allStats = result.flatMap(d => d.shifts.map(s => s.stats));
+        const summary = {
+            totalOrdered: allStats.reduce((sum, s) => sum + s.ordered, 0),
+            totalPickedUp: allStats.reduce((sum, s) => sum + s.pickedUp, 0),
+            totalNoShow: allStats.reduce((sum, s) => sum + s.noShow, 0),
+            totalCancelled: allStats.reduce((sum, s) => sum + s.cancelled, 0),
+            overallPickupRate: 0
+        };
+        summary.overallPickupRate = summary.totalOrdered > 0
+            ? Math.round((summary.totalPickedUp / summary.totalOrdered) * 10000) / 100
+            : 0;
+
+        res.json({ dates: result, summary });
+    } catch (error) {
+        console.error('Pickup stats error:', error);
+        res.status(500).json({ error: 'Failed to get pickup statistics' });
+    }
+});
+
 export default router;

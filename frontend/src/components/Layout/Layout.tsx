@@ -34,7 +34,8 @@ import {
     FileText,
     MapPin,
     Store,
-    ArrowUpCircle
+    ArrowUpCircle,
+    TrendingUp
 } from 'lucide-react';
 
 interface LayoutProps {
@@ -94,6 +95,7 @@ export default function Layout({ children }: LayoutProps) {
 
     const vendorLinks = [
         { path: '/vendor', icon: FileSpreadsheet, label: 'Rekap Order Makanan' },
+        { path: '/vendor/pickup-stats', icon: TrendingUp, label: 'Statistik Pengambilan' },
     ];
 
     // Icon color mapping - glassmorphism style for dark theme

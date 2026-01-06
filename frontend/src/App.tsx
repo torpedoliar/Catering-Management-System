@@ -36,6 +36,7 @@ const UpdatePage = lazy(() => import('./pages/admin/UpdatePage'));
 const CanteenManagementPage = lazy(() => import('./pages/admin/CanteenManagementPage'));
 const CheckInPage = lazy(() => import('./pages/canteen/CheckInPage'));
 const VendorDashboardPage = lazy(() => import('./pages/vendor/VendorDashboardPage'));
+const VendorPickupStatsPage = lazy(() => import('./pages/vendor/VendorPickupStatsPage'));
 const VendorManagementPage = lazy(() => import('./pages/admin/VendorManagementPage'));
 const WeeklyMenuPage = lazy(() => import('./pages/admin/WeeklyMenuPage'));
 
@@ -127,6 +128,7 @@ function AppRoutes() {
                 {/* Vendor Routes */}
                 <Route element={<ProtectedRoute roles={['VENDOR', 'ADMIN']}><Suspense fallback={<div className="flex items-center justify-center h-screen"><div className="animate-spin rounded-full h-12 w-12 border-t-2 border-b-2 border-teal-500"></div></div>}><Outlet /></Suspense></ProtectedRoute>}>
                     <Route path="/vendor" element={<VendorDashboardPage />} />
+                    <Route path="/vendor/pickup-stats" element={<VendorPickupStatsPage />} />
                 </Route>
             </Route>
 
