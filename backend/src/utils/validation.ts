@@ -29,6 +29,7 @@ export const createUserSchema = z.object({
     department: z.string().min(1, 'Departemen wajib diisi'),
     departmentId: z.string().uuid().optional().nullable(),
     role: z.enum(['USER', 'ADMIN', 'CANTEEN', 'VENDOR']).optional().default('USER'),
+    vendorId: z.string().uuid().optional().nullable(),
 });
 
 export const updateUserSchema = z.object({
@@ -41,6 +42,7 @@ export const updateUserSchema = z.object({
     departmentId: z.string().uuid().optional().nullable(),
     role: z.enum(['USER', 'ADMIN', 'CANTEEN', 'VENDOR']).optional(),
     isActive: z.boolean().optional(),
+    vendorId: z.string().uuid().optional().nullable(),
 });
 
 // ============================================

@@ -20,7 +20,8 @@ export const prisma = globalThis.prisma ?? new PrismaClient({
     log: process.env.NODE_ENV === 'development' ? ['error', 'warn'] : ['error'],
     datasources: {
         db: {
-            url: `${process.env.DATABASE_URL}?connection_limit=${poolConfig.connectionLimit}&connect_timeout=${poolConfig.connectTimeout / 1000}`,
+            // DATABASE_URL already contains ?schema=public, so use & for additional params
+            url: `${process.env.DATABASE_URL}&connection_limit=${poolConfig.connectionLimit}&connect_timeout=${poolConfig.connectTimeout / 1000}`,
         },
     },
 });

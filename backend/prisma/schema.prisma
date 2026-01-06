@@ -538,3 +538,21 @@ model WeeklyMenu {
   @@index([menuItemId])
   @@index([shiftId])
 }
+
+// Server uptime tracking
+enum UptimeEventType {
+  STARTUP
+  SHUTDOWN
+}
+
+model ServerUptimeLog {
+  id          String          @id @default(uuid())
+  eventType   UptimeEventType
+  timestamp   DateTime        @default(now())
+  processId   String?
+  hostname    String?
+  notes       String?
+  
+  @@index([timestamp])
+  @@index([eventType])
+}

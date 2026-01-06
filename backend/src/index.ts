@@ -31,6 +31,7 @@ import { initNTPService, getNow } from './services/time.service';
 import { redisService } from './services/redis.service';
 import { cacheService } from './services/cache.service';
 import { prisma } from './lib/prisma';
+import { logServerStart, logServerStop } from './services/uptime.service';
 
 const app = express();
 const PORT = process.env.PORT || 3012;
@@ -86,6 +87,15 @@ app.use(errorHandler);
 // Graceful shutdown
 process.on('SIGTERM', async () => {
     console.log('SIGTERM received, shutting down...');
+    await logServerStop('SIGTERM received');
+    await redisService.disconnect();
+    await prisma.$disconnect();
+    process.exit(0);
+});
+
+process.on('SIGINT', async () => {
+    console.log('SIGINT received, shutting down...');
+    await logServerStop('SIGINT received');
     await redisService.disconnect();
     await prisma.$disconnect();
     process.exit(0);
@@ -106,6 +116,9 @@ app.listen(PORT, async () => {
 
     // Start the no-show scheduler
     startScheduler();
+
+    // Log server startup
+    await logServerStart('Server startup complete');
 });
 
 export { prisma, sseManager };

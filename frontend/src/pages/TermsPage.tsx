@@ -31,7 +31,8 @@ export default function TermsPage() {
 
     const loadAgreements = useCallback(async () => {
         try {
-            const res = await api.get('/api/announcements');
+            // Use /active endpoint which is available to all authenticated users
+            const res = await api.get('/api/announcements/active');
             // Filter strictly for AGREEMENT type and active only
             const allItems: Agreement[] = res.data.announcements || [];
             const activeAgreements = allItems.filter(item => item.type === 'AGREEMENT' && item.isActive);

@@ -266,13 +266,29 @@ export default function UserManagementPage() {
                 return;
             }
 
+            // Validate VENDOR role must have vendorId
+            if (formData.role === 'VENDOR' && !formData.vendorId) {
+                toast.error('Vendor wajib dipilih untuk role Vendor');
+                return;
+            }
+
             const data = new FormData();
             data.append('name', formData.name);
             if (formData.nik) data.append('nik', formData.nik);
             if (formData.email) data.append('email', formData.email);
-            if (formData.departmentId) data.append('departmentId', formData.departmentId);
-            data.append('preferredCanteenId', formData.preferredCanteenId || '');
             data.append('role', formData.role);
+
+            // For VENDOR role, set default placeholders for org hierarchy, send vendorId
+            if (formData.role === 'VENDOR') {
+                data.append('company', 'VENDOR');
+                data.append('division', 'VENDOR');
+                data.append('department', 'VENDOR');
+                data.append('vendorId', formData.vendorId);
+            } else {
+                // For other roles, use departmentId and preferredCanteenId
+                if (formData.departmentId) data.append('departmentId', formData.departmentId);
+                data.append('preferredCanteenId', formData.preferredCanteenId || '');
+            }
 
             if (photoFile) {
                 data.append('photo', photoFile);
@@ -292,23 +308,6 @@ export default function UserManagementPage() {
                 }
                 data.append('externalId', formData.externalId);
                 data.append('password', formData.password || 'default123');
-
-                // Note: user.routes.ts for create doesn't support file upload yet in the plan, 
-                // but checking the code, I only modified PUT /:id.
-                // I should probably support it in POST / too or just use PUT after create.
-                // For now, let's assume I need to modify POST as well or just stick to PUT for photo.
-                // Wait, I only modified PUT. I should modify POST too in backend if I want photo on create.
-                // But let's check my backend changes. I only did router.put.
-                // Okay, I will modify frontend to only send photo on edit or add it to POST later.
-                // The prompt asked for "edit user... upload/take photo".
-                // "di detail user buat saya bisa upload atau ambil foto" -> in user detail (edit).
-                // So maybe create doesn't need it immediately? 
-                // But for completeness, I should probably handle it.
-                // However, `data` is FormData. My backend POST endpoint expects JSON currently?
-                // Let's check backend POST. It uses `req.body`. If I send FormData, `multer` middleware is needed.
-                // I didn't add `upload.single('photo')` to POST in backend.
-                // So for Create, I will just send JSON and warn/not send photo, OR I update backend POST.
-                // I'll update backend POST in a bit. For now I'll send FormData to POST too, assuming I fix backend.
 
                 await api.post('/api/users', data, {
                     headers: { 'Content-Type': 'multipart/form-data' }
