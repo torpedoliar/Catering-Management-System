@@ -85,6 +85,13 @@ services:
     volumes:
       - ./data:/data
       - ./letsencrypt:/etc/letsencrypt
+    networks:
+      - catering-network
+
+networks:
+  catering-network:
+    external: true
+    name: cateringmanagement_catering-network
 EOF
 
 # Start NPM
@@ -96,6 +103,10 @@ sleep 30
 # Verify
 docker ps | grep nginx-proxy-manager
 ```
+
+> ⚠️ **PENTING:** NPM harus join network yang sama dengan Catering Management agar bisa resolve nama container seperti `catering-backend` dan `catering-frontend`.
+> 
+> Jika network name berbeda, cek dengan: `docker network ls | grep catering`
 
 **Akses NPM Admin:**
 ```
