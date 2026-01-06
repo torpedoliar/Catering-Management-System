@@ -75,6 +75,19 @@ else
     echo -e "${GREEN}✓ Environment file already exists${NC}"
 fi
 
+# Copy docker-compose.yml from example if not exists
+if [ ! -f "docker-compose.yml" ]; then
+    if [ -f "docker-compose.example.yml" ]; then
+        cp docker-compose.example.yml docker-compose.yml
+        echo -e "${GREEN}✓ docker-compose.yml created from example${NC}"
+    else
+        echo -e "${RED}ERROR: docker-compose.example.yml not found!${NC}"
+        exit 1
+    fi
+else
+    echo -e "${GREEN}✓ docker-compose.yml already exists${NC}"
+fi
+
 # Step 3: Build containers
 echo ""
 echo -e "${YELLOW}[3/6] Building containers (this may take 5-10 minutes)...${NC}"
