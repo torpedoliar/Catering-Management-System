@@ -1,11 +1,12 @@
 {
-    "version": "1.5.1",
+    "version": "1.5.2",
     "releaseDate": "2026-01-06",
     "minDatabaseVersion": "1.0.0",
     "changelog": [
-        "Removed shift hours from vendor dashboard",
-        "Added version update system with UI trigger",
-        "Added update scripts (update.ps1, update.sh)"
+        "Added Nginx Proxy Manager integration support",
+        "Added docker-compose.npm.yml for NPM deployment",
+        "Added detailed Linux NPM deployment documentation",
+        "Removed shift hours from vendor dashboard"
     ],
     "repository": "https://github.com/torpedoliar/Catering-Management-System",
     "branch": "main"
