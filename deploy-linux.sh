@@ -28,6 +28,15 @@ fi
 echo -e "${YELLOW}[1/6] Checking Docker installation...${NC}"
 if ! command -v docker &> /dev/null; then
     echo -e "${YELLOW}Docker not found. Installing Docker...${NC}"
+    
+    # Install curl if not exists
+    if ! command -v curl &> /dev/null; then
+        echo "Installing curl..."
+        sudo apt update
+        sudo apt install -y curl
+    fi
+    
+    # Install Docker
     curl -fsSL https://get.docker.com -o get-docker.sh
     sudo sh get-docker.sh
     sudo usermod -aG docker $USER
