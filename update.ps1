@@ -1,16 +1,16 @@
 # ============================================
 # UPDATE.PS1 - One-Click Update Script
-# Dashboard Pengumuman Santos Jaya Abadi
+# Catering Management System
 # ============================================
 
 Write-Host ""
 Write-Host "============================================" -ForegroundColor Cyan
-Write-Host "  Dashboard Pengumuman - Update" -ForegroundColor Cyan
+Write-Host "  Catering Management System - Update" -ForegroundColor Cyan
 Write-Host "============================================" -ForegroundColor Cyan
 Write-Host ""
 
 # Check if in correct directory
-if (-not (Test-Path "docker-compose.yml")) {
+if (-not (Test-Path "docker-compose.yml") -and -not (Test-Path "docker-compose.example.yml")) {
     Write-Host "ERROR: docker-compose.yml not found!" -ForegroundColor Red
     Write-Host "Please run this script from the project directory." -ForegroundColor Red
     exit 1
@@ -29,7 +29,7 @@ $backupFile = "$backupDir/db_backup_$timestamp.sql"
 # Get database container name
 $dbContainer = docker-compose ps -q db 2>$null
 if ($dbContainer) {
-    docker-compose exec -T db pg_dump -U postgres announcement_db > $backupFile 2>&1
+    docker-compose exec -T db pg_dump -U postgres catering_db > $backupFile 2>&1
     if ($LASTEXITCODE -eq 0 -and (Test-Path $backupFile) -and (Get-Item $backupFile).Length -gt 0) {
         Write-Host "OK - Database backed up to: $backupFile" -ForegroundColor Green
     }
@@ -79,7 +79,7 @@ if ($LASTEXITCODE -ne 0) {
     Write-Host ""
     Write-Host "To restore database from backup:" -ForegroundColor Yellow
     Write-Host "  docker-compose up -d db" -ForegroundColor Cyan
-    Write-Host "  Get-Content $backupFile | docker-compose exec -T db psql -U postgres announcement_db" -ForegroundColor Cyan
+    Write-Host "  Get-Content $backupFile | docker-compose exec -T db psql -U postgres catering_db" -ForegroundColor Cyan
     exit 1
 }
 Write-Host "OK - Build completed" -ForegroundColor Green
@@ -88,12 +88,12 @@ Write-Host "OK - Build completed" -ForegroundColor Green
 Write-Host ""
 Write-Host "[6/6] Starting containers and syncing database..." -ForegroundColor Yellow
 docker-compose up -d
-Start-Sleep -Seconds 8
+Start-Sleep -Seconds 10
 
 # Sync database schema (db push without data-loss flag for safety)
 Write-Host ""
 Write-Host "Syncing database schema..." -ForegroundColor Yellow
-$pushResult = docker-compose exec -T web npx prisma db push 2>&1
+$pushResult = docker-compose exec -T backend npx prisma db push 2>&1
 if ($LASTEXITCODE -eq 0) {
     Write-Host "OK - Database schema synced" -ForegroundColor Green
 }
@@ -107,18 +107,17 @@ else {
         $confirm = Read-Host "Type 'yes' to continue or press Enter to abort"
         if ($confirm -eq "yes") {
             Write-Host "Applying schema with data loss acceptance..." -ForegroundColor Yellow
-            docker-compose exec -T web npx prisma db push --accept-data-loss 2>&1 | Out-Null
+            docker-compose exec -T backend npx prisma db push --accept-data-loss 2>&1 | Out-Null
             Write-Host "OK - Schema applied" -ForegroundColor Green
         }
         else {
             Write-Host "Aborted. Database unchanged." -ForegroundColor Yellow
-            Write-Host "Restore from backup if needed: .\restore.ps1" -ForegroundColor Cyan
         }
     }
     else {
         # Try migrate deploy as fallback
         Write-Host "Trying migration deploy..." -ForegroundColor Yellow
-        docker-compose exec -T web npx prisma migrate deploy 2>&1 | Out-Null
+        docker-compose exec -T backend npx prisma migrate deploy 2>&1 | Out-Null
         if ($LASTEXITCODE -eq 0) {
             Write-Host "OK - Migrations applied" -ForegroundColor Green
         }
@@ -130,7 +129,7 @@ else {
 
 # Generate Prisma client
 Write-Host "Generating Prisma client..." -ForegroundColor Yellow
-docker-compose exec -T web npx prisma generate 2>&1 | Out-Null
+docker-compose exec -T backend npx prisma generate 2>&1 | Out-Null
 Write-Host "OK - Prisma client generated" -ForegroundColor Green
 
 # Cleanup old backups (keep last 5)
@@ -145,9 +144,10 @@ Write-Host "============================================" -ForegroundColor Green
 Write-Host "  UPDATE COMPLETE!" -ForegroundColor Green
 Write-Host "============================================" -ForegroundColor Green
 Write-Host ""
-Write-Host "  Application: http://localhost:3100" -ForegroundColor Cyan
+Write-Host "  Application: http://localhost:8443" -ForegroundColor Cyan
 Write-Host "  Backup file: $backupFile" -ForegroundColor Cyan
 Write-Host ""
 Write-Host "  To restore if needed:" -ForegroundColor Yellow
-Write-Host "  .\restore.ps1" -ForegroundColor DarkGray
+Write-Host "  Get-Content $backupFile | docker-compose exec -T db psql -U postgres catering_db" -ForegroundColor DarkGray
 Write-Host ""
+
