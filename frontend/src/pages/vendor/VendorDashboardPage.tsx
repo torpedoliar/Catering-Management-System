@@ -331,8 +331,7 @@ export default function VendorDashboardPage() {
                                     <th className="text-left px-4 py-3 text-xs font-semibold text-slate-600 uppercase">Tanggal</th>
                                     {data.shifts.map(shift => (
                                         <th key={shift.id} className="text-center px-4 py-3 text-xs font-semibold text-slate-600 uppercase">
-                                            <div>{shift.name}</div>
-                                            <div className="text-[10px] font-normal text-slate-400">{shift.startTime}</div>
+                                            {shift.name}
                                         </th>
                                     ))}
                                     <th className="text-center px-4 py-3 text-xs font-semibold text-slate-600 uppercase bg-slate-100">Total</th>
