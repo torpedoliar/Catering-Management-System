@@ -49,7 +49,9 @@ cp docker-compose.yml.backup docker-compose.yml
 docker compose up -d
 ```
 
-> ✅ **Setelah migrasi selesai, langsung lanjut ke [STEP 7: Konfigurasi NPM](#step-7-konfigurasi-nginx-proxy-manager)**
+> ✅ **Setelah migrasi selesai:**
+> 1. Jika belum ada NPM → lanjut ke [STEP 0: Install NPM](#step-0-install-nginx-proxy-manager)
+> 2. Jika NPM sudah ada → langsung ke [STEP 7: Konfigurasi NPM](#step-7-konfigurasi-nginx-proxy-manager)
 
 ---
 
