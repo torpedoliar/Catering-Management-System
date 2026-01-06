@@ -49,7 +49,7 @@ cp docker-compose.yml.backup docker-compose.yml
 docker compose up -d
 ```
 
-Setelah migrasi, lanjut ke **STEP 7** untuk konfigurasi NPM.
+> ✅ **Setelah migrasi selesai, langsung lanjut ke [STEP 7: Konfigurasi NPM](#step-7-konfigurasi-nginx-proxy-manager)**
 
 ---
 
@@ -224,10 +224,12 @@ Klik **"Add Proxy Host"**
 |-------|-------|
 | Domain Names | `catering.yourdomain.com` |
 | Scheme | `http` |
-| Forward Hostname/IP | `172.18.0.X` *(IP frontend)* |
+| Forward Hostname/IP | `catering-frontend` atau `172.18.0.X` |
 | Forward Port | `3011` |
 | Block Common Exploits | ✓ |
 | Websockets Support | ✓ |
+
+> 💡 Gunakan nama container `catering-frontend` atau IP address dari hasil `docker inspect`
 
 ### 7.4 Tab "Custom Locations"
 
@@ -238,7 +240,7 @@ Klik **"Add Location"** 3 kali:
 |-------|-------|
 | Location | `/api/sse` |
 | Scheme | `http` |
-| Forward Hostname/IP | `172.18.0.X` *(IP backend)* |
+| Forward Hostname/IP | `catering-backend` atau `172.18.0.X` |
 | Forward Port | `3012` |
 
 Klik ⚙️ (gear) → Centang **Websockets Support**
@@ -248,7 +250,7 @@ Klik ⚙️ (gear) → Centang **Websockets Support**
 |-------|-------|
 | Location | `/api` |
 | Scheme | `http` |
-| Forward Hostname/IP | `172.18.0.X` *(IP backend)* |
+| Forward Hostname/IP | `catering-backend` atau `172.18.0.X` |
 | Forward Port | `3012` |
 
 **Location 3 - Uploads:**
@@ -256,7 +258,7 @@ Klik ⚙️ (gear) → Centang **Websockets Support**
 |-------|-------|
 | Location | `/uploads` |
 | Scheme | `http` |
-| Forward Hostname/IP | `172.18.0.X` *(IP backend)* |
+| Forward Hostname/IP | `catering-backend` atau `172.18.0.X` |
 | Forward Port | `3012` |
 
 ### 7.5 Tab "Advanced"
