@@ -56,27 +56,30 @@ function DonutChart({ stats, status }: { stats: ShiftStats; status: ShiftData['s
     // Calculate percentages
     const pickedUpPct = (stats.pickedUp / total) * 100;
     const noShowPct = (stats.noShow / total) * 100;
+    // For in_progress: show pending; for completed: pending becomes part of noShow visually
     const pendingPct = status === 'in_progress' ? (pending / total) * 100 : 0;
 
     // Build conic gradient
-    let gradient = '';
+    const segments: string[] = [];
     let currentAngle = 0;
 
     if (stats.pickedUp > 0) {
-        gradient += `#10b981 ${currentAngle}deg ${currentAngle + pickedUpPct * 3.6}deg, `;
+        segments.push(`#10b981 ${currentAngle}deg ${currentAngle + pickedUpPct * 3.6}deg`);
         currentAngle += pickedUpPct * 3.6;
     }
     if (stats.noShow > 0) {
-        gradient += `#ef4444 ${currentAngle}deg ${currentAngle + noShowPct * 3.6}deg, `;
+        segments.push(`#ef4444 ${currentAngle}deg ${currentAngle + noShowPct * 3.6}deg`);
         currentAngle += noShowPct * 3.6;
     }
     if (status === 'in_progress' && pending > 0) {
-        gradient += `#f59e0b ${currentAngle}deg ${currentAngle + pendingPct * 3.6}deg, `;
+        segments.push(`#f59e0b ${currentAngle}deg ${currentAngle + pendingPct * 3.6}deg`);
         currentAngle += pendingPct * 3.6;
     }
 
-    // Remove trailing comma and space
-    gradient = gradient.slice(0, -2);
+    // Handle edge case: if gradient is empty (all 0 but ordered > 0), show gray
+    const gradient = segments.length > 0
+        ? segments.join(', ')
+        : '#e2e8f0 0deg 360deg';
 
     return (
         <div className="flex flex-col items-center gap-3">
