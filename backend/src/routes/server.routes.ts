@@ -323,6 +323,52 @@ router.get('/uptime/summary', authMiddleware, adminMiddleware, async (req: AuthR
     }
 });
 
+// Get restart history with notes (update vs normal restart)
+router.get('/uptime/restarts', authMiddleware, adminMiddleware, async (req: AuthRequest, res: Response) => {
+    try {
+        const { startDate, endDate } = req.query;
+
+        if (!startDate || !endDate) {
+            return res.status(400).json({ error: 'startDate dan endDate wajib diisi' });
+        }
+
+        const start = new Date(startDate as string);
+        start.setHours(0, 0, 0, 0);
+
+        let end = new Date(endDate as string);
+        const now = new Date();
+
+        const endDateOnly = new Date(end);
+        endDateOnly.setHours(0, 0, 0, 0);
+        const todayOnly = new Date(now);
+        todayOnly.setHours(0, 0, 0, 0);
+
+        if (endDateOnly >= todayOnly) {
+            end = now;
+        } else {
+            end.setHours(23, 59, 59, 999);
+        }
+
+        // Get all events and filter for STARTUP
+        const events = await getUptimeHistory(start, end);
+        const restarts = events
+            .filter((e: { eventType: string }) => e.eventType === 'STARTUP')
+            .map((r: { id: string; timestamp: Date; notes: string | null; hostname: string | null }) => ({
+                id: r.id,
+                timestamp: r.timestamp,
+                notes: r.notes,
+                hostname: r.hostname,
+                restartType: r.notes?.includes('Update') ? 'update' : 'normal',
+                restartLabel: r.notes?.includes('Update') ? 'Application Update' : 'Normal Restart'
+            }));
+
+        res.json({ restarts });
+    } catch (error) {
+        console.error('Get restart history error:', error);
+        res.status(500).json({ error: 'Gagal mengambil riwayat restart' });
+    }
+});
+
 // Export uptime history to XLSX
 import ExcelJS from 'exceljs';
 import { getNow } from '../services/time.service';

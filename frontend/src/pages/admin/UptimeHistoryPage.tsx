@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback } from 'react';
-import { Clock, RefreshCw, ArrowUpCircle, ArrowDownCircle, Activity, Calendar, Timer, AlertTriangle, Download } from 'lucide-react';
+import { Clock, RefreshCw, ArrowUpCircle, ArrowDownCircle, Activity, Calendar, Timer, AlertTriangle, Download, RotateCcw } from 'lucide-react';
 import toast from 'react-hot-toast';
 
 const API_URL = import.meta.env.VITE_API_URL ?? 'http://localhost:3012';
@@ -25,6 +25,15 @@ interface DowntimePeriod {
     startTime: string;
     endTime: string | null;
     durationMs: number;
+}
+
+interface RestartEvent {
+    id: string;
+    timestamp: string;
+    notes: string | null;
+    hostname: string | null;
+    restartType: 'update' | 'normal';
+    restartLabel: string;
 }
 
 function formatDuration(ms: number): string {
@@ -61,6 +70,7 @@ export default function UptimeHistoryPage() {
     const [dailyStats, setDailyStats] = useState<DailyStat[]>([]);
     const [summary, setSummary] = useState<UptimeSummary | null>(null);
     const [downtimePeriods, setDowntimePeriods] = useState<DowntimePeriod[]>([]);
+    const [restartEvents, setRestartEvents] = useState<RestartEvent[]>([]);
     const [isLoading, setIsLoading] = useState(true);
     const [isRefreshing, setIsRefreshing] = useState(false);
 
@@ -100,6 +110,16 @@ export default function UptimeHistoryPage() {
             const summaryData = await summaryRes.json();
             setSummary(summaryData.summary || null);
             setDowntimePeriods(summaryData.downtimePeriods || []);
+
+            // Fetch restart events with notes
+            const restartsRes = await fetch(`${API_URL}/api/server/uptime/restarts?${params}`, {
+                headers: { 'Authorization': `Bearer ${token}` }
+            });
+
+            if (restartsRes.ok) {
+                const restartsData = await restartsRes.json();
+                setRestartEvents(restartsData.restarts || []);
+            }
 
         } catch (error) {
             console.error('Failed to fetch uptime data:', error);
@@ -374,6 +394,51 @@ export default function UptimeHistoryPage() {
                                 </div>
                             </div>
                         ))}
+                    </div>
+                </div>
+            )}
+
+            {/* Restart History with Type Badge */}
+            {restartEvents.length > 0 && (
+                <div className="card overflow-hidden">
+                    <div className="p-4 border-b border-slate-100 flex items-center gap-2">
+                        <RotateCcw className="w-5 h-5 text-amber-500" />
+                        <h2 className="text-lg font-semibold text-[#1a1f37]">Riwayat Restart</h2>
+                    </div>
+                    <div className="overflow-x-auto">
+                        <table className="w-full">
+                            <thead className="bg-slate-50">
+                                <tr>
+                                    <th className="text-left px-4 py-3 text-xs font-semibold text-slate-500 uppercase">Waktu</th>
+                                    <th className="text-left px-4 py-3 text-xs font-semibold text-slate-500 uppercase">Tipe</th>
+                                    <th className="text-left px-4 py-3 text-xs font-semibold text-slate-500 uppercase">Keterangan</th>
+                                    <th className="text-left px-4 py-3 text-xs font-semibold text-slate-500 uppercase">Host</th>
+                                </tr>
+                            </thead>
+                            <tbody className="divide-y divide-slate-100">
+                                {restartEvents.map((event) => (
+                                    <tr key={event.id} className="hover:bg-slate-50 transition-colors">
+                                        <td className="px-4 py-3 text-sm font-medium text-[#1a1f37]">
+                                            {formatDateTime(event.timestamp)}
+                                        </td>
+                                        <td className="px-4 py-3">
+                                            <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${event.restartType === 'update'
+                                                ? 'bg-blue-100 text-blue-800'
+                                                : 'bg-slate-100 text-slate-700'
+                                                }`}>
+                                                {event.restartType === 'update' ? '🔄 Update' : '⚡ Normal'}
+                                            </span>
+                                        </td>
+                                        <td className="px-4 py-3 text-sm text-slate-600">
+                                            {event.notes || '-'}
+                                        </td>
+                                        <td className="px-4 py-3 text-sm text-slate-500 font-mono">
+                                            {event.hostname || '-'}
+                                        </td>
+                                    </tr>
+                                ))}
+                            </tbody>
+                        </table>
                     </div>
                 </div>
             )}

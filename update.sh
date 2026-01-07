@@ -75,8 +75,15 @@ echo "✓ Build completed"
 # Step 6: Start containers and sync database
 echo ""
 echo "[6/6] Starting containers and syncing database..."
+
+# Create update marker file so backend knows this is an update restart
 docker-compose up -d
-sleep 10
+sleep 5
+
+# Write update marker inside backend container
+docker-compose exec -T backend sh -c 'echo "true" > /tmp/update_restart_marker' 2>/dev/null || true
+
+sleep 5
 
 # Sync database schema
 echo ""

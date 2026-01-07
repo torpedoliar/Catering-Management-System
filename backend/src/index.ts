@@ -119,8 +119,29 @@ app.listen(PORT, async () => {
     // Start the no-show scheduler
     startScheduler();
 
-    // Log server startup
-    await logServerStart('Server startup complete');
+    // Log server startup - detect if this is an update restart
+    // Check both env var and marker file (for Docker deployments)
+    let isUpdateRestart = process.env.UPDATE_RESTART === 'true';
+
+    // Check marker file for Docker deployments
+    const fs = await import('fs');
+    const markerPath = '/tmp/update_restart_marker';
+    try {
+        if (fs.existsSync(markerPath)) {
+            isUpdateRestart = true;
+            fs.unlinkSync(markerPath); // Remove marker after reading
+            console.log('🔄 [Uptime] Detected update restart via marker file');
+        }
+    } catch (_err: unknown) {
+        // Ignore file system errors
+    }
+
+    const startupNotes = isUpdateRestart ? 'Application Update Restart' : 'Server startup complete';
+    await logServerStart(startupNotes);
+
+    if (isUpdateRestart) {
+        console.log('🔄 [Uptime] Logged restart as application update');
+    }
 });
 
 export { prisma, sseManager };
