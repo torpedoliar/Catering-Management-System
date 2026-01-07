@@ -529,8 +529,8 @@ export default function CheckInPage() {
             <SuccessPopup show={showSuccessPopup} data={successData} onClose={() => { setShowSuccessPopup(false); setSuccessData(null); }} />
 
             {showCamera && pendingOrder && (
-                <div className="fixed inset-0 bg-black/90 z-50 flex flex-col items-center justify-center p-4">
-                    <div className="w-full max-w-2xl space-y-4">
+                <div className="fixed inset-0 bg-black/40 backdrop-blur-sm z-50 flex flex-col items-center justify-center p-4">
+                    <div className="w-full max-w-2xl space-y-4 bg-dark-900/90 rounded-2xl p-6 border border-white/10 shadow-2xl">
                         <div className="glass-card p-6 rounded-2xl">
                             <div className="flex items-center gap-4">
                                 <div className="w-20 h-20 rounded-full overflow-hidden bg-white/10 flex-shrink-0">

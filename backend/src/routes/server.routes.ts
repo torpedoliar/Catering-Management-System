@@ -484,6 +484,40 @@ router.get('/uptime/export', authMiddleware, adminMiddleware, async (req: AuthRe
         });
         eventsSheet.getRow(1).font = { bold: true };
 
+        // Sheet 5: Restart History
+        const restartEvents = events.filter((e: { eventType: string }) => e.eventType === 'STARTUP');
+        if (restartEvents.length > 0) {
+            const restartSheet = workbook.addWorksheet('Riwayat Restart');
+            restartSheet.columns = [
+                { header: 'Waktu', key: 'timestamp', width: 25 },
+                { header: 'Tipe', key: 'type', width: 15 },
+                { header: 'Keterangan', key: 'notes', width: 35 },
+                { header: 'Host', key: 'hostname', width: 25 }
+            ];
+            restartEvents.forEach((event: { timestamp: Date; hostname: string | null; notes: string | null }) => {
+                const isUpdate = event.notes?.includes('Update');
+                restartSheet.addRow({
+                    timestamp: new Date(event.timestamp).toLocaleString('id-ID'),
+                    type: isUpdate ? 'Update' : 'Normal',
+                    notes: event.notes || '-',
+                    hostname: event.hostname || '-'
+                });
+            });
+            restartSheet.getRow(1).font = { bold: true };
+
+            // Style the type column
+            restartSheet.eachRow((row, rowNumber) => {
+                if (rowNumber > 1) {
+                    const typeCell = row.getCell(2);
+                    if (typeCell.value === 'Update') {
+                        typeCell.font = { color: { argb: 'FF1E88E5' }, bold: true };
+                    } else {
+                        typeCell.font = { color: { argb: 'FF757575' } };
+                    }
+                }
+            });
+        }
+
         // Send response
         const filename = `Uptime_History_${startDate}_${endDate}.xlsx`;
         res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
