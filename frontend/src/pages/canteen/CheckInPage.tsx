@@ -565,8 +565,8 @@ export default function CheckInPage() {
 
             {/* QR Scanner Modal */}
             {showQRScanner && (
-                <div className="fixed inset-0 bg-black/95 z-50 flex flex-col items-center justify-center p-4">
-                    <div className="w-full max-w-lg space-y-4">
+                <div className="fixed inset-0 bg-black/40 backdrop-blur-sm z-50 flex flex-col items-center justify-center p-4">
+                    <div className="w-full max-w-lg space-y-4 bg-dark-900/90 rounded-2xl p-6 border border-white/10 shadow-2xl">
                         <div className="flex items-center justify-between mb-4">
                             <div className="flex items-center gap-3">
                                 <div className="w-12 h-12 rounded-xl bg-primary-500/20 flex items-center justify-center">
