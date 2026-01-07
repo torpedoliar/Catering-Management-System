@@ -231,7 +231,12 @@ export default function CheckInPage() {
 
     const handleCheckIn = async (method: 'manual' | 'qr', photoData?: string) => {
         if (!searchInput.trim() && !photoData) {
-            toast.error('Masukkan ID Karyawan, Nama, atau QR Code');
+            if (method === 'qr') {
+                toast.error('Scan QR code terlebih dahulu');
+                inputRef.current?.focus();
+            } else {
+                toast.error('Masukkan ID Karyawan, Nama, atau QR Code');
+            }
             return;
         }
 
@@ -432,7 +437,7 @@ export default function CheckInPage() {
                         <button onClick={() => handleCheckIn('manual')} disabled={isProcessing || !searchInput.trim()} className="btn-success h-14 flex items-center justify-center gap-3 text-base font-semibold">
                             {isProcessing ? (<><Loader2 className="w-5 h-5 animate-spin" />Memproses...</>) : (<><CheckCircle2 className="w-5 h-5" />Ambil Makan</>)}
                         </button>
-                        <button onClick={() => handleCheckIn('qr')} disabled={isProcessing || !searchInput.trim()} className="btn-primary h-14 flex items-center justify-center gap-3 text-base font-semibold">
+                        <button onClick={() => handleCheckIn('qr')} disabled={isProcessing} className="btn-primary h-14 flex items-center justify-center gap-3 text-base font-semibold">
                             {isProcessing ? (<><Loader2 className="w-5 h-5 animate-spin" />Memproses...</>) : (<><ScanLine className="w-5 h-5" />Scan QR</>)}
                         </button>
                     </div>
