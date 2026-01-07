@@ -1,12 +1,11 @@
 {
-    "version": "1.5.2",
-    "releaseDate": "2026-01-06",
+    "version": "1.5.3",
+    "releaseDate": "2026-01-07",
     "minDatabaseVersion": "1.0.0",
     "changelog": [
-        "Added Nginx Proxy Manager integration support",
-        "Added docker-compose.npm.yml for NPM deployment",
-        "Added detailed Linux NPM deployment documentation",
-        "Removed shift hours from vendor dashboard"
+        "Added Vendor Pickup Statistics page with shift status indicators",
+        "Added cost per department in Admin Dashboard",
+        "Removed Total Biaya from vendor page"
     ],
     "repository": "https://github.com/torpedoliar/Catering-Management-System",
     "branch": "main"

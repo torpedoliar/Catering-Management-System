@@ -1,11 +1,11 @@
 {
-    "version": "1.5.1",
-    "releaseDate": "2026-01-06",
+    "version": "1.5.3",
+    "releaseDate": "2026-01-07",
     "minDatabaseVersion": "1.0.0",
     "changelog": [
-        "Removed shift hours from vendor dashboard",
-        "Added version update system with UI trigger",
-        "Added update scripts (update.ps1, update.sh)"
+        "Added Vendor Pickup Statistics page with shift status indicators",
+        "Added cost per department in Admin Dashboard",
+        "Removed Total Biaya from vendor page"
     ],
     "repository": "https://github.com/torpedoliar/Catering-Management-System",
     "branch": "main"
