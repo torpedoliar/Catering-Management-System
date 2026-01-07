@@ -1,13 +1,13 @@
 {
-    "version": "1.5.5",
+    "version": "1.5.6",
     "releaseDate": "2026-01-07",
     "minDatabaseVersion": "1.0.0",
     "changelog": [
+        "Make photo capture and QR scanner modals semi-transparent",
+        "Add Riwayat Restart sheet to XLSX export",
         "Add visual QR code scanner with webcam for check-in",
         "Add restart history with update/normal type badge",
-        "Enable Scan QR button without requiring input first",
-        "Added Vendor Pickup Statistics page with shift status indicators",
-        "Added cost per department in Admin Dashboard"
+        "Added Vendor Pickup Statistics page with shift status indicators"
     ],
     "repository": "https://github.com/torpedoliar/Catering-Management-System",
     "branch": "main"
