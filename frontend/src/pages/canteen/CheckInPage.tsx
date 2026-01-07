@@ -6,6 +6,7 @@ import { useSSE, useSSERefresh, ORDER_EVENTS } from '../../contexts/SSEContext';
 import { ScanLine, Search, CheckCircle2, AlertCircle, Loader2, Wifi, X, User as UserIcon, Building2, Briefcase, Clock, Zap, Calendar, Camera, MapPin } from 'lucide-react';
 import toast from 'react-hot-toast';
 import Webcam from 'react-webcam';
+import { Html5Qrcode } from 'html5-qrcode';
 
 interface CheckInResult {
     success: boolean;
@@ -172,6 +173,10 @@ export default function CheckInPage() {
     const [enforceCanteenCheckin, setEnforceCanteenCheckin] = useState(false);
     const [selectedCanteenId, setSelectedCanteenId] = useState<string>('');
     const [canteens, setCanteens] = useState<{ id: string; name: string; location: string | null }[]>([]);
+    // QR Scanner state
+    const [showQRScanner, setShowQRScanner] = useState(false);
+    const qrScannerRef = useRef<Html5Qrcode | null>(null);
+    const qrContainerRef = useRef<HTMLDivElement>(null);
 
     useEffect(() => {
         const timer = setInterval(() => setCurrentTime(new Date()), 1000);
@@ -229,11 +234,67 @@ export default function CheckInPage() {
         }
     }, [pendingOrder]);
 
-    const handleCheckIn = async (method: 'manual' | 'qr', photoData?: string) => {
-        if (!searchInput.trim() && !photoData) {
+    // QR Scanner functions
+    const openQRScanner = useCallback(async () => {
+        if (enforceCanteenCheckin && !selectedCanteenId) {
+            toast.error('Pilih kantin terlebih dahulu');
+            return;
+        }
+
+        setShowQRScanner(true);
+
+        // Wait for DOM to render
+        await new Promise(resolve => setTimeout(resolve, 100));
+
+        if (qrContainerRef.current && !qrScannerRef.current) {
+            try {
+                const qrScanner = new Html5Qrcode('qr-reader');
+                qrScannerRef.current = qrScanner;
+
+                await qrScanner.start(
+                    { facingMode: 'environment' },
+                    {
+                        fps: 10,
+                        qrbox: { width: 250, height: 250 },
+                    },
+                    (decodedText) => {
+                        // QR Code found - process check-in
+                        closeQRScanner();
+                        handleCheckIn('qr', decodedText);
+                    },
+                    () => {
+                        // QR Code not found - keep scanning
+                    }
+                );
+            } catch (err) {
+                console.error('Failed to start QR scanner:', err);
+                toast.error('Gagal membuka kamera. Pastikan izin kamera diberikan.');
+                setShowQRScanner(false);
+            }
+        }
+    }, [enforceCanteenCheckin, selectedCanteenId]);
+
+    const closeQRScanner = useCallback(async () => {
+        if (qrScannerRef.current) {
+            try {
+                await qrScannerRef.current.stop();
+                qrScannerRef.current.clear();
+            } catch (err) {
+                console.error('Failed to stop QR scanner:', err);
+            }
+            qrScannerRef.current = null;
+        }
+        setShowQRScanner(false);
+    }, []);
+
+    const handleCheckIn = async (method: 'manual' | 'qr', qrCodeData?: string) => {
+        const codeToUse = qrCodeData || searchInput.trim();
+
+        if (!codeToUse) {
             if (method === 'qr') {
-                toast.error('Scan QR code terlebih dahulu');
-                inputRef.current?.focus();
+                // Open QR scanner instead of showing error
+                openQRScanner();
+                return;
             } else {
                 toast.error('Masukkan ID Karyawan, Nama, atau QR Code');
             }
@@ -254,12 +315,12 @@ export default function CheckInPage() {
             const formData = new FormData();
 
             if (method === 'qr') {
-                formData.append('qrCode', searchInput.trim());
+                formData.append('qrCode', codeToUse);
                 if (selectedCanteenId) {
                     formData.append('operatorCanteenId', selectedCanteenId);
                 }
-                if (photoData || capturedPhoto) {
-                    const blob = await (await fetch(photoData || capturedPhoto!)).blob();
+                if (capturedPhoto) {
+                    const blob = await (await fetch(capturedPhoto)).blob();
                     formData.append('photo', blob, 'checkin.webp');
                 }
                 res = await api.post('/api/orders/checkin/qr', formData, {
@@ -497,6 +558,53 @@ export default function CheckInPage() {
                             <button onClick={capturePhoto} className="btn-primary flex-1 h-14">
                                 <Camera className="w-5 h-5 mr-2" />Ambil Foto
                             </button>
+                        </div>
+                    </div>
+                </div>
+            )}
+
+            {/* QR Scanner Modal */}
+            {showQRScanner && (
+                <div className="fixed inset-0 bg-black/95 z-50 flex flex-col items-center justify-center p-4">
+                    <div className="w-full max-w-lg space-y-4">
+                        <div className="flex items-center justify-between mb-4">
+                            <div className="flex items-center gap-3">
+                                <div className="w-12 h-12 rounded-xl bg-primary-500/20 flex items-center justify-center">
+                                    <ScanLine className="w-6 h-6 text-primary-400" />
+                                </div>
+                                <div>
+                                    <h3 className="text-xl font-bold text-white">Scan QR Code</h3>
+                                    <p className="text-white/50 text-sm">Arahkan kamera ke QR pesanan</p>
+                                </div>
+                            </div>
+                            <button
+                                onClick={closeQRScanner}
+                                className="btn-icon bg-white/10 hover:bg-white/20"
+                            >
+                                <X className="w-6 h-6" />
+                            </button>
+                        </div>
+
+                        <div
+                            ref={qrContainerRef}
+                            id="qr-reader"
+                            className="w-full aspect-square bg-black rounded-2xl overflow-hidden"
+                        />
+
+                        <div className="flex gap-4">
+                            <button
+                                onClick={closeQRScanner}
+                                className="btn-secondary flex-1 h-14 flex items-center justify-center gap-2"
+                            >
+                                <X className="w-5 h-5" />
+                                Batal
+                            </button>
+                        </div>
+
+                        <div className="p-4 rounded-xl bg-white/5 border border-white/10 text-center">
+                            <p className="text-white/60 text-sm">
+                                Pastikan QR code terlihat jelas dalam kotak scan
+                            </p>
                         </div>
                     </div>
                 </div>
