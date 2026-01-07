@@ -1820,7 +1820,7 @@ router.get('/stats/range', authMiddleware, adminMiddleware, async (req: AuthRequ
                 where: { orderDate: { gte: startDate, lte: endDate }, status: { not: 'CANCELLED' } },
                 include: {
                     user: { select: { company: true, department: true } },
-                    shift: { select: { name: true } }
+                    shift: { select: { name: true, mealPrice: true } }
                 },
             }),
         ]);
@@ -1830,6 +1830,7 @@ router.get('/stats/range', authMiddleware, adminMiddleware, async (req: AuthRequ
             total: number;
             pickedUp: number;
             pending: number;
+            cost: number;
             byShift: Record<string, { total: number; pickedUp: number; noShow: number }>;
         }> = {};
 
@@ -1839,9 +1840,10 @@ router.get('/stats/range', authMiddleware, adminMiddleware, async (req: AuthRequ
 
             if (dept && dept.length > 0) {
                 if (!departmentStats[dept]) {
-                    departmentStats[dept] = { total: 0, pickedUp: 0, pending: 0, byShift: {} };
+                    departmentStats[dept] = { total: 0, pickedUp: 0, pending: 0, cost: 0, byShift: {} };
                 }
                 departmentStats[dept].total++;
+                departmentStats[dept].cost += Number(order.shift?.mealPrice) || 25000;
                 if (order.status === 'PICKED_UP') departmentStats[dept].pickedUp++;
                 if (order.status === 'ORDERED') departmentStats[dept].pending++;
 
@@ -1871,6 +1873,7 @@ router.get('/stats/range', authMiddleware, adminMiddleware, async (req: AuthRequ
                 total: stats.total,
                 pickedUp: stats.pickedUp,
                 pending: stats.pending,
+                cost: stats.cost,
                 byShift: Object.entries(stats.byShift).map(([shiftName, shiftData]) => ({
                     shiftName,
                     ...shiftData

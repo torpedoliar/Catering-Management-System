@@ -53,6 +53,7 @@ interface DepartmentStats {
     total: number;
     pickedUp: number;
     pending: number;
+    cost: number;
     byShift: DepartmentShiftStats[];
 }
 
@@ -566,7 +567,7 @@ export default function DashboardPage() {
                                         <div className="flex items-center gap-3">
                                             <div className="flex gap-2 text-xs">
                                                 <span className="text-success">{dept.pickedUp} diambil</span>
-                                                <span className="text-info">{dept.pending} pending</span>
+                                                <span className="text-emerald-400 font-medium">Rp {dept.cost?.toLocaleString('id-ID') || 0}</span>
                                             </div>
                                             {expandedDept === dept.name ? (
                                                 <ChevronUp className="w-4 h-4 text-white/40" />

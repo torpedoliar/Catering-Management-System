@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback } from 'react';
-import { FileSpreadsheet, Calendar, TrendingUp, DollarSign, Package, Loader2, Download, ChevronLeft, ChevronRight, MapPin } from 'lucide-react';
+import { FileSpreadsheet, Calendar, TrendingUp, Package, Loader2, Download, ChevronLeft, ChevronRight, MapPin } from 'lucide-react';
 import toast from 'react-hot-toast';
 import { api } from '../../contexts/AuthContext';
 
@@ -113,15 +113,6 @@ export default function VendorDashboardPage() {
             loadWeeklyData();
         }
     }, [selectedWeek, selectedYear, loadWeeklyData]);
-
-    const formatCurrency = (amount: number) => {
-        return new Intl.NumberFormat('id-ID', {
-            style: 'currency',
-            currency: 'IDR',
-            minimumFractionDigits: 0,
-            maximumFractionDigits: 0
-        }).format(amount);
-    };
 
     const formatDate = (dateStr: string) => {
         const date = new Date(dateStr);
@@ -266,7 +257,7 @@ export default function VendorDashboardPage() {
 
             {/* Summary Cards */}
             {data && (
-                <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+                <div className="grid grid-cols-3 gap-4">
                     <div className="card p-4">
                         <div className="flex items-center gap-3">
                             <div className="w-10 h-10 rounded-xl bg-teal-100 flex items-center justify-center">
@@ -299,18 +290,6 @@ export default function VendorDashboardPage() {
                             <div>
                                 <p className="text-2xl font-bold text-slate-800">{data.summary.avgPerDay}</p>
                                 <p className="text-xs text-slate-500">Rata-rata/Hari</p>
-                            </div>
-                        </div>
-                    </div>
-
-                    <div className="card p-4">
-                        <div className="flex items-center gap-3">
-                            <div className="w-10 h-10 rounded-xl bg-blue-100 flex items-center justify-center">
-                                <DollarSign className="w-5 h-5 text-blue-600" />
-                            </div>
-                            <div>
-                                <p className="text-lg font-bold text-slate-800">{formatCurrency(data.summary.totalCost)}</p>
-                                <p className="text-xs text-slate-500">Total Biaya</p>
                             </div>
                         </div>
                     </div>
