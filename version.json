@@ -1,8 +1,9 @@
 {
-    "version": "1.5.3",
+    "version": "1.5.4",
     "releaseDate": "2026-01-07",
     "minDatabaseVersion": "1.0.0",
     "changelog": [
+        "Enable Scan QR button without requiring input first",
         "Added Vendor Pickup Statistics page with shift status indicators",
         "Added cost per department in Admin Dashboard",
         "Removed Total Biaya from vendor page"
