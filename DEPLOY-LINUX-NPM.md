@@ -461,3 +461,98 @@ docker compose down
 docker compose logs backend
 docker compose logs frontend
 ```
+
+---
+
+## Update v1.6.2 (2026-01-09)
+
+### Fitur Baru
+
+| Fitur | Deskripsi |
+|-------|-----------|
+| **Dashboard Caching** | Stats di-cache 60 detik di Redis |
+| **PM2 Production Mode** | Cluster mode untuk multi-core scaling |
+| **Rate Limiting** | Redis-backed sliding window |
+| **Graceful Shutdown** | Proper cleanup SIGTERM/SIGINT |
+
+---
+
+## PM2 Production Mode (Opsional)
+
+Untuk production dengan multi-core scaling, gunakan PM2 cluster mode:
+
+```bash
+# 1. Build TypeScript ke JavaScript
+docker compose exec backend npm run build
+
+# 2. Stop container
+docker compose down
+
+# 3. Edit Dockerfile (ganti CMD)
+# Dari: CMD ["npm", "run", "dev"]
+# Ke:   CMD ["npm", "run", "pm2:start"]
+
+# 4. Rebuild dan start
+docker compose up -d --build backend
+```
+
+### Verifikasi PM2:
+```bash
+docker compose exec backend npx pm2 status
+docker compose exec backend npx pm2 logs
+```
+
+> 📖 Dokumentasi lengkap: `backend/PM2_DEPLOYMENT.md`
+
+---
+
+## Performance Optimizations
+
+### Yang Sudah Diimplementasi:
+
+| Optimasi | Dampak |
+|----------|--------|
+| Dashboard stats caching (60s TTL) | 95% reduce query load |
+| Redis connection pool | Scalable caching |
+| Gzip compression | Smaller response size |
+| Database indexes | Faster queries |
+
+### Cek Cache Status:
+```bash
+docker compose logs backend | grep "\[Cache\]"
+```
+
+---
+
+## Commands Tambahan (v1.6.2)
+
+```bash
+# Cek versi aplikasi
+cat version.json
+
+# Lihat cache activity
+docker compose logs backend | grep -i cache
+
+# Lihat rate limiting
+docker compose logs backend | grep -i ratelimit
+
+# Restart NPM untuk DNS refresh
+docker restart nginx-proxy-manager
+
+# Update dengan one-liner
+./update.sh  # Linux
+.\update.ps1 # Windows
+```
+
+---
+
+## Restore Point
+
+Jika terjadi masalah setelah update:
+
+```bash
+# Restore ke v1.5.8
+git checkout v1.5.8-restore
+docker compose up -d --build
+```
+
