@@ -1,4 +1,5 @@
 import { createClient, RedisClientType } from 'redis';
+import { prisma } from '../lib/prisma';
 
 interface CacheOptions {
     ttl?: number; // Time to live in seconds
@@ -188,9 +189,6 @@ export const CACHE_TTL = {
     HOLIDAYS: 3600,    // 1 hour
     USER_SHIFTS: 900,  // 15 minutes
 };
-
-// Import prisma for getCachedSettings
-import { prisma } from '../lib/prisma';
 
 /**
  * Get settings from cache with fallback to database.
