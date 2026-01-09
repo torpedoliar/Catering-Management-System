@@ -11,7 +11,7 @@ RUN apk add --no-cache openssl openntpd
 # Copy package files
 COPY package*.json ./
 
-# Install dependencies
+# Install dependencies (includes PM2)
 RUN npm install
 
 # Copy prisma schema
@@ -23,8 +23,12 @@ RUN npx prisma generate
 # Copy source code
 COPY . .
 
+# Create logs directory for PM2
+RUN mkdir -p logs
+
 # Expose port
 EXPOSE 3012
 
-# Start with nodemon for hot-reload
-CMD ["npm", "run", "dev"]
+# Use PM2 runtime for cluster mode (utilizes all CPU cores)
+# This provides: auto-restart, load balancing, and graceful reload
+CMD ["npm", "run", "pm2:dev"]

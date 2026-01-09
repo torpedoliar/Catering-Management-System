@@ -1,12 +1,13 @@
 {
-    "version": "1.6.0",
+    "version": "1.6.1",
     "releaseDate": "2026-01-09",
     "minDatabaseVersion": "1.0.0",
     "changelog": [
-        "Add dashboard stats caching (60-second TTL) for /stats/today endpoint",
-        "Add PM2 cluster mode configuration (ecosystem.config.js) for multi-core scaling",
-        "Add DASHBOARD_STATS cache keys and TTL to cache service",
-        "Ready for 2500 concurrent users with proper caching and clustering"
+        "Enable PM2 cluster mode in Docker for multi-core scaling",
+        "Add PM2 dependency and scripts to package.json",
+        "Create PM2_DEPLOYMENT.md documentation",
+        "Update Dockerfile to use pm2-runtime",
+        "Dashboard stats caching (60-second TTL)"
     ],
     "repository": "https://github.com/torpedoliar/Catering-Management-System",
     "branch": "main"

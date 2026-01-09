@@ -7,6 +7,8 @@
         "dev": "npx prisma generate && nodemon --exec ts-node src/index.ts",
         "build": "tsc",
         "start": "node dist/index.js",
+        "pm2:start": "pm2-runtime start ecosystem.config.js",
+        "pm2:dev": "npx prisma generate && pm2-runtime start ecosystem.config.js --env development",
         "prisma:generate": "prisma generate",
         "prisma:migrate": "prisma migrate dev",
         "prisma:seed": "prisma db seed"
@@ -29,6 +31,7 @@
         "multer": "^1.4.5-lts.1",
         "node-cron": "^3.0.3",
         "nodemailer": "^6.9.7",
+        "pm2": "^5.4.4",
         "qrcode": "^1.5.3",
         "redis": "^4.7.0",
         "sharp": "^0.34.5",
