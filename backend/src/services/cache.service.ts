@@ -180,6 +180,8 @@ export const CACHE_KEYS = {
         `shifts:user:${userId}${date ? `:${date}` : ''}`,
     SETTINGS: 'settings:default',
     HOLIDAYS: (date: string) => `holidays:${date}`,
+    DASHBOARD_STATS: (date: string) => `dashboard:stats:${date}`,
+    DASHBOARD_STATS_RANGE: (start: string, end: string) => `dashboard:stats:range:${start}:${end}`,
 };
 
 // Cache TTL constants (in seconds)
@@ -188,6 +190,7 @@ export const CACHE_TTL = {
     SETTINGS: 1800,    // 30 minutes
     HOLIDAYS: 3600,    // 1 hour
     USER_SHIFTS: 900,  // 15 minutes
+    DASHBOARD_STATS: 60,  // 1 minute (dashboard updates frequently)
 };
 
 /**

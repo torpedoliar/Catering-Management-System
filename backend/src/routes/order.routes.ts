@@ -12,7 +12,7 @@ import { logOrder, getRequestContext } from '../services/audit.service';
 import { ErrorMessages, formatErrorMessage } from '../utils/errorMessages';
 import { apiRateLimitMiddleware } from '../services/rate-limiter.service';
 import { OrderService } from '../services/order.service';
-import { getCachedSettings } from '../services/cache.service';
+import { getCachedSettings, cacheService, CACHE_KEYS, CACHE_TTL } from '../services/cache.service';
 import { validate } from '../middleware/validate.middleware';
 import { createOrderSchema, bulkOrderSchema } from '../utils/validation';
 import { OrderWhereFilter, BulkOrderSuccess, BulkOrderFailure } from '../types';
@@ -1927,6 +1927,14 @@ router.get('/stats/today', authMiddleware, adminMiddleware, async (req: AuthRequ
     try {
         const today = getToday();
         const tomorrow = getTomorrow();
+        const dateKey = today.toISOString().split('T')[0];
+
+        // Check cache first for performance
+        const cacheKey = CACHE_KEYS.DASHBOARD_STATS(dateKey);
+        const cached = await cacheService.get<any>(cacheKey);
+        if (cached) {
+            return res.json(cached);
+        }
 
         // Get settings for blacklist threshold
         const settings = await getCachedSettings();
@@ -2141,7 +2149,8 @@ router.get('/stats/today', authMiddleware, adminMiddleware, async (req: AuthRequ
         // Calculate pickup rate
         const pickupRate = total > 0 ? Math.round((pickedUp / total) * 100) : 0;
 
-        res.json({
+        // Build response object
+        const statsResponse = {
             date: today.toISOString().split('T')[0],
             total,
             pickedUp,
@@ -2166,7 +2175,12 @@ router.get('/stats/today', authMiddleware, adminMiddleware, async (req: AuthRequ
             blacklistedCount,
             usersAtRisk,
             blacklistStrikes,
-        });
+        };
+
+        // Cache the response for 60 seconds
+        await cacheService.set(cacheKey, statsResponse, { ttl: CACHE_TTL.DASHBOARD_STATS });
+
+        res.json(statsResponse);
     } catch (error) {
         console.error('Get stats error:', error);
         res.status(500).json({ error: 'Failed to get statistics' });

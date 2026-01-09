@@ -1,12 +1,12 @@
 {
-    "version": "1.5.8",
+    "version": "1.6.0",
     "releaseDate": "2026-01-09",
     "minDatabaseVersion": "1.0.0",
     "changelog": [
-        "Add Redis cache for settings queries (12 locations optimized)",
-        "Add database indexes for email, createdAt (User, Order, Message)",
-        "Add getCachedSettings() helper for consistent caching",
-        "Improve query performance across order, shift, blacklist routes"
+        "Add dashboard stats caching (60-second TTL) for /stats/today endpoint",
+        "Add PM2 cluster mode configuration (ecosystem.config.js) for multi-core scaling",
+        "Add DASHBOARD_STATS cache keys and TTL to cache service",
+        "Ready for 2500 concurrent users with proper caching and clustering"
     ],
     "repository": "https://github.com/torpedoliar/Catering-Management-System",
     "branch": "main"
