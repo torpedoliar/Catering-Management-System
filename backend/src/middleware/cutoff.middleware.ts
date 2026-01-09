@@ -2,6 +2,7 @@ import { Response, NextFunction } from 'express';
 import { AuthRequest } from './auth.middleware';
 import { isPastCutoff, isPastCutoffForDate, isDateOrderableWeekly, getTimezone } from '../services/time.service';
 import { prisma } from '../lib/prisma';
+import { getCachedSettings } from '../services/cache.service';
 
 export const cutoffMiddleware = async (req: AuthRequest, res: Response, next: NextFunction) => {
     try {
@@ -14,7 +15,7 @@ export const cutoffMiddleware = async (req: AuthRequest, res: Response, next: Ne
         // Get shift and settings
         const [shift, settings] = await Promise.all([
             prisma.shift.findUnique({ where: { id: shiftId } }),
-            prisma.settings.findUnique({ where: { id: 'default' } }),
+            getCachedSettings(),
         ]);
 
         if (!shift) {

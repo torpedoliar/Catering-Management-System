@@ -12,6 +12,7 @@ import { logOrder, getRequestContext } from '../services/audit.service';
 import { ErrorMessages, formatErrorMessage } from '../utils/errorMessages';
 import { apiRateLimitMiddleware } from '../services/rate-limiter.service';
 import { OrderService } from '../services/order.service';
+import { getCachedSettings } from '../services/cache.service';
 import { validate } from '../middleware/validate.middleware';
 import { createOrderSchema, bulkOrderSchema } from '../utils/validation';
 import { OrderWhereFilter, BulkOrderSuccess, BulkOrderFailure } from '../types';
@@ -160,7 +161,7 @@ router.post('/', authMiddleware, blacklistMiddleware, validate(createOrderSchema
         }
 
         // Get settings to check cutoff mode and limits
-        const settings = await prisma.settings.findUnique({ where: { id: 'default' } });
+        const settings = await getCachedSettings();
         const cutoffMode = settings?.cutoffMode || 'per-shift';
         const maxOrderDaysAhead = settings?.maxOrderDaysAhead || 7;
         const cutoffDays = settings?.cutoffDays || 0;
@@ -347,7 +348,7 @@ router.post('/bulk', authMiddleware, blacklistMiddleware, apiRateLimitMiddleware
         }
 
         // Get settings
-        const settings = await prisma.settings.findUnique({ where: { id: 'default' } });
+        const settings = await getCachedSettings();
         const cutoffMode = settings?.cutoffMode || 'per-shift';
         const maxOrderDaysAhead = settings?.maxOrderDaysAhead || 7;
         const cutoffDays = settings?.cutoffDays || 0;
@@ -710,7 +711,7 @@ router.post('/checkin/qr', authMiddleware, canteenMiddleware, upload.single('pho
 
         // Canteen check-in enforcement validation
         const { operatorCanteenId } = req.body;
-        const settings = await prisma.settings.findUnique({ where: { id: 'default' } });
+        const settings = await getCachedSettings();
         if (settings?.enforceCanteenCheckin && operatorCanteenId) {
             if (order.canteenId && order.canteenId !== operatorCanteenId) {
                 const orderCanteen = await prisma.canteen.findUnique({
@@ -945,7 +946,7 @@ router.post('/checkin/manual', authMiddleware, canteenMiddleware, async (req: Au
 
         // Canteen check-in enforcement validation
         const { operatorCanteenId } = req.body;
-        const settings = await prisma.settings.findUnique({ where: { id: 'default' } });
+        const settings = await getCachedSettings();
         if (settings?.enforceCanteenCheckin && operatorCanteenId) {
             if (order.canteenId && order.canteenId !== operatorCanteenId) {
                 const orderCanteen = await prisma.canteen.findUnique({
@@ -1052,7 +1053,7 @@ router.post('/:id/cancel', authMiddleware, async (req: AuthRequest, res: Respons
         }
 
         // Check cutoff time - can only cancel BEFORE cutoff
-        const settings = await prisma.settings.findUnique({ where: { id: 'default' } });
+        const settings = await getCachedSettings();
         const cutoffMode = settings?.cutoffMode || 'per-shift';
         const cutoffDays = settings?.cutoffDays || 0;
         const cutoffHours = settings?.cutoffHours || 6;
@@ -1239,7 +1240,7 @@ router.post('/process-noshows', authMiddleware, adminMiddleware, async (req: Aut
             return isPastShiftEnd;
         });
 
-        const settings = await prisma.settings.findUnique({ where: { id: 'default' } });
+        const settings = await getCachedSettings();
         const strikeThreshold = settings?.blacklistStrikes || 3;
         const blacklistDuration = settings?.blacklistDuration || 7;
 
@@ -1764,7 +1765,7 @@ router.get('/stats/range', authMiddleware, adminMiddleware, async (req: AuthRequ
         }
 
         // Get settings for blacklist threshold
-        const settings = await prisma.settings.findUnique({ where: { id: 'default' } });
+        const settings = await getCachedSettings();
         const blacklistStrikes = settings?.blacklistStrikes || 3;
 
         const [total, pickedUp, pending, cancelled, noShow, shiftGroup, shifts, holidays, canteenGroup, canteens, blacklistedCount, usersAtRisk, ordersWithDetails] = await Promise.all([
@@ -1928,7 +1929,7 @@ router.get('/stats/today', authMiddleware, adminMiddleware, async (req: AuthRequ
         const tomorrow = getTomorrow();
 
         // Get settings for blacklist threshold
-        const settings = await prisma.settings.findUnique({ where: { id: 'default' } });
+        const settings = await getCachedSettings();
         const blacklistStrikes = settings?.blacklistStrikes || 3;
 
         const yesterday = new Date(today);

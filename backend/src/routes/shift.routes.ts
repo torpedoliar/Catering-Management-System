@@ -3,7 +3,7 @@ import { AuthRequest, authMiddleware, adminMiddleware } from '../middleware/auth
 import { getNow, isPastCutoff, getTimezone, getOrderableDateRange } from '../services/time.service';
 import { sseManager } from '../controllers/sse.controller';
 import { ErrorMessages } from '../utils/errorMessages';
-import { cacheService, CACHE_KEYS, CACHE_TTL } from '../services/cache.service';
+import { cacheService, CACHE_KEYS, CACHE_TTL, getCachedSettings } from '../services/cache.service';
 import { logShift, getRequestContext } from '../services/audit.service';
 import { prisma } from '../lib/prisma';
 
@@ -25,7 +25,7 @@ router.get('/', authMiddleware, async (req: AuthRequest, res: Response) => {
                 });
 
                 // Add cutoff validation info
-                const settings = await prisma.settings.findUnique({ where: { id: 'default' } });
+                const settings = await getCachedSettings();
                 const cutoffMode = settings?.cutoffMode || 'per-shift';
                 const cutoffDays = settings?.cutoffDays || 0;
                 const cutoffHours = settings?.cutoffHours || 6;
@@ -117,7 +117,7 @@ router.get('/for-user', authMiddleware, async (req: AuthRequest, res: Response) 
         });
 
         // Get settings for cutoff calculation
-        const settings = await prisma.settings.findUnique({ where: { id: 'default' } });
+        const settings = await getCachedSettings();
         const cutoffMode = settings?.cutoffMode || 'per-shift';
         const cutoffDays = settings?.cutoffDays || 0;
         const cutoffHours = settings?.cutoffHours || 6;

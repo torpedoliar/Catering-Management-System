@@ -7,6 +7,7 @@ import { logBlacklist, getRequestContext } from '../services/audit.service';
 import { cancelOrdersForBlacklistedUser } from '../services/noshow.service';
 import { ErrorMessages } from '../utils/errorMessages';
 import { prisma } from '../lib/prisma';
+import { getCachedSettings } from '../services/cache.service';
 
 const router = Router();
 
@@ -336,7 +337,7 @@ router.post('/reset-strikes/:userId', authMiddleware, adminMiddleware, async (re
         });
 
         // Get blacklist threshold from settings
-        const settings = await prisma.settings.findUnique({ where: { id: 'default' } });
+        const settings = await getCachedSettings();
         const blacklistStrikes = settings?.blacklistStrikes ?? 3;
 
         // Check if user should be auto-unblocked (if newCount is below threshold)

@@ -123,6 +123,7 @@ model User {
   @@index([externalId])
   @@index([nik])
   @@index([name])
+  @@index([email])  // For email lookups
   @@index([company])
   @@index([departmentId])
   @@index([preferredCanteenId])
@@ -248,6 +249,7 @@ model Order {
   @@index([userId, orderDate])         // User's orders by date
   @@index([shiftId, orderDate, status]) // Shift orders on specific date
   @@index([canteenId, orderDate, status]) // Canteen orders on specific date
+  @@index([createdAt])  // For recent orders listing
 }
 
 model Blacklist {
@@ -447,6 +449,7 @@ model Message {
   @@index([orderId])
   @@index([type])
   @@index([orderDate])
+  @@index([createdAt])  // For message listing
 }
 
 enum AnnouncementType {

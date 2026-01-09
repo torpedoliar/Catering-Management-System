@@ -188,3 +188,41 @@ export const CACHE_TTL = {
     HOLIDAYS: 3600,    // 1 hour
     USER_SHIFTS: 900,  // 15 minutes
 };
+
+// Import prisma for getCachedSettings
+import { prisma } from '../lib/prisma';
+
+/**
+ * Get settings from cache with fallback to database.
+ * Auto-creates default settings if not exists.
+ */
+export async function getCachedSettings() {
+    return cacheService.getOrSet(
+        CACHE_KEYS.SETTINGS,
+        async () => {
+            let settings = await prisma.settings.findUnique({
+                where: { id: 'default' }
+            });
+            if (!settings) {
+                settings = await prisma.settings.create({
+                    data: {
+                        id: 'default',
+                        cutoffMode: 'per-shift',
+                        cutoffDays: 0,
+                        cutoffHours: 6,
+                        maxOrderDaysAhead: 7,
+                        weeklyCutoffDay: 5,
+                        weeklyCutoffHour: 17,
+                        weeklyCutoffMinute: 0,
+                        orderableDays: '1,2,3,4,5,6',
+                        maxWeeksAhead: 1,
+                        blacklistStrikes: 3,
+                        blacklistDuration: 7,
+                    }
+                });
+            }
+            return settings;
+        },
+        { ttl: CACHE_TTL.SETTINGS }
+    );
+}

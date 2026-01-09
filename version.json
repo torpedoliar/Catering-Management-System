@@ -1,12 +1,12 @@
 {
-    "version": "1.5.7",
+    "version": "1.5.8",
     "releaseDate": "2026-01-09",
     "minDatabaseVersion": "1.0.0",
     "changelog": [
-        "Fix bulk order 400 error when canteenId is empty string",
-        "Fix auto-created canteens now have proper UUIDs and CanteenShift entries",
-        "Auto-link new canteens to all active shifts during user import",
-        "Hard delete canteen instead of soft delete"
+        "Add Redis cache for settings queries (12 locations optimized)",
+        "Add database indexes for email, createdAt (User, Order, Message)",
+        "Add getCachedSettings() helper for consistent caching",
+        "Improve query performance across order, shift, blacklist routes"
     ],
     "repository": "https://github.com/torpedoliar/Catering-Management-System",
     "branch": "main"
