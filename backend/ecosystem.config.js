@@ -7,36 +7,30 @@
  * 3. Load Balancing - Distribusi request ke semua instances
  * 4. Zero-downtime Reload - Update tanpa downtime
  * 5. Log Management - Centralized logging
- * 
- * Penggunaan:
- * - Development: npm run pm2:dev
- * - Production:  npm run pm2:start
- * - Status:      npx pm2 status
- * - Logs:        npx pm2 logs
- * - Restart:     npx pm2 restart catering-backend
- * - Stop:        npx pm2 stop catering-backend
  */
 
 module.exports = {
     apps: [{
         name: 'catering-backend',
 
-        // Development mode: gunakan ts-node untuk TypeScript
-        script: 'node_modules/.bin/ts-node',
-        args: 'src/index.ts',
+        // Use ts-node as interpreter for TypeScript
+        script: 'src/index.ts',
+        interpreter: './node_modules/.bin/ts-node',
+        interpreter_args: '--transpile-only',
 
-        // Cluster mode: gunakan semua CPU cores
-        // Nilai 'max' = jumlah CPU cores yang tersedia
-        // Untuk development/testing, bisa set ke angka spesifik (misal: 2)
-        instances: process.env.PM2_INSTANCES || 2, // Default 2 untuk development
-        exec_mode: 'cluster',
+        // Cluster mode: use multiple CPU cores
+        // Note: cluster mode with ts-node can be problematic
+        // Use fork mode for development with TypeScript
+        instances: 1,
+        exec_mode: 'fork',
 
         // Memory management
         max_memory_restart: '500M',
 
-        // Watch mode (untuk development)
-        watch: process.env.NODE_ENV !== 'production',
-        ignore_watch: ['node_modules', 'logs', '*.log', 'uploads'],
+        // Watch mode (for development)
+        watch: ['src'],
+        ignore_watch: ['node_modules', 'logs', '*.log', 'uploads', 'dist'],
+        watch_delay: 1000,
 
         // Auto-restart configuration
         autorestart: true,
@@ -62,8 +56,5 @@ module.exports = {
         // Graceful shutdown
         kill_timeout: 5000,
         listen_timeout: 10000,
-
-        // Instance identification
-        instance_var: 'INSTANCE_ID',
     }]
 };
