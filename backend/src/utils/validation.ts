@@ -55,7 +55,10 @@ const dateRegex = /^\d{4}-\d{2}-\d{2}$/;
 export const createOrderSchema = z.object({
     shiftId: z.string().uuid('Shift ID tidak valid'),
     orderDate: z.string().regex(dateRegex, 'Format tanggal harus YYYY-MM-DD').optional(),
-    canteenId: z.string().uuid().optional().nullable(),
+    canteenId: z.preprocess(
+        (val) => (val === '' || val === undefined ? null : val),
+        z.string().uuid('Canteen ID tidak valid').nullable()
+    ).optional(),
 });
 
 export const bulkOrderSchema = z.object({
@@ -63,7 +66,10 @@ export const bulkOrderSchema = z.object({
         date: z.string().regex(dateRegex, 'Format tanggal harus YYYY-MM-DD'),
         shiftId: z.string().uuid('Shift ID tidak valid'),
     })).min(1, 'Minimal 1 pesanan').max(30, 'Maksimal 30 pesanan sekaligus'),
-    canteenId: z.string().uuid().optional().nullable(),
+    canteenId: z.preprocess(
+        (val) => (val === '' || val === undefined ? null : val),
+        z.string().uuid('Canteen ID tidak valid').nullable()
+    ).optional(),
 });
 
 export const cancelOrderSchema = z.object({
