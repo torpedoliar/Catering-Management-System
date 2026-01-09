@@ -204,7 +204,7 @@ router.put('/:id', authMiddleware, adminMiddleware, async (req: AuthRequest, res
     }
 });
 
-// DELETE /api/canteens/:id - Soft delete canteen (admin only)
+// DELETE /api/canteens/:id - Hard delete canteen (admin only)
 router.delete('/:id', authMiddleware, adminMiddleware, async (req: AuthRequest, res: Response) => {
     try {
         const { id } = req.params;
@@ -229,20 +229,35 @@ router.delete('/:id', authMiddleware, adminMiddleware, async (req: AuthRequest, 
         // Check for active orders
         if ((canteen._count as any).orders > 0) {
             return res.status(400).json({
-                error: `Kantin memiliki ${(canteen._count as any).orders} pesanan aktif. Nonaktifkan saja.`
+                error: `Kantin memiliki ${(canteen._count as any).orders} pesanan aktif. Batalkan pesanan terlebih dahulu.`
             });
         }
 
-        // Soft delete by setting isActive = false
-        await prisma.canteen.update({
-            where: { id },
-            data: { isActive: false }
+        // Hard delete: Remove related records, then delete canteen
+        await prisma.$transaction(async (tx) => {
+            // 1. Remove CanteenShift entries
+            await tx.canteenShift.deleteMany({ where: { canteenId: id } });
+
+            // 2. Clear user preferredCanteenId references
+            await tx.user.updateMany({
+                where: { preferredCanteenId: id },
+                data: { preferredCanteenId: null }
+            });
+
+            // 3. Update orders to remove canteen reference (keep history)
+            await tx.order.updateMany({
+                where: { canteenId: id },
+                data: { canteenId: null }
+            });
+
+            // 4. Finally delete the canteen
+            await tx.canteen.delete({ where: { id } });
         });
 
         await invalidateCanteenCache();
         sseManager.broadcast(CANTEEN_EVENTS.DELETED, { canteenId: id });
 
-        res.json({ message: 'Kantin berhasil dinonaktifkan' });
+        res.json({ message: 'Kantin berhasil dihapus permanen' });
     } catch (error: any) {
         console.error('Delete canteen error:', error);
         res.status(500).json({ error: 'Gagal menghapus kantin' });
