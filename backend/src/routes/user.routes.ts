@@ -429,19 +429,49 @@ router.post('/import', authMiddleware, adminMiddleware, apiRateLimitMiddleware('
             users.push({ externalId, nik, name, company, division, department, password, canteenId });
         });
 
-        // Auto-create canteens that don't exist
-        const uniqueCanteenIds = [...new Set(users.map(u => u.canteenId).filter(Boolean))] as string[];
-        for (const cid of uniqueCanteenIds) {
-            await prisma.canteen.upsert({
-                where: { id: cid },
-                update: {}, // Don't modify existing canteens
-                create: {
-                    id: cid,
-                    name: cid,
-                    location: 'Auto-created from user import',
-                    isActive: true
-                }
+        // Auto-create canteens that don't exist (lookup by NAME, not ID)
+        const uniqueCanteenNames = [...new Set(users.map(u => u.canteenId).filter(Boolean))] as string[];
+        const canteenIdMap = new Map<string, string>(); // name -> actual UUID id
+        let canteensCreated = 0;
+
+        // Get all active shifts for auto-linking new canteens
+        const allActiveShifts = await prisma.shift.findMany({
+            where: { isActive: true },
+            select: { id: true }
+        });
+
+        for (const canteenName of uniqueCanteenNames) {
+            // Look up canteen by NAME (not by id)
+            let canteen = await prisma.canteen.findUnique({
+                where: { name: canteenName }
             });
+
+            if (!canteen) {
+                // Create new canteen with auto-generated UUID
+                canteen = await prisma.canteen.create({
+                    data: {
+                        name: canteenName,
+                        location: 'Auto-created from user import',
+                        isActive: true
+                    }
+                });
+                canteensCreated++;
+
+                // Auto-create CanteenShift entries for all active shifts
+                if (allActiveShifts.length > 0) {
+                    await prisma.canteenShift.createMany({
+                        data: allActiveShifts.map(shift => ({
+                            canteenId: canteen!.id,
+                            shiftId: shift.id,
+                            isActive: true
+                        })),
+                        skipDuplicates: true
+                    });
+                }
+            }
+
+            // Store the mapping: canteenName -> canteen.id (proper UUID)
+            canteenIdMap.set(canteenName, canteen.id);
         }
 
         // Auto-create Company > Division > Department hierarchy
@@ -496,7 +526,7 @@ router.post('/import', authMiddleware, adminMiddleware, apiRateLimitMiddleware('
             created: 0,
             updated: 0,
             failed: 0,
-            canteensCreated: uniqueCanteenIds.length,
+            canteensCreated,
             companiesCreated,
             divisionsCreated,
             departmentsCreated
@@ -513,6 +543,11 @@ router.post('/import', authMiddleware, adminMiddleware, apiRateLimitMiddleware('
                 const orgPath = `${userData.company}|${userData.division}|${userData.department}`;
                 const departmentId = orgStructureMap.get(orgPath);
 
+                // Get actual canteen UUID from our mapping
+                const preferredCanteenId = userData.canteenId
+                    ? canteenIdMap.get(userData.canteenId) || undefined
+                    : undefined;
+
                 await prisma.user.upsert({
                     where: { externalId: userData.externalId },
                     update: {
@@ -523,7 +558,7 @@ router.post('/import', authMiddleware, adminMiddleware, apiRateLimitMiddleware('
                         department: userData.department,
                         departmentId: departmentId || undefined,
                         isActive: true,
-                        preferredCanteenId: userData.canteenId || undefined,
+                        preferredCanteenId: preferredCanteenId,
                     },
                     create: {
                         externalId: userData.externalId,
@@ -536,7 +571,7 @@ router.post('/import', authMiddleware, adminMiddleware, apiRateLimitMiddleware('
                         password: hashedPwd,
                         role: 'USER',
                         mustChangePassword: true,
-                        preferredCanteenId: userData.canteenId || null,
+                        preferredCanteenId: preferredCanteenId || null,
                     },
                 });
                 results.created++;
