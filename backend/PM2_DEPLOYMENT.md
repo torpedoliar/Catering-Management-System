@@ -2,7 +2,7 @@
 
 ## Apa itu PM2?
 
-**PM2 (Process Manager 2)** adalah production process manager untuk Node.js yang menyediakan fitur-fitur penting untuk menjalankan aplikasi di production:
+**PM2 (Process Manager 2)** adalah production process manager untuk Node.js/Bun yang menyediakan:
 
 ```
 ┌─────────────────────────────────────────────────────────────┐
@@ -26,6 +26,16 @@
 
 ---
 
+## Versi PM2
+
+| Versi | Status |
+|-------|--------|
+| **6.0.14** | ✅ Latest (digunakan saat ini) |
+
+Referensi: [PM2 GitHub](https://github.com/unitech/pm2)
+
+---
+
 ## Fitur Utama PM2
 
 | Fitur | Deskripsi |
@@ -39,35 +49,36 @@
 
 ---
 
-## Perbandingan Node.js vs PM2 Cluster
+## Instalasi & Update
 
-```
-Single Node.js Process:
-CPU: [████░░░░░░░░] 25% (1 core dari 4)
-Throughput: 100 req/s
+```bash
+# Global installation
+npm install pm2@latest -g
 
-PM2 Cluster (4 instances):
-CPU: [████████████] 100% (semua 4 cores)
-Throughput: 400 req/s
+# Update PM2
+pm2 update
+
+# Atau sebagai project dependency (sudah di package.json)
+npm install pm2@^6.0.14
 ```
 
 ---
 
-## File Konfigurasi
+## Penggunaan Production
 
-### ecosystem.config.js
+> [!IMPORTANT]
+> PM2 cluster mode memerlukan compiled JavaScript!
+> TypeScript + PM2 cluster tidak kompatibel.
 
-```javascript
-module.exports = {
-    apps: [{
-        name: 'catering-backend',
-        script: 'node_modules/.bin/ts-node',
-        args: 'src/index.ts',
-        instances: 2,              // Jumlah workers
-        exec_mode: 'cluster',      // Mode cluster
-        max_memory_restart: '500M' // Restart jika memory > 500MB
-    }]
-};
+```bash
+# 1. Build TypeScript ke JavaScript
+npm run build
+
+# 2. Start dengan PM2 cluster mode
+npm run pm2:start
+
+# Atau one-liner:
+npm run pm2:build-start
 ```
 
 ---
@@ -75,10 +86,7 @@ module.exports = {
 ## Perintah PM2
 
 ```bash
-# Start aplikasi
-npm run pm2:start
-
-# Lihat status
+# Lihat status semua processes
 npx pm2 status
 
 # Lihat logs real-time
@@ -95,22 +103,30 @@ npx pm2 reload catering-backend
 
 # Monitor CPU/Memory
 npx pm2 monit
+
+# Hapus dari PM2
+npx pm2 delete catering-backend
 ```
 
 ---
 
-## Docker Integration
+## Konfigurasi (ecosystem.config.js)
 
-Dockerfile menggunakan `pm2-runtime` untuk container:
-
-```dockerfile
-CMD ["npm", "run", "pm2:dev"]
+```javascript
+module.exports = {
+    apps: [{
+        name: 'catering-backend',
+        script: 'dist/index.js',
+        instances: 'max',           // Gunakan semua CPU
+        exec_mode: 'cluster',       // Mode cluster
+        max_memory_restart: '500M', // Restart jika memory > 500MB
+        env: {
+            NODE_ENV: 'production',
+            PORT: 3012
+        }
+    }]
+};
 ```
-
-`pm2-runtime` adalah versi PM2 yang dioptimalkan untuk Docker:
-- Tidak daemon (foreground process)
-- Proper signal handling
-- Graceful shutdown
 
 ---
 
@@ -118,11 +134,18 @@ CMD ["npm", "run", "pm2:dev"]
 
 | Variable | Default | Description |
 |----------|---------|-------------|
-| `PM2_INSTANCES` | 2 | Jumlah worker instances |
-| `NODE_ENV` | development | Environment mode |
+| `PM2_INSTANCES` | max | Jumlah worker instances |
+| `NODE_ENV` | production | Environment mode |
 | `PORT` | 3012 | Port aplikasi |
 
-Untuk production (gunakan semua cores):
-```bash
-PM2_INSTANCES=max npm run pm2:start
-```
+---
+
+## Mode Development vs Production
+
+| Aspek | Development | Production |
+|-------|-------------|------------|
+| **Command** | `npm run dev` | `npm run pm2:build-start` |
+| **Process Manager** | nodemon | PM2 |
+| **Hot Reload** | ✅ | ❌ (use pm2 reload) |
+| **Multi-core** | ❌ | ✅ cluster mode |
+| **TypeScript** | Direct (ts-node) | Compiled (dist/) |
