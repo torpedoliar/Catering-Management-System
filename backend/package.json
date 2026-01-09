@@ -8,7 +8,7 @@
         "build": "tsc",
         "start": "node dist/index.js",
         "pm2:start": "npx pm2-runtime start ecosystem.config.js",
-        "pm2:dev": "npx prisma generate && npx pm2-runtime start ecosystem.config.js --env development",
+        "pm2:build-start": "npm run build && npx pm2-runtime start ecosystem.config.js",
         "prisma:generate": "prisma generate",
         "prisma:migrate": "prisma migrate dev",
         "prisma:seed": "prisma db seed"

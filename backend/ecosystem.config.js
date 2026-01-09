@@ -7,30 +7,37 @@
  * 3. Load Balancing - Distribusi request ke semua instances
  * 4. Zero-downtime Reload - Update tanpa downtime
  * 5. Log Management - Centralized logging
+ * 
+ * PENTING: PM2 Cluster mode memerlukan compiled JavaScript!
+ * Jalankan `npm run build` terlebih dahulu sebelum menggunakan PM2.
+ * 
+ * Penggunaan Production:
+ * 1. npm run build          # Compile TypeScript ke dist/
+ * 2. npm run pm2:start      # Start dengan PM2 cluster mode
+ * 
+ * Commands:
+ * - Status:   npx pm2 status
+ * - Logs:     npx pm2 logs
+ * - Restart:  npx pm2 restart catering-backend
+ * - Stop:     npx pm2 stop catering-backend
  */
 
 module.exports = {
     apps: [{
         name: 'catering-backend',
 
-        // Use ts-node as interpreter for TypeScript
-        script: 'src/index.ts',
-        interpreter: './node_modules/.bin/ts-node',
-        interpreter_args: '--transpile-only',
+        // Production: gunakan compiled JavaScript
+        script: 'dist/index.js',
 
-        // Cluster mode: use multiple CPU cores
-        // Note: cluster mode with ts-node can be problematic
-        // Use fork mode for development with TypeScript
-        instances: 1,
-        exec_mode: 'fork',
+        // Cluster mode: gunakan semua CPU cores
+        instances: process.env.PM2_INSTANCES || 'max',
+        exec_mode: 'cluster',
 
         // Memory management
         max_memory_restart: '500M',
 
-        // Watch mode (for development)
-        watch: ['src'],
-        ignore_watch: ['node_modules', 'logs', '*.log', 'uploads', 'dist'],
-        watch_delay: 1000,
+        // Watch disabled untuk production
+        watch: false,
 
         // Auto-restart configuration
         autorestart: true,
@@ -39,10 +46,6 @@ module.exports = {
 
         // Environment variables
         env: {
-            NODE_ENV: 'development',
-            PORT: 3012
-        },
-        env_production: {
             NODE_ENV: 'production',
             PORT: 3012
         },
@@ -56,5 +59,8 @@ module.exports = {
         // Graceful shutdown
         kill_timeout: 5000,
         listen_timeout: 10000,
+
+        // Instance identification
+        instance_var: 'INSTANCE_ID',
     }]
 };
