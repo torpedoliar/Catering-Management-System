@@ -1,13 +1,12 @@
 {
-    "version": "1.6.1",
+    "version": "1.6.2",
     "releaseDate": "2026-01-09",
     "minDatabaseVersion": "1.0.0",
     "changelog": [
-        "Enable PM2 cluster mode in Docker for multi-core scaling",
-        "Add PM2 dependency and scripts to package.json",
-        "Create PM2_DEPLOYMENT.md documentation",
-        "Update Dockerfile to use pm2-runtime",
-        "Dashboard stats caching (60-second TTL)"
+        "Update PM2 to v6.0.14 (latest) with Context7 reference",
+        "Enhanced PM2_DEPLOYMENT.md documentation",
+        "Dashboard stats caching (60-second TTL)",
+        "PM2 cluster mode configuration for production scaling"
     ],
     "repository": "https://github.com/torpedoliar/Catering-Management-System",
     "branch": "main"
