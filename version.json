@@ -1,13 +1,12 @@
 {
-    "version": "1.5.6",
-    "releaseDate": "2026-01-07",
+    "version": "1.5.7",
+    "releaseDate": "2026-01-09",
     "minDatabaseVersion": "1.0.0",
     "changelog": [
-        "Make photo capture and QR scanner modals semi-transparent",
-        "Add Riwayat Restart sheet to XLSX export",
-        "Add visual QR code scanner with webcam for check-in",
-        "Add restart history with update/normal type badge",
-        "Added Vendor Pickup Statistics page with shift status indicators"
+        "Fix bulk order 400 error when canteenId is empty string",
+        "Fix auto-created canteens now have proper UUIDs and CanteenShift entries",
+        "Auto-link new canteens to all active shifts during user import",
+        "Hard delete canteen instead of soft delete"
     ],
     "repository": "https://github.com/torpedoliar/Catering-Management-System",
     "branch": "main"
