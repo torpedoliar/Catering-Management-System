@@ -36,6 +36,27 @@ interface RestartEvent {
     restartLabel: string;
 }
 
+interface PM2Process {
+    name: string;
+    id: number;
+    mode: string;
+    status: string;
+    uptime: number;
+    restarts: number;
+    memoryMB: number;
+    cpu: number;
+}
+
+interface PM2Status {
+    enabled: boolean;
+    mode: 'cluster' | 'fork' | 'standalone';
+    instances?: number;
+    totalMemoryMB?: number;
+    avgCpu?: number;
+    message?: string;
+    processes: PM2Process[];
+}
+
 function formatDuration(ms: number): string {
     if (ms <= 0) return '0s';
 
@@ -71,6 +92,7 @@ export default function UptimeHistoryPage() {
     const [summary, setSummary] = useState<UptimeSummary | null>(null);
     const [downtimePeriods, setDowntimePeriods] = useState<DowntimePeriod[]>([]);
     const [restartEvents, setRestartEvents] = useState<RestartEvent[]>([]);
+    const [pm2Status, setPm2Status] = useState<PM2Status | null>(null);
     const [isLoading, setIsLoading] = useState(true);
     const [isRefreshing, setIsRefreshing] = useState(false);
 
@@ -119,6 +141,19 @@ export default function UptimeHistoryPage() {
             if (restartsRes.ok) {
                 const restartsData = await restartsRes.json();
                 setRestartEvents(restartsData.restarts || []);
+            }
+
+            // Fetch PM2 status
+            try {
+                const pm2Res = await fetch(`${API_URL}/api/server/pm2-status`, {
+                    headers: { 'Authorization': `Bearer ${token}` }
+                });
+                if (pm2Res.ok) {
+                    const pm2Data = await pm2Res.json();
+                    setPm2Status(pm2Data);
+                }
+            } catch (pm2Error) {
+                console.log('PM2 status not available');
             }
 
         } catch (error) {
@@ -302,6 +337,97 @@ export default function UptimeHistoryPage() {
                         </div>
                         <p className="text-2xl font-bold text-amber-600">{summary.totalRestarts}</p>
                     </div>
+                </div>
+            )}
+
+            {/* PM2 Cluster Status */}
+            {pm2Status && (
+                <div className="card overflow-hidden">
+                    <div className="p-4 border-b border-slate-100 flex items-center justify-between">
+                        <div className="flex items-center gap-2">
+                            <div className={`w-3 h-3 rounded-full ${pm2Status.enabled ? 'bg-emerald-500 animate-pulse' : 'bg-slate-400'}`} />
+                            <h2 className="text-lg font-semibold text-[#1a1f37]">PM2 Process Manager</h2>
+                            <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${pm2Status.mode === 'cluster' ? 'bg-purple-100 text-purple-800' :
+                                    pm2Status.mode === 'fork' ? 'bg-blue-100 text-blue-800' :
+                                        'bg-slate-100 text-slate-700'
+                                }`}>
+                                {pm2Status.mode === 'cluster' ? '🚀 Cluster Mode' :
+                                    pm2Status.mode === 'fork' ? '⚡ Fork Mode' :
+                                        '📍 Standalone'}
+                            </span>
+                        </div>
+                    </div>
+
+                    {pm2Status.enabled && pm2Status.processes.length > 0 ? (
+                        <>
+                            {/* PM2 Summary Stats */}
+                            <div className="grid grid-cols-2 sm:grid-cols-4 gap-4 p-4 bg-slate-50/50">
+                                <div className="text-center">
+                                    <p className="text-2xl font-bold text-purple-600">{pm2Status.instances}</p>
+                                    <p className="text-xs text-slate-500">Instances</p>
+                                </div>
+                                <div className="text-center">
+                                    <p className="text-2xl font-bold text-blue-600">{pm2Status.totalMemoryMB} MB</p>
+                                    <p className="text-xs text-slate-500">Total Memory</p>
+                                </div>
+                                <div className="text-center">
+                                    <p className="text-2xl font-bold text-emerald-600">{pm2Status.avgCpu}%</p>
+                                    <p className="text-xs text-slate-500">Avg CPU</p>
+                                </div>
+                                <div className="text-center">
+                                    <p className="text-2xl font-bold text-amber-600">
+                                        {pm2Status.processes.reduce((sum, p) => sum + p.restarts, 0)}
+                                    </p>
+                                    <p className="text-xs text-slate-500">Total Restarts</p>
+                                </div>
+                            </div>
+
+                            {/* PM2 Process Table */}
+                            <div className="overflow-x-auto">
+                                <table className="w-full">
+                                    <thead className="bg-slate-50">
+                                        <tr>
+                                            <th className="text-left px-4 py-3 text-xs font-semibold text-slate-500 uppercase">ID</th>
+                                            <th className="text-left px-4 py-3 text-xs font-semibold text-slate-500 uppercase">Name</th>
+                                            <th className="text-center px-4 py-3 text-xs font-semibold text-slate-500 uppercase">Status</th>
+                                            <th className="text-right px-4 py-3 text-xs font-semibold text-slate-500 uppercase">Memory</th>
+                                            <th className="text-right px-4 py-3 text-xs font-semibold text-slate-500 uppercase">CPU</th>
+                                            <th className="text-center px-4 py-3 text-xs font-semibold text-slate-500 uppercase">Restarts</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody className="divide-y divide-slate-100">
+                                        {pm2Status.processes.map((proc) => (
+                                            <tr key={proc.id} className="hover:bg-slate-50 transition-colors">
+                                                <td className="px-4 py-3 text-sm font-mono text-slate-600">{proc.id}</td>
+                                                <td className="px-4 py-3 text-sm font-medium text-[#1a1f37]">{proc.name}</td>
+                                                <td className="px-4 py-3 text-center">
+                                                    <span className={`inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium ${proc.status === 'online' ? 'bg-emerald-100 text-emerald-800' :
+                                                            proc.status === 'stopping' ? 'bg-amber-100 text-amber-800' :
+                                                                'bg-red-100 text-red-800'
+                                                        }`}>
+                                                        {proc.status === 'online' ? '🟢' : proc.status === 'stopping' ? '🟡' : '🔴'} {proc.status}
+                                                    </span>
+                                                </td>
+                                                <td className="px-4 py-3 text-sm text-right text-blue-600 font-medium">{proc.memoryMB} MB</td>
+                                                <td className="px-4 py-3 text-sm text-right text-emerald-600 font-medium">{proc.cpu}%</td>
+                                                <td className="px-4 py-3 text-center">
+                                                    {proc.restarts > 0 && (
+                                                        <span className="inline-flex items-center justify-center w-6 h-6 rounded-full bg-amber-100 text-amber-600 text-xs font-medium">
+                                                            {proc.restarts}
+                                                        </span>
+                                                    )}
+                                                </td>
+                                            </tr>
+                                        ))}
+                                    </tbody>
+                                </table>
+                            </div>
+                        </>
+                    ) : (
+                        <div className="p-6 text-center text-slate-500">
+                            <p>{pm2Status.message || 'PM2 tidak aktif. Menggunakan mode standalone (nodemon/node).'}</p>
+                        </div>
+                    )}
                 </div>
             )}
 
