@@ -12,6 +12,7 @@
 6. [API Structure](#6-api-structure)
 7. [Key Business Logic](#7-key-business-logic)
 8. [Deployment Architecture](#8-deployment-architecture)
+9. [Visual Diagrams](#9-visual-diagrams)
 
 ---
 
@@ -518,3 +519,23 @@ docker compose logs -f     # View logs
 
 *Document Version: 1.6.2*  
 *Last Updated: 2026-01-11*
+
+---
+
+## 9. Visual Diagrams
+
+### System Architecture
+![System Architecture](docs/diagrams/architecture_diagram_1768137023961.png)
+
+### Order Flow Process
+![Order Flow](docs/diagrams/order_flow_diagram_1768137046178.png)
+
+### Database Entity Relationship
+![Database ERD](docs/diagrams/database_erd_1768137071737.png)
+
+### No-Show Processing Flow
+![No-Show Processing](docs/diagrams/noshow_process_flow_1768137113823.png)
+
+### Check-in Process Flow
+![Check-in Process](docs/diagrams/checkin_process_flow_1768137131580.png)
+
