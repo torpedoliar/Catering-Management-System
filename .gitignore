@@ -49,3 +49,7 @@ coverage/
 # Prisma
 prisma/*.db
 prisma/*.db-journal
+
+# Production files (copied from server - do not commit)
+.env.production
+docker-compose.production.yml
