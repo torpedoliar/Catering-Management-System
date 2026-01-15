@@ -30,6 +30,11 @@ class SSEManager {
         response.setHeader('Access-Control-Allow-Origin', '*');
         response.flushHeaders();
 
+        // Send 4KB padding to flush proxy buffers (Nginx, CloudFlare, etc.)
+        // This forces immediate connection establishment without buffering delay
+        const padding = ':' + ' '.repeat(4096) + '\n\n';
+        response.write(padding);
+
         // Send initial connection message with client info
         const connectionData = {
             type: 'connected',

@@ -1,6 +1,28 @@
-import { Shield, Clock, Calendar, Users, Bell, FileText, CheckCircle, Settings, QrCode, Building, Github, Mail } from 'lucide-react';
+import { useState, useEffect } from 'react';
+import { Shield, Clock, Calendar, Users, Bell, FileText, CheckCircle, Settings, QrCode, Building, Github, Mail, Loader2 } from 'lucide-react';
+import { api } from '../contexts/AuthContext';
 
 export default function AboutPage() {
+    const [version, setVersion] = useState<string>('');
+    const [releaseDate, setReleaseDate] = useState<string>('');
+    const [loading, setLoading] = useState(true);
+
+    useEffect(() => {
+        const fetchVersion = async () => {
+            try {
+                const res = await api.get('/api/server/version');
+                setVersion(res.data.version);
+                setReleaseDate(res.data.releaseDate);
+            } catch (error) {
+                console.error('Failed to fetch version:', error);
+                setVersion('N/A');
+            } finally {
+                setLoading(false);
+            }
+        };
+        fetchVersion();
+    }, []);
+
     return (
         <div className="max-w-4xl mx-auto space-y-6 animate-fade-in">
             {/* Header */}
@@ -9,7 +31,17 @@ export default function AboutPage() {
                     <FileText className="w-10 h-10 text-white" />
                 </div>
                 <h1 className="text-3xl font-bold text-[#1a1f37] mb-2">Catering Management System</h1>
-                <p className="text-lg font-semibold text-orange-500 mb-4">Version 1.5.0</p>
+                {loading ? (
+                    <div className="flex items-center justify-center gap-2 text-slate-400">
+                        <Loader2 className="w-4 h-4 animate-spin" />
+                        <span>Loading version...</span>
+                    </div>
+                ) : (
+                    <>
+                        <p className="text-lg font-semibold text-orange-500 mb-2">Version {version}</p>
+                        {releaseDate && <p className="text-sm text-slate-400 mb-4">Released: {releaseDate}</p>}
+                    </>
+                )}
                 <p className="text-slate-500 max-w-2xl mx-auto">
                     Sistem manajemen pemesanan katering yang modern dan efisien dengan fitur multi-shift,
                     multi-day ordering, QR code check-in, dan kontrol administratif yang lengkap.

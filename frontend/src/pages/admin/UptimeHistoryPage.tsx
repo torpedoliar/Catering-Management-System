@@ -103,6 +103,7 @@ export default function UptimeHistoryPage() {
 
     const [startDate, setStartDate] = useState(sevenDaysAgo.toISOString().split('T')[0]);
     const [endDate, setEndDate] = useState(today.toISOString().split('T')[0]);
+    const [autoRefresh, setAutoRefresh] = useState(true);
 
     const getToken = () => localStorage.getItem('token');
 
@@ -168,6 +169,17 @@ export default function UptimeHistoryPage() {
     useEffect(() => {
         fetchData();
     }, [fetchData]);
+
+    // Auto-refresh every 30 seconds when enabled
+    useEffect(() => {
+        if (!autoRefresh) return;
+
+        const interval = setInterval(() => {
+            fetchData(false);
+        }, 30000);
+
+        return () => clearInterval(interval);
+    }, [autoRefresh, fetchData]);
 
     const handleExport = async () => {
         try {
@@ -249,6 +261,17 @@ export default function UptimeHistoryPage() {
                     >
                         <RefreshCw className={`w-4 h-4 ${isRefreshing ? 'animate-spin' : ''}`} />
                         Refresh
+                    </button>
+                    <button
+                        onClick={() => setAutoRefresh(!autoRefresh)}
+                        className={`flex items-center gap-2 px-3 py-2 rounded-lg text-sm font-medium transition-colors ${autoRefresh
+                                ? 'bg-emerald-100 text-emerald-700 border border-emerald-200'
+                                : 'bg-slate-100 text-slate-600 border border-slate-200'
+                            }`}
+                        title={autoRefresh ? 'Auto-refresh aktif (30 detik)' : 'Auto-refresh nonaktif'}
+                    >
+                        <Timer className={`w-4 h-4 ${autoRefresh ? 'text-emerald-600' : 'text-slate-400'}`} />
+                        {autoRefresh ? 'Auto' : 'Manual'}
                     </button>
                 </div>
             </div>
@@ -348,8 +371,8 @@ export default function UptimeHistoryPage() {
                             <div className={`w-3 h-3 rounded-full ${pm2Status.enabled ? 'bg-emerald-500 animate-pulse' : 'bg-slate-400'}`} />
                             <h2 className="text-lg font-semibold text-[#1a1f37]">PM2 Process Manager</h2>
                             <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${pm2Status.mode === 'cluster' ? 'bg-purple-100 text-purple-800' :
-                                    pm2Status.mode === 'fork' ? 'bg-blue-100 text-blue-800' :
-                                        'bg-slate-100 text-slate-700'
+                                pm2Status.mode === 'fork' ? 'bg-blue-100 text-blue-800' :
+                                    'bg-slate-100 text-slate-700'
                                 }`}>
                                 {pm2Status.mode === 'cluster' ? '🚀 Cluster Mode' :
                                     pm2Status.mode === 'fork' ? '⚡ Fork Mode' :
@@ -402,8 +425,8 @@ export default function UptimeHistoryPage() {
                                                 <td className="px-4 py-3 text-sm font-medium text-[#1a1f37]">{proc.name}</td>
                                                 <td className="px-4 py-3 text-center">
                                                     <span className={`inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium ${proc.status === 'online' ? 'bg-emerald-100 text-emerald-800' :
-                                                            proc.status === 'stopping' ? 'bg-amber-100 text-amber-800' :
-                                                                'bg-red-100 text-red-800'
+                                                        proc.status === 'stopping' ? 'bg-amber-100 text-amber-800' :
+                                                            'bg-red-100 text-red-800'
                                                         }`}>
                                                         {proc.status === 'online' ? '🟢' : proc.status === 'stopping' ? '🟡' : '🔴'} {proc.status}
                                                     </span>

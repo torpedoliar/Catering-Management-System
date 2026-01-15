@@ -24,6 +24,20 @@ const upload = multer({ dest: 'uploads/temp/' });
 
 const router = Router();
 
+// ==================== VERSION ====================
+
+// Get application version (public endpoint)
+router.get('/version', (req, res) => {
+    try {
+        const versionPath = path.join(__dirname, '../../../version.json');
+        const versionData = JSON.parse(fs.readFileSync(versionPath, 'utf8'));
+        res.json(versionData);
+    } catch (error) {
+        console.error('Get version error:', error);
+        res.json({ version: 'N/A', releaseDate: '', changelog: [] });
+    }
+});
+
 // ==================== PERFORMANCE ====================
 
 // Get system performance metrics
