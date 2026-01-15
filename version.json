@@ -1,11 +1,9 @@
 {
-    "version": "1.6.6",
+    "version": "1.6.7",
     "releaseDate": "2026-01-15",
     "minDatabaseVersion": "1.0.0",
     "changelog": [
-        "SSE 4KB padding for faster proxy connection",
-        "Dynamic version fetching in About page",
-        "Uptime History auto-refresh (30s interval)"
+        "Show shift names in grouped column headers"
     ],
     "repository": "https://github.com/torpedoliar/Catering-Management-System",
     "branch": "main"

@@ -344,10 +344,16 @@ export default function VendorDashboardPage() {
                                     <th className="text-left px-4 py-3 text-xs font-semibold text-slate-600 uppercase">Tanggal</th>
                                     {groupShiftsByBreakTime(data.shifts).map(group => (
                                         <th key={group.key} className="text-center px-4 py-3 text-xs font-semibold text-slate-600 uppercase">
-                                            <div title={group.isGrouped ? group.shifts.map(s => s.name).join(', ') : undefined}>
-                                                {group.label}
-                                                {group.isGrouped && <span className="ml-1 text-slate-400 text-[10px]">({group.shifts.length})</span>}
-                                            </div>
+                                            {group.isGrouped ? (
+                                                <div className="flex flex-col gap-0.5">
+                                                    <span className="text-slate-700">{group.label}</span>
+                                                    <span className="text-[10px] text-slate-400 font-normal normal-case">
+                                                        {group.shifts.map(s => s.name).join(', ')}
+                                                    </span>
+                                                </div>
+                                            ) : (
+                                                <span>{group.label}</span>
+                                            )}
                                         </th>
                                     ))}
                                     <th className="text-center px-4 py-3 text-xs font-semibold text-slate-600 uppercase bg-slate-100">Total</th>
@@ -444,10 +450,16 @@ export default function VendorDashboardPage() {
                                                 <th className="text-left px-4 py-2 text-xs font-semibold text-slate-600 uppercase">Tanggal</th>
                                                 {groupShiftsByBreakTime(data.shifts).map(group => (
                                                     <th key={group.key} className="text-center px-3 py-2 text-xs font-semibold text-slate-600 uppercase">
-                                                        <div title={group.isGrouped ? group.shifts.map(s => s.name).join(', ') : undefined}>
-                                                            {group.label}
-                                                            {group.isGrouped && <span className="ml-1 text-slate-400 text-[10px]">({group.shifts.length})</span>}
-                                                        </div>
+                                                        {group.isGrouped ? (
+                                                            <div className="flex flex-col gap-0.5">
+                                                                <span className="text-slate-700">{group.label}</span>
+                                                                <span className="text-[10px] text-slate-400 font-normal normal-case">
+                                                                    {group.shifts.map(s => s.name).join(', ')}
+                                                                </span>
+                                                            </div>
+                                                        ) : (
+                                                            <span>{group.label}</span>
+                                                        )}
                                                     </th>
                                                 ))}
                                                 <th className="text-center px-3 py-2 text-xs font-semibold text-slate-600 uppercase bg-slate-100">Total</th>
