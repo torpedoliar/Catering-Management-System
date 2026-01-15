@@ -282,19 +282,7 @@ export default function MenuItemsPage() {
                                     ))}
                                 </select>
                             </div>
-                            <div>
-                                <label className="block text-sm text-slate-500 mb-1">Kategori</label>
-                                <select
-                                    value={formData.category}
-                                    onChange={e => setFormData(f => ({ ...f, category: e.target.value }))}
-                                    className="input-field"
-                                >
-                                    <option value="">Pilih Kategori</option>
-                                    {categories.map(c => (
-                                        <option key={c} value={c}>{c}</option>
-                                    ))}
-                                </select>
-                            </div>
+                            {/* Category field removed - v1.6.3 */}
                             <div>
                                 <label className="block text-sm text-slate-500 mb-1">Deskripsi</label>
                                 <textarea

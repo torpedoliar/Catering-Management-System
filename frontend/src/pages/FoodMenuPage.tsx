@@ -45,6 +45,7 @@ export default function FoodMenuPage() {
     const [weekData, setWeekData] = useState<{ week: number; year: number; weekStart: string; weekEnd: string; shifts: Shift[]; dailyMenus: DailyMenuData[] } | null>(null);
     const [loading, setLoading] = useState(true);
     const [selectedWeek, setSelectedWeek] = useState<{ week: number; year: number } | null>(null);
+    const [selectedImage, setSelectedImage] = useState<string | null>(null);
 
     useEffect(() => {
         loadData();
@@ -172,7 +173,8 @@ export default function FoodMenuPage() {
                                                     <img
                                                         src={menu.menuItem.imageUrl}
                                                         alt={menu.menuItem.name}
-                                                        className="w-24 h-24 object-cover rounded-lg flex-shrink-0"
+                                                        className="w-24 h-24 object-cover rounded-lg flex-shrink-0 cursor-zoom-in hover:opacity-80 transition-opacity"
+                                                        onClick={() => setSelectedImage(menu.menuItem.imageUrl)}
                                                     />
                                                 ) : (
                                                     <div className="w-24 h-24 bg-slate-200 rounded-lg flex items-center justify-center flex-shrink-0">
@@ -225,6 +227,30 @@ export default function FoodMenuPage() {
                     <UtensilsCrossed className="w-16 h-16 mx-auto mb-4 text-slate-200" />
                     <p className="text-slate-500">Belum ada menu untuk minggu ini</p>
                     <p className="text-sm text-slate-400 mt-1">Menu akan ditampilkan setelah diatur oleh admin</p>
+                </div>
+            )}
+
+            {/* Image Lightbox */}
+            {selectedImage && (
+                <div
+                    className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/80 backdrop-blur-sm"
+                    onClick={() => setSelectedImage(null)}
+                >
+                    <button
+                        onClick={() => setSelectedImage(null)}
+                        className="absolute top-4 right-4 p-2 text-white/70 hover:text-white transition-colors"
+                    >
+                        <span className="sr-only">Close</span>
+                        <svg xmlns="http://www.w3.org/2000/svg" className="h-8 w-8" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                        </svg>
+                    </button>
+                    <img
+                        src={selectedImage}
+                        alt="Menu Preview"
+                        className="max-w-full max-h-[90vh] object-contain rounded-lg shadow-2xl"
+                        onClick={(e) => e.stopPropagation()}
+                    />
                 </div>
             )}
         </div>

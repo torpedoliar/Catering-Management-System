@@ -196,6 +196,11 @@ router.put('/me', authMiddleware, async (req: AuthRequest, res: Response) => {
         const updateData: any = {};
 
         if (preferredCanteenId !== undefined) {
+            // SECURITY: Only ADMIN can change preferredCanteenId
+            if (req.user?.role !== 'ADMIN') {
+                return res.status(403).json({ error: 'Hanya Admin yang dapat mengubah lokasi kantin' });
+            }
+
             // Verify canteen exists if not null
             if (preferredCanteenId) {
                 const canteen = await prisma.canteen.findUnique({

@@ -429,33 +429,19 @@ export default function SettingsPage() {
                         </span>
                     </div>
 
-                    {/* Preferred Canteen Selection */}
+                    {/* Preferred Canteen Display (Read Only) */}
                     <div className="col-span-full pt-4 border-t border-white/5">
                         <label className="block text-callout font-medium text-dark-text-secondary mb-2">
                             Kantin Lokasi Anda Bekerja
                         </label>
-                        <div className="flex gap-2">
-                            <select
-                                value={preferredCanteenId}
-                                onChange={(e) => setPreferredCanteenId(e.target.value)}
-                                className="input-field flex-1"
-                            >
-                                <option value="">-- Pilih Kantin Lokasi Kerja --</option>
-                                {canteens.map(c => (
-                                    <option key={c.id} value={c.id}>{c.name}</option>
-                                ))}
-                            </select>
-                            <button
-                                onClick={handleSaveProfile}
-                                disabled={savingProfile}
-                                className="btn-secondary"
-                            >
-                                {savingProfile ? 'Menyimpan...' : 'Simpan'}
-                            </button>
+                        <div className="flex items-center justify-between p-3 bg-dark-bg-tertiary rounded-lg border border-white/5">
+                            <span className="text-body text-white">
+                                {canteens.find(c => c.id === preferredCanteenId)?.name || 'Belum diatur'}
+                            </span>
+                            <span className="text-xs text-dark-text-secondary italic">
+                                Hubungi Admin untuk mengubah
+                            </span>
                         </div>
-                        <p className="text-caption text-dark-text-secondary mt-1">
-                            Kantin ini akan terpilih otomatis saat Anda memesan makanan
-                        </p>
                     </div>
                 </div>
             </div>
