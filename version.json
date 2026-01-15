@@ -1,11 +1,11 @@
 {
-    "version": "1.6.4",
+    "version": "1.6.5",
     "releaseDate": "2026-01-15",
     "minDatabaseVersion": "1.0.0",
     "changelog": [
-        "Added shift meal break time configuration (restrict food pickup to break hours)",
-        "Centralized check-in time validation with overnight break support",
-        "Added break time UI to Shift Configuration page"
+        "Fixed PM2 uptime page hanging with native API (5s timeout)",
+        "Improved SSE connection stability (10s heartbeat, aggressive reconnect)",
+        "Vendor dashboard: Group shift columns by break time"
     ],
     "repository": "https://github.com/torpedoliar/Catering-Management-System",
     "branch": "main"

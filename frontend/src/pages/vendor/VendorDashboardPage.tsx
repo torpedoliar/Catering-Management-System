@@ -9,7 +9,40 @@ interface Shift {
     startTime: string;
     endTime: string;
     mealPrice: number;
+    breakStartTime?: string | null;
+    breakEndTime?: string | null;
 }
+
+interface ShiftGroup {
+    key: string;
+    label: string;
+    shifts: Shift[];
+    shiftIds: string[];
+    isGrouped: boolean;
+}
+
+// Group shifts by break time for merged columns
+const groupShiftsByBreakTime = (shifts: Shift[]): ShiftGroup[] => {
+    const groups: Map<string, Shift[]> = new Map();
+
+    shifts.forEach(shift => {
+        // Use break time as key, or unique ID if no break times
+        const key = shift.breakStartTime && shift.breakEndTime
+            ? `${shift.breakStartTime}-${shift.breakEndTime}`
+            : `_shift_${shift.id}`;
+
+        if (!groups.has(key)) groups.set(key, []);
+        groups.get(key)!.push(shift);
+    });
+
+    return Array.from(groups.entries()).map(([key, shifts]) => ({
+        key,
+        label: key.startsWith('_shift_') ? shifts[0].name : key,
+        shifts,
+        shiftIds: shifts.map(s => s.id),
+        isGrouped: !key.startsWith('_shift_') && shifts.length > 1
+    })).sort((a, b) => a.shifts[0].startTime.localeCompare(b.shifts[0].startTime));
+};
 
 interface Canteen {
     id: string;
@@ -147,19 +180,20 @@ export default function VendorDashboardPage() {
             let csv = 'Rekap Mingguan - Week ' + data.week + ' ' + data.year + '\n';
             csv += 'Periode: ' + data.weekStart + ' s/d ' + data.weekEnd + '\n\n';
 
-            // Header
+            // Header - use grouped columns
             csv += 'Hari,Tanggal';
-            data.shifts.forEach(s => {
-                csv += ',' + s.name;
+            const shiftGroups = groupShiftsByBreakTime(data.shifts);
+            shiftGroups.forEach(group => {
+                csv += ',' + group.label;
             });
             csv += ',Total\n';
 
             // Data rows
             data.dailyData.forEach(day => {
                 csv += day.dayName + ',' + day.date;
-                data.shifts.forEach(s => {
-                    const shiftData = day.byShift[s.id];
-                    csv += ',' + (shiftData?.ordered || 0);
+                shiftGroups.forEach(group => {
+                    const total = group.shiftIds.reduce((sum, id) => sum + (day.byShift[id]?.ordered || 0), 0);
+                    csv += ',' + total;
                 });
                 csv += ',' + day.total + '\n';
             });
@@ -308,9 +342,12 @@ export default function VendorDashboardPage() {
                                 <tr className="bg-slate-50">
                                     <th className="text-left px-4 py-3 text-xs font-semibold text-slate-600 uppercase">Hari</th>
                                     <th className="text-left px-4 py-3 text-xs font-semibold text-slate-600 uppercase">Tanggal</th>
-                                    {data.shifts.map(shift => (
-                                        <th key={shift.id} className="text-center px-4 py-3 text-xs font-semibold text-slate-600 uppercase">
-                                            {shift.name}
+                                    {groupShiftsByBreakTime(data.shifts).map(group => (
+                                        <th key={group.key} className="text-center px-4 py-3 text-xs font-semibold text-slate-600 uppercase">
+                                            <div title={group.isGrouped ? group.shifts.map(s => s.name).join(', ') : undefined}>
+                                                {group.label}
+                                                {group.isGrouped && <span className="ml-1 text-slate-400 text-[10px]">({group.shifts.length})</span>}
+                                            </div>
                                         </th>
                                     ))}
                                     <th className="text-center px-4 py-3 text-xs font-semibold text-slate-600 uppercase bg-slate-100">Total</th>
@@ -329,15 +366,16 @@ export default function VendorDashboardPage() {
                                             )}
                                         </td>
                                         <td className="px-4 py-3 text-slate-600">{formatDate(day.date)}</td>
-                                        {data.shifts.map(shift => {
-                                            const shiftData = day.byShift[shift.id];
+                                        {groupShiftsByBreakTime(data.shifts).map(group => {
+                                            const totalOrdered = group.shiftIds.reduce((sum, id) => sum + (day.byShift[id]?.ordered || 0), 0);
+                                            const totalNoShow = group.shiftIds.reduce((sum, id) => sum + (day.byShift[id]?.noShow || 0), 0);
                                             return (
-                                                <td key={shift.id} className="text-center px-4 py-3">
-                                                    {shiftData?.ordered > 0 ? (
+                                                <td key={group.key} className="text-center px-4 py-3">
+                                                    {totalOrdered > 0 ? (
                                                         <div>
-                                                            <span className="text-lg font-semibold text-slate-800">{shiftData.ordered}</span>
-                                                            {shiftData.noShow > 0 && (
-                                                                <span className="ml-1 text-xs text-red-500">(-{shiftData.noShow})</span>
+                                                            <span className="text-lg font-semibold text-slate-800">{totalOrdered}</span>
+                                                            {totalNoShow > 0 && (
+                                                                <span className="ml-1 text-xs text-red-500">(-{totalNoShow})</span>
                                                             )}
                                                         </div>
                                                     ) : (
@@ -355,11 +393,13 @@ export default function VendorDashboardPage() {
                             <tfoot>
                                 <tr className="bg-slate-100 font-semibold">
                                     <td colSpan={2} className="px-4 py-3 text-slate-800">Total Minggu</td>
-                                    {data.shifts.map(shift => {
-                                        const shiftTotal = data.dailyData.reduce((sum, day) => sum + (day.byShift[shift.id]?.ordered || 0), 0);
+                                    {groupShiftsByBreakTime(data.shifts).map(group => {
+                                        const groupTotal = data.dailyData.reduce((sum, day) =>
+                                            sum + group.shiftIds.reduce((s, id) => s + (day.byShift[id]?.ordered || 0), 0)
+                                            , 0);
                                         return (
-                                            <td key={shift.id} className="text-center px-4 py-3 text-slate-800">
-                                                {shiftTotal}
+                                            <td key={group.key} className="text-center px-4 py-3 text-slate-800">
+                                                {groupTotal}
                                             </td>
                                         );
                                     })}
@@ -402,9 +442,12 @@ export default function VendorDashboardPage() {
                                             <tr className="bg-slate-50">
                                                 <th className="text-left px-4 py-2 text-xs font-semibold text-slate-600 uppercase">Hari</th>
                                                 <th className="text-left px-4 py-2 text-xs font-semibold text-slate-600 uppercase">Tanggal</th>
-                                                {data.shifts.map(shift => (
-                                                    <th key={shift.id} className="text-center px-3 py-2 text-xs font-semibold text-slate-600 uppercase">
-                                                        {shift.name}
+                                                {groupShiftsByBreakTime(data.shifts).map(group => (
+                                                    <th key={group.key} className="text-center px-3 py-2 text-xs font-semibold text-slate-600 uppercase">
+                                                        <div title={group.isGrouped ? group.shifts.map(s => s.name).join(', ') : undefined}>
+                                                            {group.label}
+                                                            {group.isGrouped && <span className="ml-1 text-slate-400 text-[10px]">({group.shifts.length})</span>}
+                                                        </div>
                                                     </th>
                                                 ))}
                                                 <th className="text-center px-3 py-2 text-xs font-semibold text-slate-600 uppercase bg-slate-100">Total</th>
@@ -420,10 +463,11 @@ export default function VendorDashboardPage() {
                                                     >
                                                         <td className="px-4 py-2 text-sm font-medium text-slate-700">{day.dayName}</td>
                                                         <td className="px-4 py-2 text-sm text-slate-600">{formatDate(day.date)}</td>
-                                                        {data.shifts.map(shift => {
-                                                            const count = day.byCanteenShift?.[canteen.id]?.[shift.id] || 0;
+                                                        {groupShiftsByBreakTime(data.shifts).map(group => {
+                                                            const count = group.shiftIds.reduce((sum, id) =>
+                                                                sum + (day.byCanteenShift?.[canteen.id]?.[id] || 0), 0);
                                                             return (
-                                                                <td key={shift.id} className="text-center px-3 py-2">
+                                                                <td key={group.key} className="text-center px-3 py-2">
                                                                     {count > 0 ? (
                                                                         <span className="font-semibold text-slate-800">{count}</span>
                                                                     ) : (
@@ -442,13 +486,13 @@ export default function VendorDashboardPage() {
                                         <tfoot>
                                             <tr className="bg-slate-100 font-semibold">
                                                 <td colSpan={2} className="px-4 py-2 text-slate-800 text-sm">Total Minggu</td>
-                                                {data.shifts.map(shift => {
-                                                    const shiftTotal = data.dailyData.reduce((sum, day) => {
-                                                        return sum + (day.byCanteenShift?.[canteen.id]?.[shift.id] || 0);
-                                                    }, 0);
+                                                {groupShiftsByBreakTime(data.shifts).map(group => {
+                                                    const groupTotal = data.dailyData.reduce((sum, day) =>
+                                                        sum + group.shiftIds.reduce((s, id) => s + (day.byCanteenShift?.[canteen.id]?.[id] || 0), 0)
+                                                        , 0);
                                                     return (
-                                                        <td key={shift.id} className="text-center px-3 py-2 text-slate-800">
-                                                            {shiftTotal}
+                                                        <td key={group.key} className="text-center px-3 py-2 text-slate-800">
+                                                            {groupTotal}
                                                         </td>
                                                     );
                                                 })}

@@ -84,7 +84,7 @@ router.get('/weekly-summary', authMiddleware, vendorMiddleware, async (req: Auth
             prisma.shift.findMany({
                 where: { isActive: true },
                 orderBy: { startTime: 'asc' },
-                select: { id: true, name: true, startTime: true, endTime: true, mealPrice: true }
+                select: { id: true, name: true, startTime: true, endTime: true, mealPrice: true, breakStartTime: true, breakEndTime: true }
             }),
             prisma.canteen.findMany({
                 where: { isActive: true },
@@ -208,7 +208,9 @@ router.get('/weekly-summary', authMiddleware, vendorMiddleware, async (req: Auth
                 name: s.name,
                 startTime: s.startTime,
                 endTime: s.endTime,
-                mealPrice: s.mealPrice
+                mealPrice: s.mealPrice,
+                breakStartTime: s.breakStartTime,
+                breakEndTime: s.breakEndTime
             })),
             canteens: canteens.map(c => ({
                 id: c.id,

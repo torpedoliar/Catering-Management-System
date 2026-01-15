@@ -37,77 +37,97 @@ router.get('/performance', authMiddleware, adminMiddleware, async (req: AuthRequ
     }
 });
 
+// PM2 Programmatic API - Type definition
+interface PM2Process {
+    name: string;
+    pm_id: number;
+    pm2_env: {
+        exec_mode: string;
+        status: string;
+        pm_uptime: number;
+        restart_time: number;
+    };
+    monit: {
+        memory: number;
+        cpu: number;
+    };
+}
+
+// Promisified PM2 list helper with 5-second timeout
+const getPm2List = (): Promise<PM2Process[]> => {
+    return new Promise((resolve, reject) => {
+        // Lazy import to avoid issues if pm2 not installed
+        const pm2 = require('pm2');
+
+        const timeout = setTimeout(() => {
+            pm2.disconnect();
+            reject(new Error('PM2 connection timeout'));
+        }, 5000);
+
+        pm2.connect((err: Error | null) => {
+            if (err) {
+                clearTimeout(timeout);
+                return reject(err);
+            }
+
+            pm2.list((err: Error | null, list: PM2Process[]) => {
+                clearTimeout(timeout);
+                pm2.disconnect();
+
+                if (err) return reject(err);
+                resolve(list);
+            });
+        });
+    });
+};
+
 // Get PM2 status (cluster mode info)
 router.get('/pm2-status', authMiddleware, adminMiddleware, async (req: AuthRequest, res: Response) => {
     try {
-        const { exec } = await import('child_process');
-        const { promisify } = await import('util');
-        const execAsync = promisify(exec);
+        const processes = await getPm2List();
 
-        try {
-            // Get PM2 process list in JSON format
-            const { stdout } = await execAsync('npx pm2 jlist');
-            const processes = JSON.parse(stdout);
-
-            if (processes.length === 0) {
-                return res.json({
-                    enabled: false,
-                    mode: 'standalone',
-                    message: 'PM2 tidak aktif (running dengan nodemon/node)',
-                    processes: []
-                });
-            }
-
-            const pm2Info = processes.map((p: {
-                name: string;
-                pm_id: number;
-                pm2_env: {
-                    exec_mode: string;
-                    instances: number;
-                    status: string;
-                    pm_uptime: number;
-                    restart_time: number;
-                };
-                monit: {
-                    memory: number;
-                    cpu: number;
-                };
-            }) => ({
-                name: p.name,
-                id: p.pm_id,
-                mode: p.pm2_env.exec_mode,
-                status: p.pm2_env.status,
-                uptime: p.pm2_env.pm_uptime,
-                restarts: p.pm2_env.restart_time,
-                memory: p.monit.memory,
-                memoryMB: Math.round(p.monit.memory / 1024 / 1024 * 10) / 10,
-                cpu: p.monit.cpu
-            }));
-
-            const totalMemory = pm2Info.reduce((sum: number, p: { memory: number }) => sum + p.memory, 0);
-            const avgCpu = pm2Info.reduce((sum: number, p: { cpu: number }) => sum + p.cpu, 0) / pm2Info.length;
-            const clusterMode = pm2Info[0]?.mode === 'cluster';
-
-            res.json({
-                enabled: true,
-                mode: clusterMode ? 'cluster' : 'fork',
-                instances: pm2Info.length,
-                totalMemoryMB: Math.round(totalMemory / 1024 / 1024 * 10) / 10,
-                avgCpu: Math.round(avgCpu * 10) / 10,
-                processes: pm2Info
-            });
-        } catch (execError) {
-            // PM2 not running or not installed
-            res.json({
+        if (processes.length === 0) {
+            return res.json({
                 enabled: false,
                 mode: 'standalone',
-                message: 'PM2 tidak terdeteksi',
+                message: 'PM2 tidak aktif (running dengan nodemon/node)',
                 processes: []
             });
         }
+
+        const pm2Info = processes.map((p) => ({
+            name: p.name,
+            id: p.pm_id,
+            mode: p.pm2_env.exec_mode,
+            status: p.pm2_env.status,
+            uptime: p.pm2_env.pm_uptime,
+            restarts: p.pm2_env.restart_time,
+            memory: p.monit.memory,
+            memoryMB: Math.round(p.monit.memory / 1024 / 1024 * 10) / 10,
+            cpu: p.monit.cpu
+        }));
+
+        const totalMemory = pm2Info.reduce((sum, p) => sum + p.memory, 0);
+        const avgCpu = pm2Info.reduce((sum, p) => sum + p.cpu, 0) / pm2Info.length;
+        const clusterMode = pm2Info[0]?.mode === 'cluster';
+
+        res.json({
+            enabled: true,
+            mode: clusterMode ? 'cluster' : 'fork',
+            instances: pm2Info.length,
+            totalMemoryMB: Math.round(totalMemory / 1024 / 1024 * 10) / 10,
+            avgCpu: Math.round(avgCpu * 10) / 10,
+            processes: pm2Info
+        });
     } catch (error) {
-        console.error('Get PM2 status error:', error);
-        res.status(500).json({ error: 'Gagal mengambil status PM2' });
+        // PM2 not running or connection failed - graceful fallback
+        console.error('PM2 status error:', error);
+        res.json({
+            enabled: false,
+            mode: 'standalone',
+            message: 'PM2 tidak terdeteksi',
+            processes: []
+        });
     }
 });
 

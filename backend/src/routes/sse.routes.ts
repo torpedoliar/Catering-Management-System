@@ -15,7 +15,7 @@ router.get('/', (req: Request, res: Response) => {
     // Add client to SSE manager with tab tracking
     sseManager.addClient(clientId, tabId, res, userId, role);
 
-    // Send heartbeat every 15 seconds to keep connection alive
+    // Send heartbeat every 10 seconds to keep connection alive
     const heartbeat = setInterval(() => {
         try {
             res.write(`event: heartbeat\ndata: ${JSON.stringify({
@@ -27,7 +27,7 @@ router.get('/', (req: Request, res: Response) => {
             clearInterval(heartbeat);
             sseManager.removeClient(clientId);
         }
-    }, 15000);
+    }, 10000);
 
     // Handle client disconnect
     req.on('close', () => {

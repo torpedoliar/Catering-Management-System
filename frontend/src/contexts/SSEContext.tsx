@@ -68,8 +68,8 @@ export function SSEProvider({ children }: { children: ReactNode }) {
     const reconnectAttemptsRef = useRef(0);
     const isConnectingRef = useRef(false);
 
-    const maxReconnectAttempts = 5;
-    const baseReconnectDelayMs = 3000;
+    const maxReconnectAttempts = 10;  // Increased from 5
+    const baseReconnectDelayMs = 1000; // Reduced from 3000ms for faster reconnect
 
     const notifySubscribers = useCallback((eventType: string, data: any) => {
         const callbacks = subscribersRef.current.get(eventType);
@@ -214,11 +214,38 @@ export function SSEProvider({ children }: { children: ReactNode }) {
             });
         };
 
+        // Reconnect when tab becomes visible (aggressive reconnect)
+        const handleVisibilityChange = () => {
+            if (document.visibilityState === 'visible') {
+                // If not connected, try to reconnect immediately
+                if (!eventSourceRef.current || eventSourceRef.current.readyState !== EventSource.OPEN) {
+                    console.log('📡 Tab visible - reconnecting SSE...');
+                    reconnectAttemptsRef.current = 0; // Reset attempts
+                    cleanup();
+                    setTimeout(connect, 100); // Small delay for stability
+                }
+            }
+        };
+
+        document.addEventListener('visibilitychange', handleVisibilityChange);
+
+        // Reconnect on network online
+        const handleOnline = () => {
+            console.log('📡 Network online - reconnecting SSE...');
+            reconnectAttemptsRef.current = 0;
+            cleanup();
+            setTimeout(connect, 500);
+        };
+
+        window.addEventListener('online', handleOnline);
+
         // Small delay before connecting to ensure auth is stable
         const initTimeout = setTimeout(connect, 500);
 
         return () => {
             clearTimeout(initTimeout);
+            document.removeEventListener('visibilitychange', handleVisibilityChange);
+            window.removeEventListener('online', handleOnline);
             cleanup();
             setIsConnected(false);
         };
