@@ -40,7 +40,8 @@ const groupShiftsByBreakTime = (shifts: Shift[]): ShiftGroup[] => {
         label: key.startsWith('_shift_') ? shifts[0].name : key,
         shifts,
         shiftIds: shifts.map(s => s.id),
-        isGrouped: !key.startsWith('_shift_') && shifts.length > 1
+        // Show shift names if break time is configured (not just when multiple shifts)
+        isGrouped: !key.startsWith('_shift_')
     })).sort((a, b) => a.shifts[0].startTime.localeCompare(b.shifts[0].startTime));
 };
 
