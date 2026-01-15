@@ -11,6 +11,10 @@ RUN apk add --no-cache openssl openntpd
 # Copy package files
 COPY package*.json ./
 
+# Configure npm for faster retries (30s timeout, 3 retries)
+RUN npm config set fetch-retry-maxtimeout 30000 \
+    && npm config set fetch-retries 3
+
 # Install dependencies (includes PM2)
 RUN npm install
 
