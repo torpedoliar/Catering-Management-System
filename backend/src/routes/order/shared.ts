@@ -24,7 +24,7 @@ import multer from 'multer';
 import sharp from 'sharp';
 import fs from 'fs';
 import path from 'path';
-import { isOvernightShift } from '../../utils/shift-utils';
+import { isOvernightShift, validateCheckinTimeWindow } from '../../utils/shift-utils';
 
 // Multer config for check-in photo
 const storage = multer.memoryStorage();
@@ -77,4 +77,5 @@ export {
     fs,
     path,
     isOvernightShift,
+    validateCheckinTimeWindow,
 };

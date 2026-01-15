@@ -274,7 +274,7 @@ router.get('/:id', authMiddleware, async (req: AuthRequest, res: Response) => {
 // Create shift (Admin only)
 router.post('/', authMiddleware, adminMiddleware, async (req: AuthRequest, res: Response) => {
     try {
-        const { name, startTime, endTime, mealPrice } = req.body;
+        const { name, startTime, endTime, mealPrice, breakStartTime, breakEndTime } = req.body;
 
         if (!name || !startTime || !endTime) {
             return res.status(400).json({ error: 'Name, start time, and end time are required' });
@@ -286,12 +286,25 @@ router.post('/', authMiddleware, adminMiddleware, async (req: AuthRequest, res: 
             return res.status(400).json({ error: 'Invalid time format. Use HH:mm' });
         }
 
+        // Validate break times: both must be set or neither
+        if ((breakStartTime && !breakEndTime) || (!breakStartTime && breakEndTime)) {
+            return res.status(400).json({ error: 'Jam istirahat harus diisi lengkap (mulai dan selesai)' });
+        }
+        if (breakStartTime && !timeRegex.test(breakStartTime)) {
+            return res.status(400).json({ error: 'Invalid break start time format. Use HH:mm' });
+        }
+        if (breakEndTime && !timeRegex.test(breakEndTime)) {
+            return res.status(400).json({ error: 'Invalid break end time format. Use HH:mm' });
+        }
+
         const shift = await prisma.shift.create({
             data: {
                 name,
                 startTime,
                 endTime,
-                ...(mealPrice !== undefined && { mealPrice })
+                ...(mealPrice !== undefined && { mealPrice }),
+                ...(breakStartTime && { breakStartTime }),
+                ...(breakEndTime && { breakEndTime }),
             },
         });
 
@@ -321,7 +334,7 @@ router.post('/', authMiddleware, adminMiddleware, async (req: AuthRequest, res: 
 // Update shift (Admin only)
 router.put('/:id', authMiddleware, adminMiddleware, async (req: AuthRequest, res: Response) => {
     try {
-        const { name, startTime, endTime, isActive, mealPrice } = req.body;
+        const { name, startTime, endTime, isActive, mealPrice, breakStartTime, breakEndTime } = req.body;
 
         // Get old shift for audit
         const oldShift = await prisma.shift.findUnique({ where: { id: req.params.id } });
@@ -335,6 +348,14 @@ router.put('/:id', authMiddleware, adminMiddleware, async (req: AuthRequest, res
             return res.status(400).json({ error: 'Invalid end time format. Use HH:mm' });
         }
 
+        // Validate break times format if provided
+        if (breakStartTime && !timeRegex.test(breakStartTime)) {
+            return res.status(400).json({ error: 'Invalid break start time format. Use HH:mm' });
+        }
+        if (breakEndTime && !timeRegex.test(breakEndTime)) {
+            return res.status(400).json({ error: 'Invalid break end time format. Use HH:mm' });
+        }
+
         const shift = await prisma.shift.update({
             where: { id: req.params.id },
             data: {
@@ -343,6 +364,9 @@ router.put('/:id', authMiddleware, adminMiddleware, async (req: AuthRequest, res
                 ...(endTime && { endTime }),
                 ...(isActive !== undefined && { isActive }),
                 ...(mealPrice !== undefined && { mealPrice }),
+                // Allow setting to null or a value
+                ...(breakStartTime !== undefined && { breakStartTime: breakStartTime || null }),
+                ...(breakEndTime !== undefined && { breakEndTime: breakEndTime || null }),
             },
         });
 

@@ -11,6 +11,8 @@ interface Shift {
     name: string;
     startTime: string;
     endTime: string;
+    breakStartTime?: string | null;
+    breakEndTime?: string | null;
     mealPrice: number;
     isActive: boolean;
 }
@@ -37,7 +39,7 @@ export default function ShiftConfigPage() {
     const [originalSettings, setOriginalSettings] = useState<Settings | null>(null);
     const [isLoading, setIsLoading] = useState(true);
     const [isSaving, setIsSaving] = useState(false);
-    const [newShift, setNewShift] = useState({ name: '', startTime: '', endTime: '', mealPrice: 25000 });
+    const [newShift, setNewShift] = useState({ name: '', startTime: '', endTime: '', mealPrice: 25000, breakStartTime: '', breakEndTime: '' });
     const [showAddForm, setShowAddForm] = useState(false);
     const [hasChanges, setHasChanges] = useState(false);
 
@@ -93,7 +95,7 @@ export default function ShiftConfigPage() {
         setIsSaving(true);
         try {
             // Find shifts that changed
-            const changedShifts = shifts.filter((shift, index) => {
+            const changedShifts = shifts.filter((shift) => {
                 const original = originalShifts.find(s => s.id === shift.id);
                 return JSON.stringify(shift) !== JSON.stringify(original);
             });
@@ -105,7 +107,9 @@ export default function ShiftConfigPage() {
                     startTime: shift.startTime,
                     endTime: shift.endTime,
                     mealPrice: shift.mealPrice,
-                    isActive: shift.isActive
+                    isActive: shift.isActive,
+                    breakStartTime: shift.breakStartTime || null,
+                    breakEndTime: shift.breakEndTime || null,
                 });
             }
 
@@ -137,7 +141,7 @@ export default function ShiftConfigPage() {
                 mealPrice: newShift.mealPrice || 25000
             });
             toast.success('Shift berhasil dibuat');
-            setNewShift({ name: '', startTime: '', endTime: '', mealPrice: 25000 });
+            setNewShift({ name: '', startTime: '', endTime: '', mealPrice: 25000, breakStartTime: '', breakEndTime: '' });
             setShowAddForm(false);
             loadData();
         } catch (error: any) {
@@ -297,6 +301,40 @@ export default function ShiftConfigPage() {
                                         <span className="text-slate-700">Aktif</span>
                                     </label>
                                 </div>
+                            </div>
+                            {/* Break Time Section */}
+                            <div className="mt-4 pt-4 border-t border-slate-200">
+                                <div className="flex items-center gap-2 mb-3">
+                                    <span className="text-sm font-medium text-slate-600">🍽️ Jam Istirahat (Pengambilan Makanan)</span>
+                                </div>
+                                <div className="grid grid-cols-1 md:grid-cols-2 gap-4 max-w-md">
+                                    <div>
+                                        <label className="text-xs text-slate-500 uppercase tracking-wide">Mulai</label>
+                                        <TimeInput
+                                            value={shift.breakStartTime || ''}
+                                            onChange={(v) => updateShiftLocal(shift.id, { breakStartTime: v || null })}
+                                            className="mt-1"
+                                        />
+                                    </div>
+                                    <div>
+                                        <label className="text-xs text-slate-500 uppercase tracking-wide">Selesai</label>
+                                        <TimeInput
+                                            value={shift.breakEndTime || ''}
+                                            onChange={(v) => updateShiftLocal(shift.id, { breakEndTime: v || null })}
+                                            className="mt-1"
+                                        />
+                                    </div>
+                                </div>
+                                {shift.breakStartTime && shift.breakEndTime && (
+                                    <p className="text-xs text-emerald-600 mt-2">
+                                        ✓ Makanan hanya bisa diambil antara {shift.breakStartTime} - {shift.breakEndTime}
+                                    </p>
+                                )}
+                                {!shift.breakStartTime && !shift.breakEndTime && (
+                                    <p className="text-xs text-slate-400 mt-2">
+                                        Kosongkan untuk mengizinkan pengambilan kapan saja selama shift
+                                    </p>
+                                )}
                             </div>
                         </div>
                     ))}

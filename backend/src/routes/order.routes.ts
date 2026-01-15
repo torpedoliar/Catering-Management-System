@@ -20,7 +20,7 @@ import multer from 'multer';
 import sharp from 'sharp';
 import fs from 'fs';
 import path from 'path';
-import { isOvernightShift } from '../utils/shift-utils';
+import { isOvernightShift, validateCheckinTimeWindow } from '../utils/shift-utils';
 
 const router = Router();
 
@@ -727,40 +727,13 @@ router.post('/checkin/qr', authMiddleware, canteenMiddleware, upload.single('pho
             }
         }
 
-        // Validate order date and shift time window
+        // Validate order date and shift time window using centralized utility
         const now = getNow();
-        const orderDate = new Date(order.orderDate);
-        orderDate.setHours(0, 0, 0, 0);
-
-        const [startHour, startMinute] = order.shift.startTime.split(':').map(Number);
-        const [endHour, endMinute] = order.shift.endTime.split(':').map(Number);
-
-        // Build shift start/end based on order date
-        const shiftStart = new Date(orderDate);
-        shiftStart.setHours(startHour, startMinute, 0, 0);
-
-        const shiftEnd = new Date(orderDate);
-        shiftEnd.setHours(endHour, endMinute, 0, 0);
-
-        // Handle overnight shifts (e.g., 23:00 - 05:00)
-        if (shiftEnd <= shiftStart) {
-            shiftEnd.setDate(shiftEnd.getDate() + 1);
-        }
-
-        // Allow checkin 30 mins before start until end
-        const allowedStart = new Date(shiftStart.getTime() - 30 * 60000);
-
-        if (now < allowedStart) {
+        const timeValidation = validateCheckinTimeWindow(order, now);
+        if (!timeValidation.valid) {
             return res.status(400).json({
-                error: 'Terlalu dini untuk check-in',
-                message: `Check-in dimulai pada ${allowedStart.toLocaleTimeString('id-ID')}`
-            });
-        }
-
-        if (now > shiftEnd) {
-            return res.status(400).json({
-                error: 'Waktu check-in sudah lewat',
-                message: `Check-in berakhir pada ${shiftEnd.toLocaleTimeString('id-ID')}`
+                error: timeValidation.error,
+                message: timeValidation.message
             });
         }
 
@@ -889,29 +862,10 @@ router.post('/checkin/manual', authMiddleware, canteenMiddleware, async (req: Au
         console.log(`[Manual Check-in] Today's order: ${todayOrder?.id || 'none'}, Yesterday's order: ${yesterdayOrder?.id || 'none'}`);
 
         // Helper function to check if an order is within valid check-in window
-        const isOrderValidForCheckin = (order: any): boolean => {
-            const orderDate = new Date(order.orderDate);
-            orderDate.setHours(0, 0, 0, 0);
-
-            const [startHour, startMinute] = order.shift.startTime.split(':').map(Number);
-            const [endHour, endMinute] = order.shift.endTime.split(':').map(Number);
-
-            const shiftStart = new Date(orderDate);
-            shiftStart.setHours(startHour, startMinute, 0, 0);
-
-            const shiftEnd = new Date(orderDate);
-            shiftEnd.setHours(endHour, endMinute, 0, 0);
-
-            // Handle overnight shifts
-            if (shiftEnd <= shiftStart) {
-                shiftEnd.setDate(shiftEnd.getDate() + 1);
-            }
-
-            const allowedStart = new Date(shiftStart.getTime() - 30 * 60000);
-
-            console.log(`[Manual Check-in] Order ${order.id} - Shift: ${order.shift.name}, AllowedStart: ${allowedStart.toISOString()}, ShiftEnd: ${shiftEnd.toISOString()}, Now: ${now.toISOString()}`);
-
-            return now >= allowedStart && now <= shiftEnd;
+        const isOrderValidForCheckin = (checkOrder: any): boolean => {
+            const result = validateCheckinTimeWindow(checkOrder, now);
+            console.log(`[Manual Check-in] Order ${checkOrder.id} - Shift: ${checkOrder.shift.name}, Valid: ${result.valid}`);
+            return result.valid;
         };
 
         // Determine which order to use
@@ -962,38 +916,12 @@ router.post('/checkin/manual', authMiddleware, canteenMiddleware, async (req: Au
             }
         }
 
-        // Validate order date and shift time window (now is already defined above)
-        const orderDate = new Date(order.orderDate);
-        orderDate.setHours(0, 0, 0, 0);
-
-        const [startHour, startMinute] = order.shift.startTime.split(':').map(Number);
-        const [endHour, endMinute] = order.shift.endTime.split(':').map(Number);
-
-        // Build shift start/end based on order date
-        const shiftStart = new Date(orderDate);
-        shiftStart.setHours(startHour, startMinute, 0, 0);
-
-        const shiftEnd = new Date(orderDate);
-        shiftEnd.setHours(endHour, endMinute, 0, 0);
-
-        // Handle overnight shifts (e.g., 23:00 - 05:00)
-        if (shiftEnd <= shiftStart) {
-            shiftEnd.setDate(shiftEnd.getDate() + 1);
-        }
-
-        const allowedStart = new Date(shiftStart.getTime() - 30 * 60000);
-
-        if (now < allowedStart) {
+        // Validate order date and shift time window using centralized utility
+        const timeValidation = validateCheckinTimeWindow(order, now);
+        if (!timeValidation.valid) {
             return res.status(400).json({
-                error: 'Too early for check-in',
-                message: `Check-in starts at ${allowedStart.toLocaleTimeString()}`
-            });
-        }
-
-        if (now > shiftEnd) {
-            return res.status(400).json({
-                error: 'Check-in time has passed',
-                message: `Check-in ended at ${shiftEnd.toLocaleTimeString()}`
+                error: timeValidation.error,
+                message: timeValidation.message
             });
         }
 

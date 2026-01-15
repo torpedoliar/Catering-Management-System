@@ -26,6 +26,7 @@ import {
     sharp,
     path,
     isOvernightShift,
+    validateCheckinTimeWindow,
 } from './shared';
 
 const router = Router();
@@ -106,38 +107,13 @@ router.post('/checkin/qr', authMiddleware, canteenMiddleware, upload.single('pho
             }
         }
 
-        // Validate order date and shift time window
+        // Validate order date and shift time window using centralized utility
         const now = getNow();
-        const orderDate = new Date(order.orderDate);
-        orderDate.setHours(0, 0, 0, 0);
-
-        const [startHour, startMinute] = order.shift.startTime.split(':').map(Number);
-        const [endHour, endMinute] = order.shift.endTime.split(':').map(Number);
-
-        const shiftStart = new Date(orderDate);
-        shiftStart.setHours(startHour, startMinute, 0, 0);
-
-        const shiftEnd = new Date(orderDate);
-        shiftEnd.setHours(endHour, endMinute, 0, 0);
-
-        // Handle overnight shifts
-        if (shiftEnd <= shiftStart) {
-            shiftEnd.setDate(shiftEnd.getDate() + 1);
-        }
-
-        const allowedStart = new Date(shiftStart.getTime() - 30 * 60000);
-
-        if (now < allowedStart) {
+        const timeValidation = validateCheckinTimeWindow(order, now);
+        if (!timeValidation.valid) {
             return res.status(400).json({
-                error: 'Terlalu dini untuk check-in',
-                message: `Check-in dimulai pada ${allowedStart.toLocaleTimeString('id-ID')}`
-            });
-        }
-
-        if (now > shiftEnd) {
-            return res.status(400).json({
-                error: 'Waktu check-in sudah lewat',
-                message: `Check-in berakhir pada ${shiftEnd.toLocaleTimeString('id-ID')}`
+                error: timeValidation.error,
+                message: timeValidation.message
             });
         }
 
@@ -246,24 +222,7 @@ router.post('/checkin/manual', authMiddleware, canteenMiddleware, async (req: Au
         });
 
         const isOrderValidForCheckin = (order: any): boolean => {
-            const orderDate = new Date(order.orderDate);
-            orderDate.setHours(0, 0, 0, 0);
-
-            const [startHour, startMinute] = order.shift.startTime.split(':').map(Number);
-            const [endHour, endMinute] = order.shift.endTime.split(':').map(Number);
-
-            const shiftStart = new Date(orderDate);
-            shiftStart.setHours(startHour, startMinute, 0, 0);
-
-            const shiftEnd = new Date(orderDate);
-            shiftEnd.setHours(endHour, endMinute, 0, 0);
-
-            if (shiftEnd <= shiftStart) {
-                shiftEnd.setDate(shiftEnd.getDate() + 1);
-            }
-
-            const allowedStart = new Date(shiftStart.getTime() - 30 * 60000);
-            return now >= allowedStart && now <= shiftEnd;
+            return validateCheckinTimeWindow(order, now).valid;
         };
 
         let order: any = null;
@@ -305,35 +264,12 @@ router.post('/checkin/manual', authMiddleware, canteenMiddleware, async (req: Au
             }
         }
 
-        const orderDate = new Date(order.orderDate);
-        orderDate.setHours(0, 0, 0, 0);
-
-        const [startHour, startMinute] = order.shift.startTime.split(':').map(Number);
-        const [endHour, endMinute] = order.shift.endTime.split(':').map(Number);
-
-        const shiftStart = new Date(orderDate);
-        shiftStart.setHours(startHour, startMinute, 0, 0);
-
-        const shiftEnd = new Date(orderDate);
-        shiftEnd.setHours(endHour, endMinute, 0, 0);
-
-        if (shiftEnd <= shiftStart) {
-            shiftEnd.setDate(shiftEnd.getDate() + 1);
-        }
-
-        const allowedStart = new Date(shiftStart.getTime() - 30 * 60000);
-
-        if (now < allowedStart) {
+        // Final time validation using centralized utility
+        const timeValidation = validateCheckinTimeWindow(order, now);
+        if (!timeValidation.valid) {
             return res.status(400).json({
-                error: 'Too early for check-in',
-                message: `Check-in starts at ${allowedStart.toLocaleTimeString()}`
-            });
-        }
-
-        if (now > shiftEnd) {
-            return res.status(400).json({
-                error: 'Check-in time has passed',
-                message: `Check-in ended at ${shiftEnd.toLocaleTimeString()}`
+                error: timeValidation.error,
+                message: timeValidation.message
             });
         }
 

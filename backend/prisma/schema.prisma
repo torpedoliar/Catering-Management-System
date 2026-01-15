@@ -192,15 +192,17 @@ model CanteenShift {
 }
 
 model Shift {
-  id          String   @id @default(uuid())
-  name        String   @unique // "Shift 1", "Shift 2", "Shift 3"
-  startTime   String   // "08:00" format (HH:mm)
-  endTime     String   // "15:00" format (HH:mm)
-  mealPrice   Decimal  @default(25000) @db.Decimal(12, 2)  // Harga per porsi makanan
-  description String?  // Deskripsi menu (opsional)
-  isActive    Boolean  @default(true)
-  createdAt   DateTime @default(now())
-  updatedAt   DateTime @updatedAt
+  id             String   @id @default(uuid())
+  name           String   @unique // "Shift 1", "Shift 2", "Shift 3"
+  startTime      String   // "08:00" format (HH:mm) - shift work start
+  endTime        String   // "17:00" format (HH:mm) - shift work end
+  breakStartTime String?  // "12:00" format (HH:mm) - meal pickup start
+  breakEndTime   String?  // "13:00" format (HH:mm) - meal pickup end
+  mealPrice      Decimal  @default(25000) @db.Decimal(12, 2)  // Harga per porsi makanan
+  description    String?  // Deskripsi menu (opsional)
+  isActive       Boolean  @default(true)
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
 
   orders           Order[]
   departments      Department[]      @relation("DepartmentDefaultShift")

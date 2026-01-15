@@ -1,12 +1,11 @@
 {
-    "version": "1.6.3",
+    "version": "1.6.4",
     "releaseDate": "2026-01-15",
     "minDatabaseVersion": "1.0.0",
     "changelog": [
-        "Restricted canteen settings to Admin only (Frontend + Backend API security)",
-        "Added menu image lightbox/popup on Food Menu page",
-        "Removed category field from menu item creation form",
-        "Added npm cache mount for faster Docker builds"
+        "Added shift meal break time configuration (restrict food pickup to break hours)",
+        "Centralized check-in time validation with overnight break support",
+        "Added break time UI to Shift Configuration page"
     ],
     "repository": "https://github.com/torpedoliar/Catering-Management-System",
     "branch": "main"

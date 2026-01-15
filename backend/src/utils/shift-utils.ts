@@ -116,3 +116,144 @@ export function calculateShiftStartDateTime(
 
     return shiftStart;
 }
+
+/**
+ * Shift type with optional break times
+ */
+export interface ShiftWithBreakTime {
+    startTime: string;
+    endTime: string;
+    breakStartTime?: string | null;
+    breakEndTime?: string | null;
+}
+
+/**
+ * Result of check-in time validation
+ */
+export interface CheckinValidationResult {
+    valid: boolean;
+    error?: string;
+    message?: string;
+}
+
+/**
+ * Calculate break time window for check-in, considering overnight breaks.
+ * If break times are not set, returns null (use shift window instead).
+ * 
+ * @param orderDate - The date the order was placed
+ * @param shift - Shift object with break times
+ * @param shiftStart - Pre-calculated shift start datetime
+ * @param shiftEnd - Pre-calculated shift end datetime
+ * @returns Object with breakStart and breakEnd dates, or null if no break times
+ */
+export function calculateBreakWindow(
+    orderDate: Date,
+    shift: ShiftWithBreakTime,
+    shiftStart: Date,
+    shiftEnd: Date
+): { breakStart: Date; breakEnd: Date } | null {
+    if (!shift.breakStartTime || !shift.breakEndTime) {
+        return null;
+    }
+
+    const { hours: breakStartH, minutes: breakStartM } = parseShiftTime(shift.breakStartTime);
+    const { hours: breakEndH, minutes: breakEndM } = parseShiftTime(shift.breakEndTime);
+
+    const breakStart = new Date(orderDate);
+    breakStart.setHours(breakStartH, breakStartM, 0, 0);
+
+    const breakEnd = new Date(orderDate);
+    breakEnd.setHours(breakEndH, breakEndM, 0, 0);
+
+    // Handle overnight break (break spans midnight)
+    // Example: Shift 22:00-06:00, Break 00:30-01:30
+    // If break start is before shift start in same day, it means next day
+    if (breakStart < shiftStart) {
+        breakStart.setDate(breakStart.getDate() + 1);
+    }
+    if (breakEnd <= breakStart) {
+        breakEnd.setDate(breakEnd.getDate() + 1);
+    }
+
+    return { breakStart, breakEnd };
+}
+
+/**
+ * Validate if a check-in is allowed based on current time.
+ * Uses break time window if set, otherwise uses shift window.
+ * 
+ * @param order - Order with orderDate and shift information
+ * @param currentTime - Current datetime
+ * @returns Validation result with valid flag and error/message if invalid
+ */
+export function validateCheckinTimeWindow(
+    order: {
+        orderDate: Date;
+        shift: ShiftWithBreakTime
+    },
+    currentTime: Date
+): CheckinValidationResult {
+    const orderDate = new Date(order.orderDate);
+    orderDate.setHours(0, 0, 0, 0);
+
+    const { hours: startH, minutes: startM } = parseShiftTime(order.shift.startTime);
+    const { hours: endH, minutes: endM } = parseShiftTime(order.shift.endTime);
+
+    // Calculate shift window
+    const shiftStart = new Date(orderDate);
+    shiftStart.setHours(startH, startM, 0, 0);
+
+    const shiftEnd = new Date(orderDate);
+    shiftEnd.setHours(endH, endM, 0, 0);
+
+    // Handle overnight shifts
+    if (shiftEnd <= shiftStart) {
+        shiftEnd.setDate(shiftEnd.getDate() + 1);
+    }
+
+    // Check if break times are set
+    const breakWindow = calculateBreakWindow(orderDate, order.shift, shiftStart, shiftEnd);
+
+    if (breakWindow) {
+        // Use break time window for validation
+        const { breakStart, breakEnd } = breakWindow;
+
+        if (currentTime < breakStart) {
+            return {
+                valid: false,
+                error: 'Belum waktunya istirahat',
+                message: `Pengambilan makanan dimulai pada ${breakStart.toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit' })}`
+            };
+        }
+
+        if (currentTime > breakEnd) {
+            return {
+                valid: false,
+                error: 'Jam istirahat sudah selesai',
+                message: `Pengambilan makanan berakhir pada ${breakEnd.toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit' })}`
+            };
+        }
+    } else {
+        // No break times set - use shift window (current behavior)
+        // Allow 30 min before shift start
+        const allowedStart = new Date(shiftStart.getTime() - 30 * 60000);
+
+        if (currentTime < allowedStart) {
+            return {
+                valid: false,
+                error: 'Terlalu dini untuk check-in',
+                message: `Check-in dimulai pada ${allowedStart.toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit' })}`
+            };
+        }
+
+        if (currentTime > shiftEnd) {
+            return {
+                valid: false,
+                error: 'Waktu check-in sudah lewat',
+                message: `Check-in berakhir pada ${shiftEnd.toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit' })}`
+            };
+        }
+    }
+
+    return { valid: true };
+}
