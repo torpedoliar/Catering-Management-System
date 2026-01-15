@@ -1,3 +1,4 @@
+# syntax=docker/dockerfile:1
 FROM node:20-alpine
 
 # Install postgresql-client for backup/restore
@@ -15,8 +16,9 @@ COPY package*.json ./
 RUN npm config set fetch-retry-maxtimeout 30000 \
     && npm config set fetch-retries 3
 
-# Install dependencies (includes PM2)
-RUN npm install
+# Install dependencies with cache mount (speeds up rebuilds)
+RUN --mount=type=cache,target=/root/.npm \
+    npm install
 
 # Copy prisma schema
 COPY prisma ./prisma
