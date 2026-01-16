@@ -381,6 +381,8 @@ export default function CheckInPage() {
             } else {
                 setLastError(message);
                 toast.error(message);
+                // Clear input on error too for quick retry
+                setSearchInput('');
             }
             setTimeout(() => inputRef.current?.focus(), 100);
         } finally {
