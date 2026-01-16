@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../contexts/AuthContext';
 import { UtensilsCrossed, Lock, User, Loader2 } from 'lucide-react';
@@ -11,6 +11,7 @@ export default function LoginPage() {
     const [externalId, setExternalId] = useState('');
     const [password, setPassword] = useState('');
     const [isLoading, setIsLoading] = useState(false);
+    const [branding, setBranding] = useState<{ logoUrl?: string | null, appName?: string }>({});
 
     const handleSubmit = async (e: React.FormEvent) => {
         e.preventDefault();
@@ -75,16 +76,28 @@ export default function LoginPage() {
         }
     };
 
+    // Fetch branding on mount
+    useEffect(() => {
+        fetch('/api/settings/branding')
+            .then(r => r.json())
+            .then(setBranding)
+            .catch(() => { });
+    }, []);
+
     return (
         <div className="min-h-screen flex items-center justify-center p-4 bg-[#faf9f7]">
             <div className="w-full max-w-sm">
                 {/* Logo Section */}
                 <div className="text-center mb-8">
-                    <div className="inline-flex items-center justify-center w-14 h-14 rounded-xl bg-gradient-to-br from-orange-500 to-amber-500 mb-4 shadow-lg shadow-orange-500/20">
-                        <UtensilsCrossed className="w-7 h-7 text-white" />
-                    </div>
+                    {branding.logoUrl ? (
+                        <img src={branding.logoUrl} alt="" className="w-14 h-14 mx-auto mb-4 rounded-xl object-contain" />
+                    ) : (
+                        <div className="inline-flex items-center justify-center w-14 h-14 rounded-xl bg-gradient-to-br from-orange-500 to-amber-500 mb-4 shadow-lg shadow-orange-500/20">
+                            <UtensilsCrossed className="w-7 h-7 text-white" />
+                        </div>
+                    )}
                     <h1 className="text-2xl font-bold text-[#1a1f37]">
-                        Catering Management
+                        {branding.appName || 'Catering Management'}
                     </h1>
                     <p className="text-slate-500 text-sm mt-1">Corporate Catering System</p>
                 </div>

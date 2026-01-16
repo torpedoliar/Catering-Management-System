@@ -39,6 +39,7 @@ const VendorDashboardPage = lazy(() => import('./pages/vendor/VendorDashboardPag
 const VendorPickupStatsPage = lazy(() => import('./pages/vendor/VendorPickupStatsPage'));
 const VendorManagementPage = lazy(() => import('./pages/admin/VendorManagementPage'));
 const WeeklyMenuPage = lazy(() => import('./pages/admin/WeeklyMenuPage'));
+const BrandingSettingsPage = lazy(() => import('./pages/admin/BrandingSettingsPage'));
 
 // Layout
 import Layout from './components/Layout/Layout';
@@ -118,6 +119,7 @@ function AppRoutes() {
                     <Route path="/admin/update" element={<UpdatePage />} />
                     <Route path="/admin/vendors" element={<VendorManagementPage />} />
                     <Route path="/admin/weekly-menu" element={<WeeklyMenuPage />} />
+                    <Route path="/admin/branding" element={<BrandingSettingsPage />} />
                 </Route>
 
                 {/* Canteen Routes */}

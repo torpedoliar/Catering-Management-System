@@ -35,7 +35,8 @@ import {
     MapPin,
     Store,
     ArrowUpCircle,
-    TrendingUp
+    TrendingUp,
+    Palette
 } from 'lucide-react';
 
 interface LayoutProps {
@@ -52,6 +53,7 @@ export default function Layout({ children }: LayoutProps) {
     const [canteenExpanded, setCanteenExpanded] = useState(true);
     const [vendorExpanded, setVendorExpanded] = useState(true);
     const [serverExpanded, setServerExpanded] = useState(true);
+    const [branding, setBranding] = useState<{ logoUrl?: string | null, appShortName?: string }>({});
 
     const isActive = (path: string) => location.pathname === path;
 
@@ -59,6 +61,14 @@ export default function Layout({ children }: LayoutProps) {
     useEffect(() => {
         window.scrollTo(0, 0);
     }, [location.pathname]);
+
+    // Fetch branding on mount
+    useEffect(() => {
+        fetch('/api/settings/branding')
+            .then(r => r.json())
+            .then(setBranding)
+            .catch(() => { });
+    }, []);
 
     const userLinks = [
         { path: '/', icon: Home, label: 'Pesan Makanan' },
@@ -87,6 +97,7 @@ export default function Layout({ children }: LayoutProps) {
         { path: '/admin/audit-log', icon: ScrollText, label: 'Log Audit' },
         { path: '/admin/time-settings', icon: Timer, label: 'Pengaturan Waktu' },
         { path: '/admin/email-settings', icon: Mail, label: 'Email Settings' },
+        { path: '/admin/branding', icon: Palette, label: 'Branding' },
     ];
 
     const canteenLinks = [
@@ -136,11 +147,15 @@ export default function Layout({ children }: LayoutProps) {
             {/* Header */}
             <div className="h-16 px-4 flex items-center justify-between border-b border-white/10">
                 <div className="flex items-center gap-3">
-                    <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-orange-500 to-amber-500 flex items-center justify-center shadow-lg shadow-orange-500/20">
-                        <UtensilsCrossed className="w-5 h-5 text-white" />
-                    </div>
+                    {branding.logoUrl ? (
+                        <img src={branding.logoUrl} alt="" className="w-10 h-10 rounded-xl object-contain bg-white/10" />
+                    ) : (
+                        <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-orange-500 to-amber-500 flex items-center justify-center shadow-lg shadow-orange-500/20">
+                            <UtensilsCrossed className="w-5 h-5 text-white" />
+                        </div>
+                    )}
                     <div>
-                        <h1 className="text-lg font-bold bg-gradient-to-r from-orange-400 to-amber-300 bg-clip-text text-transparent">Catering</h1>
+                        <h1 className="text-lg font-bold bg-gradient-to-r from-orange-400 to-amber-300 bg-clip-text text-transparent">{branding.appShortName || 'Catering'}</h1>
                         <p className="text-xs text-slate-400">Management System</p>
                     </div>
                 </div>

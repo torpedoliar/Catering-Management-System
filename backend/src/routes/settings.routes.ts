@@ -8,8 +8,29 @@ import { logSettings, getRequestContext } from '../services/audit.service';
 import { OrderService } from '../services/order.service';
 import { getToday } from '../services/time.service';
 import { prisma } from '../lib/prisma';
+import multer from 'multer';
+import sharp from 'sharp';
+import path from 'path';
+import fs from 'fs';
 
 const router = Router();
+
+// Branding upload configuration
+const brandingStorage = multer.memoryStorage();
+const brandingUpload = multer({
+    storage: brandingStorage,
+    limits: { fileSize: 500 * 1024 }, // 500KB
+    fileFilter: (_req, file, cb) => {
+        const allowed = ['image/png', 'image/svg+xml', 'image/x-icon', 'image/jpeg', 'image/webp', 'image/vnd.microsoft.icon'];
+        cb(null, allowed.includes(file.mimetype));
+    }
+});
+
+// Ensure branding directory exists
+const brandingDir = path.join(process.cwd(), 'uploads', 'branding');
+if (!fs.existsSync(brandingDir)) {
+    fs.mkdirSync(brandingDir, { recursive: true });
+}
 
 // Get settings (with caching)
 router.get('/', authMiddleware, async (req: AuthRequest, res: Response) => {
@@ -168,6 +189,239 @@ router.put('/', authMiddleware, adminMiddleware, async (req: AuthRequest, res: R
     } catch (error) {
         console.error('Update settings error:', error);
         res.status(500).json({ error: 'Failed to update settings' });
+    }
+});
+
+// =============================================================================
+// BRANDING ENDPOINTS
+// =============================================================================
+
+// GET /api/settings/branding - Public branding data (no auth required)
+router.get('/branding', async (_req, res: Response) => {
+    try {
+        let settings = await prisma.settings.findUnique({
+            where: { id: 'default' },
+            select: {
+                appName: true,
+                appShortName: true,
+                logoUrl: true,
+                faviconUrl: true,
+            }
+        });
+
+        if (!settings) {
+            settings = {
+                appName: 'Catering Management System',
+                appShortName: 'Catering',
+                logoUrl: null,
+                faviconUrl: null,
+            };
+        }
+
+        res.json(settings);
+    } catch (error) {
+        console.error('Get branding error:', error);
+        res.status(500).json({ error: 'Failed to get branding' });
+    }
+});
+
+// POST /api/settings/branding/logo - Upload main logo
+router.post('/branding/logo', authMiddleware, adminMiddleware, brandingUpload.single('logo'), async (req: AuthRequest, res: Response) => {
+    try {
+        if (!req.file) {
+            return res.status(400).json({ error: 'No file uploaded' });
+        }
+
+        // Get existing settings to delete old logo
+        const existing = await prisma.settings.findUnique({ where: { id: 'default' } });
+        if (existing?.logoUrl) {
+            const oldPath = path.join(process.cwd(), existing.logoUrl);
+            if (fs.existsSync(oldPath)) {
+                fs.unlinkSync(oldPath);
+            }
+        }
+
+        // Process and save logo
+        let logoUrl: string;
+        const timestamp = Date.now();
+
+        if (req.file.mimetype === 'image/svg+xml') {
+            // Keep SVG as-is
+            const filename = `logo-${timestamp}.svg`;
+            const filepath = path.join(brandingDir, filename);
+            fs.writeFileSync(filepath, req.file.buffer);
+            logoUrl = `/uploads/branding/${filename}`;
+        } else {
+            // Convert to WebP for other formats
+            const filename = `logo-${timestamp}.webp`;
+            const filepath = path.join(brandingDir, filename);
+            await sharp(req.file.buffer)
+                .resize(200, 200, { fit: 'contain', background: { r: 0, g: 0, b: 0, alpha: 0 } })
+                .webp({ quality: 90 })
+                .toFile(filepath);
+            logoUrl = `/uploads/branding/${filename}`;
+        }
+
+        // Update settings
+        const settings = await prisma.settings.upsert({
+            where: { id: 'default' },
+            update: { logoUrl },
+            create: { id: 'default', logoUrl }
+        });
+
+        // Invalidate cache
+        await cacheService.delete(CACHE_KEYS.SETTINGS);
+
+        // Broadcast update
+        sseManager.broadcast('branding:updated', { logoUrl, timestamp: getNow().toISOString() });
+
+        res.json({ logoUrl, message: 'Logo uploaded successfully' });
+    } catch (error) {
+        console.error('Upload logo error:', error);
+        res.status(500).json({ error: 'Failed to upload logo' });
+    }
+});
+
+// POST /api/settings/branding/favicon - Upload favicon
+router.post('/branding/favicon', authMiddleware, adminMiddleware, brandingUpload.single('favicon'), async (req: AuthRequest, res: Response) => {
+    try {
+        if (!req.file) {
+            return res.status(400).json({ error: 'No file uploaded' });
+        }
+
+        // Get existing settings to delete old favicon
+        const existing = await prisma.settings.findUnique({ where: { id: 'default' } });
+        if (existing?.faviconUrl) {
+            const oldPath = path.join(process.cwd(), existing.faviconUrl);
+            if (fs.existsSync(oldPath)) {
+                fs.unlinkSync(oldPath);
+            }
+        }
+
+        // Process and save favicon
+        let faviconUrl: string;
+        const timestamp = Date.now();
+
+        if (req.file.mimetype === 'image/svg+xml' || req.file.mimetype === 'image/x-icon' || req.file.mimetype === 'image/vnd.microsoft.icon') {
+            // Keep SVG/ICO as-is
+            const ext = req.file.mimetype === 'image/svg+xml' ? 'svg' : 'ico';
+            const filename = `favicon-${timestamp}.${ext}`;
+            const filepath = path.join(brandingDir, filename);
+            fs.writeFileSync(filepath, req.file.buffer);
+            faviconUrl = `/uploads/branding/${filename}`;
+        } else {
+            // Convert to PNG for favicons (better browser support than WebP)
+            const filename = `favicon-${timestamp}.png`;
+            const filepath = path.join(brandingDir, filename);
+            await sharp(req.file.buffer)
+                .resize(64, 64, { fit: 'contain', background: { r: 0, g: 0, b: 0, alpha: 0 } })
+                .png()
+                .toFile(filepath);
+            faviconUrl = `/uploads/branding/${filename}`;
+        }
+
+        // Update settings
+        await prisma.settings.upsert({
+            where: { id: 'default' },
+            update: { faviconUrl },
+            create: { id: 'default', faviconUrl }
+        });
+
+        // Invalidate cache
+        await cacheService.delete(CACHE_KEYS.SETTINGS);
+
+        // Broadcast update
+        sseManager.broadcast('branding:updated', { faviconUrl, timestamp: getNow().toISOString() });
+
+        res.json({ faviconUrl, message: 'Favicon uploaded successfully' });
+    } catch (error) {
+        console.error('Upload favicon error:', error);
+        res.status(500).json({ error: 'Failed to upload favicon' });
+    }
+});
+
+// PUT /api/settings/branding - Update app name/short name
+router.put('/branding', authMiddleware, adminMiddleware, async (req: AuthRequest, res: Response) => {
+    try {
+        const { appName, appShortName } = req.body;
+
+        const settings = await prisma.settings.upsert({
+            where: { id: 'default' },
+            update: {
+                ...(appName !== undefined && { appName }),
+                ...(appShortName !== undefined && { appShortName }),
+            },
+            create: {
+                id: 'default',
+                appName: appName || 'Catering Management System',
+                appShortName: appShortName || 'Catering',
+            }
+        });
+
+        // Invalidate cache
+        await cacheService.delete(CACHE_KEYS.SETTINGS);
+
+        // Broadcast update
+        sseManager.broadcast('branding:updated', { appName: settings.appName, appShortName: settings.appShortName, timestamp: getNow().toISOString() });
+
+        res.json({ appName: settings.appName, appShortName: settings.appShortName, message: 'Branding updated' });
+    } catch (error) {
+        console.error('Update branding error:', error);
+        res.status(500).json({ error: 'Failed to update branding' });
+    }
+});
+
+// DELETE /api/settings/branding/logo - Remove logo (reset to default)
+router.delete('/branding/logo', authMiddleware, adminMiddleware, async (req: AuthRequest, res: Response) => {
+    try {
+        const existing = await prisma.settings.findUnique({ where: { id: 'default' } });
+
+        if (existing?.logoUrl) {
+            const oldPath = path.join(process.cwd(), existing.logoUrl);
+            if (fs.existsSync(oldPath)) {
+                fs.unlinkSync(oldPath);
+            }
+        }
+
+        await prisma.settings.update({
+            where: { id: 'default' },
+            data: { logoUrl: null }
+        });
+
+        await cacheService.delete(CACHE_KEYS.SETTINGS);
+        sseManager.broadcast('branding:updated', { logoUrl: null, timestamp: getNow().toISOString() });
+
+        res.json({ message: 'Logo removed' });
+    } catch (error) {
+        console.error('Delete logo error:', error);
+        res.status(500).json({ error: 'Failed to remove logo' });
+    }
+});
+
+// DELETE /api/settings/branding/favicon - Remove favicon (reset to default)
+router.delete('/branding/favicon', authMiddleware, adminMiddleware, async (req: AuthRequest, res: Response) => {
+    try {
+        const existing = await prisma.settings.findUnique({ where: { id: 'default' } });
+
+        if (existing?.faviconUrl) {
+            const oldPath = path.join(process.cwd(), existing.faviconUrl);
+            if (fs.existsSync(oldPath)) {
+                fs.unlinkSync(oldPath);
+            }
+        }
+
+        await prisma.settings.update({
+            where: { id: 'default' },
+            data: { faviconUrl: null }
+        });
+
+        await cacheService.delete(CACHE_KEYS.SETTINGS);
+        sseManager.broadcast('branding:updated', { faviconUrl: null, timestamp: getNow().toISOString() });
+
+        res.json({ message: 'Favicon removed' });
+    } catch (error) {
+        console.error('Delete favicon error:', error);
+        res.status(500).json({ error: 'Failed to remove favicon' });
     }
 });
 

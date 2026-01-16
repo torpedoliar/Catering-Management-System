@@ -1,9 +1,11 @@
 {
-    "version": "1.6.9",
+    "version": "1.7.0",
     "releaseDate": "2026-01-16",
     "minDatabaseVersion": "1.0.0",
     "changelog": [
-        "Fix: PM2 auto-refresh in Uptime History page"
+        "Feature: Custom logo and branding settings in admin panel",
+        "Feature: Dynamic favicon and app name",
+        "Fix: Version N/A issue on About page"
     ],
     "repository": "https://github.com/torpedoliar/Catering-Management-System",
     "branch": "main"

@@ -327,6 +327,12 @@ model Settings {
   // Canteen Check-in Enforcement
   enforceCanteenCheckin Boolean @default(false) // Require canteen selection at check-in station
 
+  // Branding Settings
+  appName            String   @default("Catering Management System")
+  appShortName       String   @default("Catering")
+  logoUrl            String?  // /uploads/branding/logo.webp
+  faviconUrl         String?  // /uploads/branding/favicon.png
+
   createdAt          DateTime @default(now())
   updatedAt          DateTime @updatedAt
 }

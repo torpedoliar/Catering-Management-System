@@ -10,9 +10,9 @@ export default function AboutPage() {
     useEffect(() => {
         const fetchVersion = async () => {
             try {
-                const res = await api.get('/api/server/version');
-                setVersion(res.data.version);
-                setReleaseDate(res.data.releaseDate);
+                const res = await api.get('/api/version');
+                setVersion(res.data.current.version);
+                setReleaseDate(res.data.current.releaseDate);
             } catch (error) {
                 console.error('Failed to fetch version:', error);
                 setVersion('N/A');
