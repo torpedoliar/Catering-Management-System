@@ -41,6 +41,107 @@ interface Shift {
     endTime: string;
 }
 
+// ImageLightbox Component with Zoom Controls
+function ImageLightbox({ src, onClose }: { src: string; onClose: () => void }) {
+    const [scale, setScale] = useState(1);
+    const [rotation, setRotation] = useState(0);
+
+    const zoomIn = () => setScale(s => Math.min(s + 0.25, 3));
+    const zoomOut = () => setScale(s => Math.max(s - 0.25, 0.5));
+    const resetZoom = () => { setScale(1); setRotation(0); };
+    const rotate = () => setRotation(r => (r + 90) % 360);
+
+    return (
+        <div
+            className="fixed inset-0 z-50 flex items-center justify-center bg-black/90 backdrop-blur-sm"
+            onClick={onClose}
+        >
+            {/* Close Button */}
+            <button
+                onClick={onClose}
+                className="absolute top-4 right-4 p-2 text-white/70 hover:text-white transition-colors z-10"
+            >
+                <svg xmlns="http://www.w3.org/2000/svg" className="h-8 w-8" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                </svg>
+            </button>
+
+            {/* Image Container */}
+            <div
+                className="relative overflow-hidden max-w-[90vw] max-h-[80vh]"
+                onClick={(e) => e.stopPropagation()}
+            >
+                <img
+                    src={src}
+                    alt="Menu Preview"
+                    className="max-w-full max-h-[80vh] object-contain rounded-lg shadow-2xl transition-transform duration-200"
+                    style={{
+                        transform: `scale(${scale}) rotate(${rotation}deg)`,
+                    }}
+                    draggable={false}
+                />
+            </div>
+
+            {/* Zoom Controls Toolbar */}
+            <div
+                className="absolute bottom-6 left-1/2 -translate-x-1/2 flex items-center gap-1 p-1.5 bg-black/60 backdrop-blur-md rounded-full shadow-lg"
+                onClick={(e) => e.stopPropagation()}
+            >
+                <button
+                    onClick={zoomIn}
+                    className="p-2.5 text-white hover:bg-white/20 rounded-full transition-colors"
+                    title="Zoom In"
+                >
+                    <svg xmlns="http://www.w3.org/2000/svg" className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                        <circle cx="11" cy="11" r="8" />
+                        <path d="M21 21l-4.35-4.35M11 8v6M8 11h6" />
+                    </svg>
+                </button>
+                <button
+                    onClick={zoomOut}
+                    className="p-2.5 text-white hover:bg-white/20 rounded-full transition-colors"
+                    title="Zoom Out"
+                >
+                    <svg xmlns="http://www.w3.org/2000/svg" className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                        <circle cx="11" cy="11" r="8" />
+                        <path d="M21 21l-4.35-4.35M8 11h6" />
+                    </svg>
+                </button>
+                <button
+                    onClick={resetZoom}
+                    className="p-2.5 text-white hover:bg-white/20 rounded-full transition-colors"
+                    title="Reset"
+                >
+                    <svg xmlns="http://www.w3.org/2000/svg" className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                        <path d="M3 12a9 9 0 1 0 9-9 9.75 9.75 0 0 0-6.74 2.74L3 8" />
+                        <path d="M3 3v5h5" />
+                    </svg>
+                </button>
+                <button
+                    onClick={rotate}
+                    className="p-2.5 text-white hover:bg-white/20 rounded-full transition-colors"
+                    title="Rotate"
+                >
+                    <svg xmlns="http://www.w3.org/2000/svg" className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                        <path d="M21 12a9 9 0 1 1-9-9c2.52 0 4.93 1 6.74 2.74L21 8" />
+                        <path d="M21 3v5h-5" />
+                    </svg>
+                </button>
+            </div>
+
+            {/* Zoom Level Indicator */}
+            <div className="absolute top-4 left-4 px-3 py-1.5 bg-black/60 backdrop-blur-md rounded-full text-white text-sm">
+                {Math.round(scale * 100)}%
+            </div>
+
+            {/* Label */}
+            <div className="absolute bottom-6 left-4 text-white/70 text-sm">
+                Menu Preview
+            </div>
+        </div>
+    );
+}
+
 export default function FoodMenuPage() {
     const [weekData, setWeekData] = useState<{ week: number; year: number; weekStart: string; weekEnd: string; shifts: Shift[]; dailyMenus: DailyMenuData[] } | null>(null);
     const [loading, setLoading] = useState(true);
@@ -230,28 +331,12 @@ export default function FoodMenuPage() {
                 </div>
             )}
 
-            {/* Image Lightbox */}
+            {/* Image Lightbox with Zoom Controls */}
             {selectedImage && (
-                <div
-                    className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/80 backdrop-blur-sm"
-                    onClick={() => setSelectedImage(null)}
-                >
-                    <button
-                        onClick={() => setSelectedImage(null)}
-                        className="absolute top-4 right-4 p-2 text-white/70 hover:text-white transition-colors"
-                    >
-                        <span className="sr-only">Close</span>
-                        <svg xmlns="http://www.w3.org/2000/svg" className="h-8 w-8" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
-                        </svg>
-                    </button>
-                    <img
-                        src={selectedImage}
-                        alt="Menu Preview"
-                        className="max-w-full max-h-[90vh] object-contain rounded-lg shadow-2xl"
-                        onClick={(e) => e.stopPropagation()}
-                    />
-                </div>
+                <ImageLightbox
+                    src={selectedImage}
+                    onClose={() => setSelectedImage(null)}
+                />
             )}
         </div>
     );
