@@ -1,10 +1,9 @@
 {
-    "version": "1.6.8",
+    "version": "1.6.9",
     "releaseDate": "2026-01-16",
     "minDatabaseVersion": "1.0.0",
     "changelog": [
-        "Fix: Show single shift name with break time in vendor recap",
-        "Fix: Uptime History auto-refresh not working"
+        "Fix: PM2 auto-refresh in Uptime History page"
     ],
     "repository": "https://github.com/torpedoliar/Catering-Management-System",
     "branch": "main"
