@@ -205,7 +205,7 @@ export default function AboutPage() {
                         <span className="text-2xl font-bold text-white">YO</span>
                     </div>
                     <h3 className="text-lg font-semibold text-[#1a1f37] mb-2">Yohanes Octavian Rizky</h3>
-                    <p className="text-slate-500 mb-4 italic">"Peningkatan kecil setiap hari pada akhirnya menghasilkan hasil yang besar."</p>
+                    <p className="text-slate-500 mb-4 italic">"Peningkatan kecil dan konsisten pada akhirnya menghasilkan hasil yang besar."</p>
 
                     <div className="flex flex-col sm:flex-row gap-3">
                         <a
