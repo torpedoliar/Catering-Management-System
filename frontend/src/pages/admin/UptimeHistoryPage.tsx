@@ -166,20 +166,21 @@ export default function UptimeHistoryPage() {
         }
     }, [startDate, endDate]);
 
+    // Initial fetch and auto-refresh (combined like PerformancePage)
     useEffect(() => {
         fetchData();
-    }, [fetchData]);
 
-    // Auto-refresh every 30 seconds when enabled
-    useEffect(() => {
-        if (!autoRefresh) return;
+        let interval: ReturnType<typeof setInterval> | undefined;
+        if (autoRefresh) {
+            interval = setInterval(() => {
+                fetchData(false);
+            }, 30000);
+        }
 
-        const interval = setInterval(() => {
-            fetchData(false);
-        }, 30000);
-
-        return () => clearInterval(interval);
-    }, [autoRefresh, fetchData]);
+        return () => {
+            if (interval) clearInterval(interval);
+        };
+    }, [autoRefresh, startDate, endDate]); // fetchData excluded, using actual deps
 
     const handleExport = async () => {
         try {
@@ -265,8 +266,8 @@ export default function UptimeHistoryPage() {
                     <button
                         onClick={() => setAutoRefresh(!autoRefresh)}
                         className={`flex items-center gap-2 px-3 py-2 rounded-lg text-sm font-medium transition-colors ${autoRefresh
-                                ? 'bg-emerald-100 text-emerald-700 border border-emerald-200'
-                                : 'bg-slate-100 text-slate-600 border border-slate-200'
+                            ? 'bg-emerald-100 text-emerald-700 border border-emerald-200'
+                            : 'bg-slate-100 text-slate-600 border border-slate-200'
                             }`}
                         title={autoRefresh ? 'Auto-refresh aktif (30 detik)' : 'Auto-refresh nonaktif'}
                     >
