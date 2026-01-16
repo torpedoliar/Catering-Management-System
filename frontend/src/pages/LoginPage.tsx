@@ -78,7 +78,8 @@ export default function LoginPage() {
 
     // Fetch branding on mount
     useEffect(() => {
-        fetch('/api/settings/branding')
+        const apiUrl = (import.meta as any).env?.VITE_API_URL || '';
+        fetch(`${apiUrl}/api/settings/branding`)
             .then(r => r.json())
             .then(setBranding)
             .catch(() => { });
