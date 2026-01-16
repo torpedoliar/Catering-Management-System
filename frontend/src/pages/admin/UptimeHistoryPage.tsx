@@ -174,7 +174,7 @@ export default function UptimeHistoryPage() {
         if (autoRefresh) {
             interval = setInterval(() => {
                 fetchData(false);
-            }, 30000);
+            }, 5000);
         }
 
         return () => {
