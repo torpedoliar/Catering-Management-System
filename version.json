@@ -1,9 +1,10 @@
 {
-    "version": "1.6.7",
-    "releaseDate": "2026-01-15",
+    "version": "1.6.8",
+    "releaseDate": "2026-01-16",
     "minDatabaseVersion": "1.0.0",
     "changelog": [
-        "Show shift names in grouped column headers"
+        "Fix: Show single shift name with break time in vendor recap",
+        "Fix: Uptime History auto-refresh not working"
     ],
     "repository": "https://github.com/torpedoliar/Catering-Management-System",
     "branch": "main"
