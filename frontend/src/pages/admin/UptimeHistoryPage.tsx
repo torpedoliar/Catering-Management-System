@@ -180,7 +180,8 @@ export default function UptimeHistoryPage() {
         return () => {
             if (interval) clearInterval(interval);
         };
-    }, [autoRefresh, startDate, endDate]); // fetchData excluded, using actual deps
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [autoRefresh, fetchData]); // Include fetchData to ensure fresh reference
 
     const handleExport = async () => {
         try {
