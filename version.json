@@ -1,12 +1,14 @@
 {
-    "version": "1.7.1",
-    "releaseDate": "2026-01-16",
+    "version": "1.8.0",
+    "releaseDate": "2026-01-19",
     "minDatabaseVersion": "1.0.0",
     "changelog": [
-        "Feature: Zoom tools for Menu Preview (zoom in, out, rotate, reset)",
-        "Feature: Custom logo and branding settings in admin panel",
-        "Feature: Dynamic favicon and app name",
-        "Fix: Version N/A issue on About page"
+        "Feature: Group pickup stats by break time on Vendor Pickup Stats page",
+        "Feature: Group shift stats by break time on Admin Dashboard",
+        "Feature: Group shifts by break time on Weekly Menu page",
+        "Feature: Larger menu images with lightbox preview on Weekly Menu",
+        "UI: Renamed 'Pengambilan Makan per Shift' to 'per Waktu Istirahat'",
+        "UI: Renamed 'Menu Sama Semua Shift' to 'Menu Setiap Waktu Istirahat'"
     ],
     "repository": "https://github.com/torpedoliar/Catering-Management-System",
     "branch": "main"
