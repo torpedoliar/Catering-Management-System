@@ -39,7 +39,49 @@ interface Shift {
     name: string;
     startTime: string;
     endTime: string;
+    breakStartTime?: string | null;
+    breakEndTime?: string | null;
 }
+
+interface MenuGroup {
+    key: string;
+    label: string;
+    shiftNames: string[];
+    menus: DayMenu[];
+    isGrouped: boolean;
+}
+
+// Group menus by break time for merged display
+const groupMenusByBreakTime = (menus: DayMenu[], shifts: Shift[]): MenuGroup[] => {
+    const groups: Map<string, DayMenu[]> = new Map();
+    const shiftMap = new Map(shifts.map(s => [s.id, s]));
+
+    menus.forEach(menu => {
+        const shift = menu.shiftId ? shiftMap.get(menu.shiftId) : null;
+        const key = shift?.breakStartTime && shift?.breakEndTime
+            ? `${shift.breakStartTime}-${shift.breakEndTime}`
+            : menu.shiftId ? `_shift_${menu.shiftId}` : '_no_shift';
+
+        if (!groups.has(key)) groups.set(key, []);
+        groups.get(key)!.push(menu);
+    });
+
+    return Array.from(groups.entries()).map(([key, menusInGroup]) => {
+        const shiftNames = [...new Set(menusInGroup.map(m => m.shiftName).filter(Boolean))] as string[];
+
+        return {
+            key,
+            label: key.startsWith('_') ? (shiftNames[0] || 'Menu') : key,
+            shiftNames,
+            menus: menusInGroup,
+            isGrouped: !key.startsWith('_') && menusInGroup.length > 1
+        };
+    }).sort((a, b) => {
+        const timeA = a.key.startsWith('_') ? '99:99' : a.key;
+        const timeB = b.key.startsWith('_') ? '99:99' : b.key;
+        return timeA.localeCompare(timeB);
+    });
+};
 
 // ImageLightbox Component with Zoom Controls
 function ImageLightbox({ src, onClose }: { src: string; onClose: () => void }) {
@@ -268,48 +310,56 @@ export default function FoodMenuPage() {
                             <div className="p-4">
                                 {day.menus.length > 0 ? (
                                     <div className="space-y-3">
-                                        {day.menus.map(menu => (
-                                            <div key={menu.id} className="flex gap-4 p-3 bg-slate-50 rounded-xl">
-                                                {menu.menuItem.imageUrl ? (
-                                                    <img
-                                                        src={menu.menuItem.imageUrl}
-                                                        alt={menu.menuItem.name}
-                                                        className="w-24 h-24 object-cover rounded-lg flex-shrink-0 cursor-zoom-in hover:opacity-80 transition-opacity"
-                                                        onClick={() => setSelectedImage(menu.menuItem.imageUrl)}
-                                                    />
-                                                ) : (
-                                                    <div className="w-24 h-24 bg-slate-200 rounded-lg flex items-center justify-center flex-shrink-0">
-                                                        <Pizza className="w-8 h-8 text-slate-400" />
-                                                    </div>
-                                                )}
-                                                <div className="flex-1 min-w-0">
-                                                    {menu.shiftName && (
-                                                        <span className="inline-block px-2 py-0.5 bg-teal-100 text-teal-700 text-xs rounded mb-1">
-                                                            {menu.shiftName}
-                                                        </span>
+                                        {groupMenusByBreakTime(day.menus, weekData.shifts).map(group => {
+                                            const displayMenu = group.menus[0];
+                                            return (
+                                                <div key={group.key} className="flex gap-4 p-3 bg-slate-50 rounded-xl">
+                                                    {displayMenu.menuItem.imageUrl ? (
+                                                        <img
+                                                            src={displayMenu.menuItem.imageUrl}
+                                                            alt={displayMenu.menuItem.name}
+                                                            className="w-24 h-24 object-cover rounded-lg flex-shrink-0 cursor-zoom-in hover:opacity-80 transition-opacity"
+                                                            onClick={() => setSelectedImage(displayMenu.menuItem.imageUrl)}
+                                                        />
+                                                    ) : (
+                                                        <div className="w-24 h-24 bg-slate-200 rounded-lg flex items-center justify-center flex-shrink-0">
+                                                            <Pizza className="w-8 h-8 text-slate-400" />
+                                                        </div>
                                                     )}
-                                                    <h3 className="font-semibold text-slate-800">{menu.menuItem.name}</h3>
-                                                    {menu.menuItem.description && (
-                                                        <p className="text-sm text-slate-500 mt-1 line-clamp-2">{menu.menuItem.description}</p>
-                                                    )}
-                                                    <div className="flex items-center gap-2 mt-2">
-                                                        {menu.menuItem.vendor.logoUrl ? (
-                                                            <img
-                                                                src={menu.menuItem.vendor.logoUrl}
-                                                                alt={menu.menuItem.vendor.name}
-                                                                className="w-5 h-5 rounded object-cover"
-                                                            />
-                                                        ) : (
-                                                            <Store className="w-4 h-4 text-slate-400" />
+                                                    <div className="flex-1 min-w-0">
+                                                        <div className="flex flex-wrap gap-1 mb-1">
+                                                            <span className="inline-block px-2 py-0.5 bg-teal-100 text-teal-700 text-xs rounded font-medium">
+                                                                {group.label}
+                                                            </span>
+                                                            {group.isGrouped && (
+                                                                <span className="inline-block px-2 py-0.5 bg-slate-200 text-slate-600 text-xs rounded">
+                                                                    {group.shiftNames.join(', ')}
+                                                                </span>
+                                                            )}
+                                                        </div>
+                                                        <h3 className="font-semibold text-slate-800">{displayMenu.menuItem.name}</h3>
+                                                        {displayMenu.menuItem.description && (
+                                                            <p className="text-sm text-slate-500 mt-1 line-clamp-2">{displayMenu.menuItem.description}</p>
                                                         )}
-                                                        <span className="text-xs text-slate-500">{menu.menuItem.vendor.name}</span>
+                                                        <div className="flex items-center gap-2 mt-2">
+                                                            {displayMenu.menuItem.vendor.logoUrl ? (
+                                                                <img
+                                                                    src={displayMenu.menuItem.vendor.logoUrl}
+                                                                    alt={displayMenu.menuItem.vendor.name}
+                                                                    className="w-5 h-5 rounded object-cover"
+                                                                />
+                                                            ) : (
+                                                                <Store className="w-4 h-4 text-slate-400" />
+                                                            )}
+                                                            <span className="text-xs text-slate-500">{displayMenu.menuItem.vendor.name}</span>
+                                                        </div>
+                                                        {displayMenu.notes && (
+                                                            <p className="text-xs text-amber-600 mt-2 italic">{displayMenu.notes}</p>
+                                                        )}
                                                     </div>
-                                                    {menu.notes && (
-                                                        <p className="text-xs text-amber-600 mt-2 italic">{menu.notes}</p>
-                                                    )}
                                                 </div>
-                                            </div>
-                                        ))}
+                                            );
+                                        })}
                                     </div>
                                 ) : (
                                     <div className="text-center py-6 text-slate-400">
