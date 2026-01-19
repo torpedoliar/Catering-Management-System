@@ -365,7 +365,7 @@ router.get('/pickup-stats', authMiddleware, vendorMiddleware, async (req: AuthRe
             prisma.shift.findMany({
                 where: { isActive: true },
                 orderBy: { startTime: 'asc' },
-                select: { id: true, name: true, startTime: true, endTime: true }
+                select: { id: true, name: true, startTime: true, endTime: true, breakStartTime: true, breakEndTime: true }
             }),
             prisma.order.findMany({
                 where: {
@@ -409,6 +409,8 @@ router.get('/pickup-stats', authMiddleware, vendorMiddleware, async (req: AuthRe
                     shiftName: shift.name,
                     startTime: shift.startTime,
                     endTime: shift.endTime,
+                    breakStartTime: shift.breakStartTime,
+                    breakEndTime: shift.breakEndTime,
                     status: getShiftStatus(shift.startTime, shift.endTime, date, now),
                     stats: {
                         ordered,

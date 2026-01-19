@@ -17,9 +17,66 @@ interface ShiftData {
     shiftName: string;
     startTime: string;
     endTime: string;
+    breakStartTime?: string | null;
+    breakEndTime?: string | null;
     status: 'completed' | 'in_progress' | 'upcoming';
     stats: ShiftStats;
 }
+
+interface ShiftGroup {
+    key: string;
+    label: string;
+    shifts: ShiftData[];
+    shiftIds: string[];
+    isGrouped: boolean;
+    combinedStats: ShiftStats;
+    worstStatus: ShiftData['status'];
+}
+
+// Group shifts by break time for merged display
+const groupShiftsByBreakTime = (shifts: ShiftData[]): ShiftGroup[] => {
+    const groups: Map<string, ShiftData[]> = new Map();
+
+    shifts.forEach(shift => {
+        const key = shift.breakStartTime && shift.breakEndTime
+            ? `${shift.breakStartTime}-${shift.breakEndTime}`
+            : `_shift_${shift.shiftId}`;
+
+        if (!groups.has(key)) groups.set(key, []);
+        groups.get(key)!.push(shift);
+    });
+
+    return Array.from(groups.entries()).map(([key, shiftsInGroup]) => {
+        // Combine stats from all shifts in group
+        const combinedStats: ShiftStats = {
+            ordered: shiftsInGroup.reduce((sum, s) => sum + s.stats.ordered, 0),
+            pickedUp: shiftsInGroup.reduce((sum, s) => sum + s.stats.pickedUp, 0),
+            noShow: shiftsInGroup.reduce((sum, s) => sum + s.stats.noShow, 0),
+            cancelled: shiftsInGroup.reduce((sum, s) => sum + s.stats.cancelled, 0),
+            pickupRate: 0
+        };
+        combinedStats.pickupRate = combinedStats.ordered > 0
+            ? Math.round((combinedStats.pickedUp / combinedStats.ordered) * 10000) / 100
+            : 0;
+
+        // Determine worst status (in_progress > upcoming > completed for visibility)
+        const statusPriority = { 'in_progress': 0, 'upcoming': 1, 'completed': 2 };
+        const worstStatus = shiftsInGroup.reduce((worst, s) =>
+            statusPriority[s.status] < statusPriority[worst] ? s.status : worst,
+            'completed' as ShiftData['status']
+        );
+
+        return {
+            key,
+            label: key.startsWith('_shift_') ? shiftsInGroup[0].shiftName : key,
+            shifts: shiftsInGroup,
+            shiftIds: shiftsInGroup.map(s => s.shiftId),
+            isGrouped: !key.startsWith('_shift_'),
+            combinedStats,
+            worstStatus
+        };
+    }).sort((a, b) => a.shifts[0].startTime.localeCompare(b.shifts[0].startTime));
+};
 
 interface DateData {
     date: string;
@@ -280,66 +337,79 @@ export default function VendorPickupStatsPage() {
                     </div>
 
                     {/* Per Date Breakdown */}
-                    {data.dates.map((dateData) => (
-                        <div key={dateData.date} className="space-y-4">
-                            <h2 className="text-lg font-semibold text-[#1a1f37] flex items-center gap-2">
-                                <Calendar className="w-5 h-5 text-orange-500" />
-                                {dateData.dayName}, {formatDate(dateData.date)}
-                            </h2>
+                    {data.dates.map((dateData) => {
+                        const shiftGroups = groupShiftsByBreakTime(dateData.shifts);
+                        return (
+                            <div key={dateData.date} className="space-y-4">
+                                <h2 className="text-lg font-semibold text-[#1a1f37] flex items-center gap-2">
+                                    <Calendar className="w-5 h-5 text-orange-500" />
+                                    {dateData.dayName}, {formatDate(dateData.date)}
+                                </h2>
 
-                            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-                                {dateData.shifts.map((shift) => (
-                                    <div key={shift.shiftId} className="card p-4">
-                                        {/* Shift Header */}
-                                        <div className="flex items-start justify-between mb-4">
-                                            <div>
-                                                <h3 className="font-semibold text-[#1a1f37]">{shift.shiftName}</h3>
-                                                <p className="text-sm text-slate-500">{shift.startTime} - {shift.endTime}</p>
+                                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+                                    {shiftGroups.map((group) => (
+                                        <div key={group.key} className="card p-4">
+                                            {/* Group Header */}
+                                            <div className="flex items-start justify-between mb-4">
+                                                <div>
+                                                    <h3 className="font-semibold text-[#1a1f37]">
+                                                        {group.isGrouped ? group.label : group.shifts[0].shiftName}
+                                                    </h3>
+                                                    {group.isGrouped ? (
+                                                        <p className="text-xs text-slate-400 mt-0.5">
+                                                            {group.shifts.map(s => s.shiftName).join(', ')}
+                                                        </p>
+                                                    ) : (
+                                                        <p className="text-sm text-slate-500">
+                                                            {group.shifts[0].startTime} - {group.shifts[0].endTime}
+                                                        </p>
+                                                    )}
+                                                </div>
+                                                {getStatusBadge(group.worstStatus)}
                                             </div>
-                                            {getStatusBadge(shift.status)}
-                                        </div>
 
-                                        {/* Stats */}
-                                        <div className="space-y-2 mb-4">
-                                            <div className="flex justify-between text-sm">
-                                                <span className="text-slate-500">Dipesan:</span>
-                                                <span className="font-medium">{shift.stats.ordered}</span>
-                                            </div>
-                                            <div className="flex justify-between text-sm">
-                                                <span className="text-slate-500">Diambil:</span>
-                                                <span className="font-medium text-emerald-600">{shift.stats.pickedUp}</span>
-                                            </div>
-                                            {shift.status !== 'upcoming' && (
+                                            {/* Stats */}
+                                            <div className="space-y-2 mb-4">
                                                 <div className="flex justify-between text-sm">
-                                                    <span className="text-slate-500">Tidak Diambil:</span>
-                                                    <span className="font-medium text-red-600">{shift.stats.noShow}</span>
+                                                    <span className="text-slate-500">Dipesan:</span>
+                                                    <span className="font-medium">{group.combinedStats.ordered}</span>
+                                                </div>
+                                                <div className="flex justify-between text-sm">
+                                                    <span className="text-slate-500">Diambil:</span>
+                                                    <span className="font-medium text-emerald-600">{group.combinedStats.pickedUp}</span>
+                                                </div>
+                                                {group.worstStatus !== 'upcoming' && (
+                                                    <div className="flex justify-between text-sm">
+                                                        <span className="text-slate-500">Tidak Diambil:</span>
+                                                        <span className="font-medium text-red-600">{group.combinedStats.noShow}</span>
+                                                    </div>
+                                                )}
+                                            </div>
+
+                                            {/* Donut Chart */}
+                                            <DonutChart stats={group.combinedStats} status={group.worstStatus} />
+
+                                            {/* Pickup Rate Bar */}
+                                            {group.worstStatus !== 'upcoming' && group.combinedStats.ordered > 0 && (
+                                                <div className="mt-4">
+                                                    <div className="flex justify-between text-xs mb-1">
+                                                        <span className="text-slate-500">Tingkat Pengambilan</span>
+                                                        <span className="font-semibold text-emerald-600">{group.combinedStats.pickupRate}%</span>
+                                                    </div>
+                                                    <div className="h-2 bg-slate-100 rounded-full overflow-hidden">
+                                                        <div
+                                                            className="h-full bg-emerald-500 rounded-full transition-all duration-500"
+                                                            style={{ width: `${group.combinedStats.pickupRate}%` }}
+                                                        />
+                                                    </div>
                                                 </div>
                                             )}
                                         </div>
-
-                                        {/* Donut Chart */}
-                                        <DonutChart stats={shift.stats} status={shift.status} />
-
-                                        {/* Pickup Rate Bar */}
-                                        {shift.status !== 'upcoming' && shift.stats.ordered > 0 && (
-                                            <div className="mt-4">
-                                                <div className="flex justify-between text-xs mb-1">
-                                                    <span className="text-slate-500">Tingkat Pengambilan</span>
-                                                    <span className="font-semibold text-emerald-600">{shift.stats.pickupRate}%</span>
-                                                </div>
-                                                <div className="h-2 bg-slate-100 rounded-full overflow-hidden">
-                                                    <div
-                                                        className="h-full bg-emerald-500 rounded-full transition-all duration-500"
-                                                        style={{ width: `${shift.stats.pickupRate}%` }}
-                                                    />
-                                                </div>
-                                            </div>
-                                        )}
-                                    </div>
-                                ))}
+                                    ))}
+                                </div>
                             </div>
-                        </div>
-                    ))}
+                        );
+                    })}
                 </>
             ) : (
                 <div className="card p-12 text-center text-slate-500">
