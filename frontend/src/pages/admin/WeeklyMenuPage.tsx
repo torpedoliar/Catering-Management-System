@@ -83,7 +83,7 @@ export default function WeeklyMenuPage() {
     const [vendors, setVendors] = useState<Vendor[]>([]);
     const [loading, setLoading] = useState(true);
     const [selectedWeek, setSelectedWeek] = useState<{ week: number; year: number } | null>(null);
-    const [showMenuSelector, setShowMenuSelector] = useState<{ dayOfWeek: number; shiftId: string | null } | null>(null);
+    const [showMenuSelector, setShowMenuSelector] = useState<{ dayOfWeek: number; shiftId: string | null; shiftIds?: string[] } | null>(null);
     const [showCopyModal, setShowCopyModal] = useState(false);
     const [copyTarget, setCopyTarget] = useState({ week: 1, year: 2025 });
     const [menuMode, setMenuMode] = useState<'SAME_ALL_SHIFTS' | 'DIFFERENT_PER_SHIFT'>('SAME_ALL_SHIFTS');
@@ -146,18 +146,32 @@ export default function WeeklyMenuPage() {
         setSelectedWeek({ week: newWeek, year: newYear });
     };
 
-    const setMenu = async (dayOfWeek: number, shiftId: string | null, menuItemId: string) => {
+    const setMenu = async (dayOfWeek: number, shiftId: string | null, menuItemId: string, shiftIds?: string[]) => {
         if (!selectedWeek) return;
 
         try {
-            await api.post('/api/weekly-menu', {
-                weekNumber: selectedWeek.week,
-                year: selectedWeek.year,
-                dayOfWeek,
-                shiftId: menuMode === 'DIFFERENT_PER_SHIFT' ? shiftId : null,
-                menuMode,
-                menuItemId
-            });
+            // If shiftIds provided (break time group), save for all shifts in the group
+            if (shiftIds && shiftIds.length > 0) {
+                await Promise.all(shiftIds.map(sid =>
+                    api.post('/api/weekly-menu', {
+                        weekNumber: selectedWeek.week,
+                        year: selectedWeek.year,
+                        dayOfWeek,
+                        shiftId: sid,
+                        menuMode,
+                        menuItemId
+                    })
+                ));
+            } else {
+                await api.post('/api/weekly-menu', {
+                    weekNumber: selectedWeek.week,
+                    year: selectedWeek.year,
+                    dayOfWeek,
+                    shiftId: menuMode === 'DIFFERENT_PER_SHIFT' ? shiftId : null,
+                    menuMode,
+                    menuItemId
+                });
+            }
             setShowMenuSelector(null);
             toast.success('Menu berhasil ditambahkan');
             loadData();
@@ -358,7 +372,7 @@ export default function WeeklyMenuPage() {
                                     <thead>
                                         <tr className="bg-slate-50">
                                             <th className="text-left px-4 py-3 text-xs font-semibold text-slate-600 uppercase">
-                                                {menuMode === 'DIFFERENT_PER_SHIFT' ? 'Waktu Istirahat' : 'Hari'}
+                                                Waktu Istirahat
                                             </th>
                                             {weekData.dailyMenus.map(day => (
                                                 <th key={day.date} className="text-center px-2 py-3 min-w-[120px]">
@@ -370,41 +384,53 @@ export default function WeeklyMenuPage() {
                                     </thead>
                                     <tbody>
                                         {menuMode === 'SAME_ALL_SHIFTS' ? (
-                                            <tr className="border-t border-slate-100">
-                                                <td className="px-4 py-3 text-sm font-medium text-slate-700">Menu</td>
-                                                {weekData.dailyMenus.map(day => {
-                                                    const menu = day.menus.find(m => !m.shiftId);
-                                                    return (
-                                                        <td key={day.date} className="px-2 py-3">
-                                                            {menu ? (
-                                                                <div className="bg-slate-50 rounded-lg p-2 relative group">
-                                                                    {menu.menuItem.imageUrl && (
-                                                                        <img src={menu.menuItem.imageUrl} alt="" className="w-full h-16 object-cover rounded mb-2" />
-                                                                    )}
-                                                                    <p className="text-xs font-medium text-slate-800 line-clamp-2">{menu.menuItem.name}</p>
-                                                                    <p className="text-[10px] text-slate-400 flex items-center gap-1 mt-1">
-                                                                        <Store className="w-2.5 h-2.5" />
-                                                                        {menu.menuItem.vendor.name}
-                                                                    </p>
+                                            groupShiftsByBreakTime(weekData.shifts).map(group => (
+                                                <tr key={group.key} className="border-t border-slate-100">
+                                                    <td className="px-4 py-3">
+                                                        <p className="text-sm font-medium text-slate-700">
+                                                            {group.isGrouped ? group.label : group.shifts[0].name}
+                                                        </p>
+                                                        {group.isGrouped && (
+                                                            <p className="text-[10px] text-slate-400">
+                                                                {group.shifts.map(s => s.name).join(', ')}
+                                                            </p>
+                                                        )}
+                                                    </td>
+                                                    {weekData.dailyMenus.map(day => {
+                                                        // Find menu for this break time group (using first shift's id as key)
+                                                        const menu = day.menus.find(m => group.shiftIds.includes(m.shiftId || ''));
+                                                        return (
+                                                            <td key={`${day.date}-${group.key}`} className="px-2 py-3">
+                                                                {menu ? (
+                                                                    <div className="bg-slate-50 rounded-lg p-2 relative group">
+                                                                        {menu.menuItem.imageUrl && (
+                                                                            <img src={menu.menuItem.imageUrl} alt="" className="w-full h-16 object-cover rounded mb-2" />
+                                                                        )}
+                                                                        <p className="text-xs font-medium text-slate-800 line-clamp-2">{menu.menuItem.name}</p>
+                                                                        <p className="text-[10px] text-slate-400 flex items-center gap-1 mt-1">
+                                                                            <Store className="w-2.5 h-2.5" />
+                                                                            {menu.menuItem.vendor.name}
+                                                                        </p>
+                                                                        <button
+                                                                            onClick={() => deleteMenu(menu.id)}
+                                                                            className="absolute top-1 right-1 p-1 bg-red-500 text-white rounded opacity-0 group-hover:opacity-100 transition-opacity"
+                                                                        >
+                                                                            <Trash2 className="w-3 h-3" />
+                                                                        </button>
+                                                                    </div>
+                                                                ) : (
                                                                     <button
-                                                                        onClick={() => deleteMenu(menu.id)}
-                                                                        className="absolute top-1 right-1 p-1 bg-red-500 text-white rounded opacity-0 group-hover:opacity-100 transition-opacity"
+                                                                        onClick={() => setShowMenuSelector({ dayOfWeek: day.dayOfWeek, shiftId: group.shiftIds[0], shiftIds: group.shiftIds })}
+                                                                        className="w-full h-20 border-2 border-dashed border-slate-200 rounded-lg hover:border-teal-400 hover:bg-teal-50/50 transition-colors flex items-center justify-center"
                                                                     >
-                                                                        <Trash2 className="w-3 h-3" />
+                                                                        <Pizza className="w-5 h-5 text-slate-300" />
                                                                     </button>
-                                                                </div>
-                                                            ) : (
-                                                                <button
-                                                                    onClick={() => setShowMenuSelector({ dayOfWeek: day.dayOfWeek, shiftId: null })}
-                                                                    className="w-full h-20 border-2 border-dashed border-slate-200 rounded-lg hover:border-teal-400 hover:bg-teal-50/50 transition-colors flex items-center justify-center"
-                                                                >
-                                                                    <Pizza className="w-5 h-5 text-slate-300" />
-                                                                </button>
-                                                            )}
-                                                        </td>
-                                                    );
-                                                })}
-                                            </tr>
+                                                                )}
+                                                            </td>
+                                                        );
+                                                    })}
+                                                </tr>
+                                            ))
                                         ) : (
                                             groupShiftsByBreakTime(weekData.shifts).map(group => (
                                                 <tr key={group.key} className="border-t border-slate-100">
@@ -522,7 +548,7 @@ export default function WeeklyMenuPage() {
                                     {menuItems.map(item => (
                                         <button
                                             key={item.id}
-                                            onClick={() => setMenu(showMenuSelector.dayOfWeek, showMenuSelector.shiftId, item.id)}
+                                            onClick={() => setMenu(showMenuSelector.dayOfWeek, showMenuSelector.shiftId, item.id, showMenuSelector.shiftIds)}
                                             className="p-3 border border-slate-200 rounded-xl hover:border-teal-400 hover:bg-teal-50 transition-colors text-left"
                                         >
                                             {item.imageUrl ? (
