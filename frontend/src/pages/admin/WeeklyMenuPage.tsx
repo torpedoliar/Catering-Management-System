@@ -41,7 +41,39 @@ interface Shift {
     name: string;
     startTime: string;
     endTime: string;
+    breakStartTime?: string | null;
+    breakEndTime?: string | null;
 }
+
+interface ShiftGroup {
+    key: string;
+    label: string;
+    shifts: Shift[];
+    shiftIds: string[];
+    isGrouped: boolean;
+}
+
+// Group shifts by break time for merged display
+const groupShiftsByBreakTime = (shifts: Shift[]): ShiftGroup[] => {
+    const groups: Map<string, Shift[]> = new Map();
+
+    shifts.forEach(shift => {
+        const key = shift.breakStartTime && shift.breakEndTime
+            ? `${shift.breakStartTime}-${shift.breakEndTime}`
+            : `_shift_${shift.id}`;
+
+        if (!groups.has(key)) groups.set(key, []);
+        groups.get(key)!.push(shift);
+    });
+
+    return Array.from(groups.entries()).map(([key, shiftsInGroup]) => ({
+        key,
+        label: key.startsWith('_shift_') ? shiftsInGroup[0].name : key,
+        shifts: shiftsInGroup,
+        shiftIds: shiftsInGroup.map(s => s.id),
+        isGrouped: !key.startsWith('_shift_')
+    })).sort((a, b) => a.shifts[0].startTime.localeCompare(b.shifts[0].startTime));
+};
 
 const categories = ['Nasi', 'Mie', 'Lauk', 'Sayur', 'Buah', 'Minuman', 'Snack', 'Lainnya'];
 
@@ -62,6 +94,7 @@ export default function WeeklyMenuPage() {
     const [menuItemForm, setMenuItemForm] = useState({ name: '', description: '', category: '', vendorId: '' });
     const [imageFile, setImageFile] = useState<File | null>(null);
     const [savingMenuItem, setSavingMenuItem] = useState(false);
+    const [lightboxImage, setLightboxImage] = useState<string | null>(null);
 
     const loadData = useCallback(async () => {
         setLoading(true);
@@ -303,7 +336,7 @@ export default function WeeklyMenuPage() {
                                     onChange={() => setMenuMode('SAME_ALL_SHIFTS')}
                                     className="text-teal-600"
                                 />
-                                <span className="text-sm text-slate-600">Menu Sama Semua Shift</span>
+                                <span className="text-sm text-slate-600">Menu Setiap Waktu Istirahat</span>
                             </label>
                             <label className="flex items-center gap-2 cursor-pointer">
                                 <input
@@ -312,7 +345,7 @@ export default function WeeklyMenuPage() {
                                     onChange={() => setMenuMode('DIFFERENT_PER_SHIFT')}
                                     className="text-teal-600"
                                 />
-                                <span className="text-sm text-slate-600">Menu Berbeda Per Shift</span>
+                                <span className="text-sm text-slate-600">Menu Berbeda Per Waktu Istirahat</span>
                             </label>
                         </div>
                     </div>
@@ -325,7 +358,7 @@ export default function WeeklyMenuPage() {
                                     <thead>
                                         <tr className="bg-slate-50">
                                             <th className="text-left px-4 py-3 text-xs font-semibold text-slate-600 uppercase">
-                                                {menuMode === 'DIFFERENT_PER_SHIFT' ? 'Shift' : 'Hari'}
+                                                {menuMode === 'DIFFERENT_PER_SHIFT' ? 'Waktu Istirahat' : 'Hari'}
                                             </th>
                                             {weekData.dailyMenus.map(day => (
                                                 <th key={day.date} className="text-center px-2 py-3 min-w-[120px]">
@@ -373,13 +406,23 @@ export default function WeeklyMenuPage() {
                                                 })}
                                             </tr>
                                         ) : (
-                                            weekData.shifts.map(shift => (
-                                                <tr key={shift.id} className="border-t border-slate-100">
-                                                    <td className="px-4 py-3 text-sm font-medium text-slate-700">{shift.name}</td>
+                                            groupShiftsByBreakTime(weekData.shifts).map(group => (
+                                                <tr key={group.key} className="border-t border-slate-100">
+                                                    <td className="px-4 py-3">
+                                                        <p className="text-sm font-medium text-slate-700">
+                                                            {group.isGrouped ? group.label : group.shifts[0].name}
+                                                        </p>
+                                                        {group.isGrouped && (
+                                                            <p className="text-[10px] text-slate-400">
+                                                                {group.shifts.map(s => s.name).join(', ')}
+                                                            </p>
+                                                        )}
+                                                    </td>
                                                     {weekData.dailyMenus.map(day => {
-                                                        const menu = day.menus.find(m => m.shiftId === shift.id);
+                                                        // Find menu for any shift in this group
+                                                        const menu = day.menus.find(m => group.shiftIds.includes(m.shiftId || ''));
                                                         return (
-                                                            <td key={`${day.date}-${shift.id}`} className="px-2 py-3">
+                                                            <td key={`${day.date}-${group.key}`} className="px-2 py-3">
                                                                 {menu ? (
                                                                     <div className="bg-slate-50 rounded-lg p-2 relative group">
                                                                         <p className="text-xs font-medium text-slate-800 line-clamp-2">{menu.menuItem.name}</p>
@@ -393,7 +436,7 @@ export default function WeeklyMenuPage() {
                                                                     </div>
                                                                 ) : (
                                                                     <button
-                                                                        onClick={() => setShowMenuSelector({ dayOfWeek: day.dayOfWeek, shiftId: shift.id })}
+                                                                        onClick={() => setShowMenuSelector({ dayOfWeek: day.dayOfWeek, shiftId: group.shiftIds[0] })}
                                                                         className="w-full h-12 border-2 border-dashed border-slate-200 rounded-lg hover:border-teal-400 hover:bg-teal-50/50 transition-colors flex items-center justify-center"
                                                                     >
                                                                         <Pizza className="w-4 h-4 text-slate-300" />
@@ -417,32 +460,37 @@ export default function WeeklyMenuPage() {
                             <h2 className="font-semibold text-slate-800">Daftar Menu</h2>
                             <span className="text-sm text-slate-400">{menuItems.length} menu</span>
                         </div>
-                        <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-6 gap-3">
+                        <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-4">
                             {menuItems.map(item => (
                                 <div key={item.id} className="relative group">
-                                    <div className="bg-slate-50 rounded-lg p-2">
+                                    <div className="bg-slate-50 rounded-xl p-3 hover:shadow-md transition-shadow">
                                         {item.imageUrl ? (
-                                            <img src={item.imageUrl} alt={item.name} className="w-full h-16 object-cover rounded mb-2" />
+                                            <img
+                                                src={item.imageUrl}
+                                                alt={item.name}
+                                                className="w-full h-28 object-cover rounded-lg mb-2 cursor-pointer hover:opacity-90 transition-opacity"
+                                                onClick={() => setLightboxImage(item.imageUrl)}
+                                            />
                                         ) : (
-                                            <div className="w-full h-16 bg-slate-200 rounded mb-2 flex items-center justify-center">
-                                                <Pizza className="w-6 h-6 text-slate-400" />
+                                            <div className="w-full h-28 bg-slate-200 rounded-lg mb-2 flex items-center justify-center">
+                                                <Pizza className="w-8 h-8 text-slate-400" />
                                             </div>
                                         )}
-                                        <p className="text-xs font-medium text-slate-800 line-clamp-1">{item.name}</p>
-                                        <p className="text-[10px] text-slate-400">{item.vendor.name}</p>
+                                        <p className="text-sm font-medium text-slate-800 line-clamp-2">{item.name}</p>
+                                        <p className="text-xs text-slate-400 mt-1">{item.vendor.name}</p>
                                     </div>
-                                    <div className="absolute top-1 right-1 flex gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
+                                    <div className="absolute top-2 right-2 flex gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
                                         <button
                                             onClick={() => openMenuItemForm(item)}
-                                            className="p-1 bg-blue-500 text-white rounded"
+                                            className="p-1.5 bg-blue-500 text-white rounded-lg shadow-sm"
                                         >
-                                            <Edit2 className="w-3 h-3" />
+                                            <Edit2 className="w-3.5 h-3.5" />
                                         </button>
                                         <button
                                             onClick={() => deleteMenuItem(item)}
-                                            className="p-1 bg-red-500 text-white rounded"
+                                            className="p-1.5 bg-red-500 text-white rounded-lg shadow-sm"
                                         >
-                                            <Trash2 className="w-3 h-3" />
+                                            <Trash2 className="w-3.5 h-3.5" />
                                         </button>
                                     </div>
                                 </div>
@@ -626,6 +674,27 @@ export default function WeeklyMenuPage() {
                             <button onClick={copyWeek} className="btn-primary">Copy</button>
                         </div>
                     </div>
+                </div>
+            )}
+
+            {/* Image Lightbox */}
+            {lightboxImage && (
+                <div
+                    className="fixed inset-0 z-50 flex items-center justify-center bg-black/90 backdrop-blur-sm"
+                    onClick={() => setLightboxImage(null)}
+                >
+                    <button
+                        onClick={() => setLightboxImage(null)}
+                        className="absolute top-4 right-4 p-2 bg-white/10 hover:bg-white/20 rounded-full text-white transition-colors"
+                    >
+                        <X className="w-6 h-6" />
+                    </button>
+                    <img
+                        src={lightboxImage}
+                        alt="Menu Preview"
+                        className="max-w-[90vw] max-h-[85vh] object-contain rounded-lg shadow-2xl"
+                        onClick={e => e.stopPropagation()}
+                    />
                 </div>
             )}
         </div>

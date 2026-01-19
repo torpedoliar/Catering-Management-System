@@ -67,7 +67,7 @@ router.get('/', authMiddleware, async (req: AuthRequest, res: Response) => {
         const shifts = await prisma.shift.findMany({
             where: { isActive: true },
             orderBy: { startTime: 'asc' },
-            select: { id: true, name: true, startTime: true, endTime: true }
+            select: { id: true, name: true, startTime: true, endTime: true, breakStartTime: true, breakEndTime: true }
         });
 
         // Get weekly menus
