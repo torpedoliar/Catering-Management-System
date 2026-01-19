@@ -1792,6 +1792,8 @@ router.get('/stats/range', authMiddleware, adminMiddleware, async (req: AuthRequ
                 shiftName: shift?.name,
                 startTime: shift?.startTime,
                 endTime: shift?.endTime,
+                breakStartTime: shift?.breakStartTime,
+                breakEndTime: shift?.breakEndTime,
                 count: s._count.id,
             };
         });

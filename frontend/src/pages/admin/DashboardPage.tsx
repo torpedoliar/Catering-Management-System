@@ -32,8 +32,42 @@ interface ShiftStats {
     shiftName: string;
     startTime: string;
     endTime: string;
+    breakStartTime?: string | null;
+    breakEndTime?: string | null;
     count: number;
 }
+
+interface ShiftGroup {
+    key: string;
+    label: string;
+    shifts: ShiftStats[];
+    shiftIds: string[];
+    isGrouped: boolean;
+    totalCount: number;
+}
+
+// Group shifts by break time for merged display
+const groupShiftsByBreakTime = (shifts: ShiftStats[]): ShiftGroup[] => {
+    const groups: Map<string, ShiftStats[]> = new Map();
+
+    shifts.forEach(shift => {
+        const key = shift.breakStartTime && shift.breakEndTime
+            ? `${shift.breakStartTime}-${shift.breakEndTime}`
+            : `_shift_${shift.shiftId}`;
+
+        if (!groups.has(key)) groups.set(key, []);
+        groups.get(key)!.push(shift);
+    });
+
+    return Array.from(groups.entries()).map(([key, shiftsInGroup]) => ({
+        key,
+        label: key.startsWith('_shift_') ? shiftsInGroup[0].shiftName : key,
+        shifts: shiftsInGroup,
+        shiftIds: shiftsInGroup.map(s => s.shiftId),
+        isGrouped: !key.startsWith('_shift_'),
+        totalCount: shiftsInGroup.reduce((sum, s) => sum + s.count, 0)
+    })).sort((a, b) => a.shifts[0].startTime.localeCompare(b.shifts[0].startTime));
+};
 
 interface CanteenStats {
     canteenId: string;
@@ -434,28 +468,40 @@ export default function DashboardPage() {
 
             {/* Main Grid - Row 1: Shift Performance (Full Width) */}
             <div className="grid grid-cols-1 gap-6">
-                {/* Shift Performance with Donut Charts */}
+                {/* Shift Performance with Donut Charts - Grouped by Break Time */}
                 <div className="card">
                     <div className="flex items-center gap-3 mb-6">
                         <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-primary-500 to-accent-purple flex items-center justify-center">
                             <TrendingUp className="w-5 h-5 text-white" />
                         </div>
-                        <h2 className="text-lg font-bold text-white">Pengambilan Makan per Shift</h2>
+                        <h2 className="text-lg font-bold text-white">Pengambilan Makan per Waktu Istirahat</h2>
                     </div>
                     <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
-                        {stats?.byShift?.map((shift) => {
-                            // Use allFilteredOrders for accurate count (not todayOrders which is limited to 10)
-                            const shiftOrders = allFilteredOrders.filter(o => o.shift.name === shift.shiftName && o.status !== 'CANCELLED');
-                            const pickedUp = shiftOrders.filter(o => o.status === 'PICKED_UP').length;
-                            const pending = shiftOrders.filter(o => o.status === 'ORDERED').length;
-                            const noShow = shiftOrders.filter(o => o.status === 'NO_SHOW').length;
-                            const total = shiftOrders.length;
+                        {stats?.byShift && groupShiftsByBreakTime(stats.byShift).map((group) => {
+                            // Calculate combined stats for all shifts in this group
+                            const groupOrders = allFilteredOrders.filter(o =>
+                                group.shifts.some(s => s.shiftName === o.shift.name) && o.status !== 'CANCELLED'
+                            );
+                            const pickedUp = groupOrders.filter(o => o.status === 'PICKED_UP').length;
+                            const pending = groupOrders.filter(o => o.status === 'ORDERED').length;
+                            const noShow = groupOrders.filter(o => o.status === 'NO_SHOW').length;
+                            const total = groupOrders.length;
 
                             return (
-                                <div key={shift.shiftId} className="p-4 rounded-2xl bg-white/5 border border-white/5 hover:border-primary-500/30 transition-all">
+                                <div key={group.key} className="p-4 rounded-2xl bg-white/5 border border-white/5 hover:border-primary-500/30 transition-all">
                                     <div className="text-center mb-3">
-                                        <p className="font-semibold text-white">{shift.shiftName}</p>
-                                        <p className="text-xs text-white/40">{shift.startTime} - {shift.endTime}</p>
+                                        <p className="font-semibold text-white">
+                                            {group.isGrouped ? group.label : group.shifts[0].shiftName}
+                                        </p>
+                                        {group.isGrouped ? (
+                                            <p className="text-xs text-white/40 mt-0.5">
+                                                {group.shifts.map(s => s.shiftName).join(', ')}
+                                            </p>
+                                        ) : (
+                                            <p className="text-xs text-white/40">
+                                                {group.shifts[0].startTime} - {group.shifts[0].endTime}
+                                            </p>
+                                        )}
                                     </div>
 
                                     {/* Donut Chart */}
