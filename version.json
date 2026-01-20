@@ -1,6 +1,6 @@
 {
-    "version": "1.8.1",
-    "releaseDate": "2026-01-19",
+    "version": "1.8.2",
+    "releaseDate": "2026-01-20",
     "minDatabaseVersion": "1.0.0",
     "changelog": [
         "Feature: Group pickup stats by break time on Vendor Pickup Stats page",
@@ -9,7 +9,10 @@
         "Feature: Menu per break time saves to all shifts automatically",
         "Feature: Group menus by break time on Lihat Menu page",
         "Feature: Larger menu images with lightbox preview on Weekly Menu",
-        "UI: Renamed labels to 'Waktu Istirahat' across all pages"
+        "UI: Renamed labels to 'Waktu Istirahat' across all pages",
+        "Fix: Show shift names for all break times in Lihat Menu page",
+        "Fix: Show all shift names in Dashboard break time groups",
+        "Fix: Removed redundant menu mode toggle in Weekly Menu"
     ],
     "repository": "https://github.com/torpedoliar/Catering-Management-System",
     "branch": "main"
