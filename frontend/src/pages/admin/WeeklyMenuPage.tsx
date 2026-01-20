@@ -341,26 +341,9 @@ export default function WeeklyMenuPage() {
                             </button>
                         </div>
 
-                        {/* Mode Toggle */}
-                        <div className="flex items-center justify-center gap-4 mt-4 pt-4 border-t border-slate-100">
-                            <label className="flex items-center gap-2 cursor-pointer">
-                                <input
-                                    type="radio"
-                                    checked={menuMode === 'SAME_ALL_SHIFTS'}
-                                    onChange={() => setMenuMode('SAME_ALL_SHIFTS')}
-                                    className="text-teal-600"
-                                />
-                                <span className="text-sm text-slate-600">Menu Setiap Waktu Istirahat</span>
-                            </label>
-                            <label className="flex items-center gap-2 cursor-pointer">
-                                <input
-                                    type="radio"
-                                    checked={menuMode === 'DIFFERENT_PER_SHIFT'}
-                                    onChange={() => setMenuMode('DIFFERENT_PER_SHIFT')}
-                                    className="text-teal-600"
-                                />
-                                <span className="text-sm text-slate-600">Menu Berbeda Per Waktu Istirahat</span>
-                            </label>
+                        {/* Mode indicator */}
+                        <div className="flex items-center justify-center gap-2 mt-4 pt-4 border-t border-slate-100">
+                            <span className="text-sm text-teal-600 font-medium">● Menu Setiap Waktu Istirahat</span>
                         </div>
                     </div>
 

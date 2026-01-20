@@ -74,7 +74,7 @@ const groupMenusByBreakTime = (menus: DayMenu[], shifts: Shift[]): MenuGroup[] =
             label: key.startsWith('_') ? (shiftNames[0] || 'Menu') : key,
             shiftNames,
             menus: menusInGroup,
-            isGrouped: !key.startsWith('_') && menusInGroup.length > 1
+            isGrouped: !key.startsWith('_')
         };
     }).sort((a, b) => {
         const timeA = a.key.startsWith('_') ? '99:99' : a.key;

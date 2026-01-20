@@ -42,6 +42,7 @@ interface ShiftGroup {
     label: string;
     shifts: ShiftStats[];
     shiftIds: string[];
+    shiftNames: string[];
     isGrouped: boolean;
     totalCount: number;
 }
@@ -64,6 +65,7 @@ const groupShiftsByBreakTime = (shifts: ShiftStats[]): ShiftGroup[] => {
         label: key.startsWith('_shift_') ? shiftsInGroup[0].shiftName : key,
         shifts: shiftsInGroup,
         shiftIds: shiftsInGroup.map(s => s.shiftId),
+        shiftNames: shiftsInGroup.map(s => s.shiftName),
         isGrouped: !key.startsWith('_shift_'),
         totalCount: shiftsInGroup.reduce((sum, s) => sum + s.count, 0)
     })).sort((a, b) => a.shifts[0].startTime.localeCompare(b.shifts[0].startTime));
