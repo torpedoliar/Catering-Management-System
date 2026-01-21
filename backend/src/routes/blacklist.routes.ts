@@ -238,11 +238,8 @@ router.post('/:id/unblock', authMiddleware, adminMiddleware, async (req: AuthReq
             },
         });
 
-        // Reset user's no-show count
-        await prisma.user.update({
-            where: { id: blacklist.userId },
-            data: { noShowCount: 0 },
-        });
+        // NOTE: We do NOT reset noShowCount here to preserve strike history
+        // Admin can use reset-strikes endpoint separately if needed
 
         // Log unblock action with detailed info
         await logBlacklist('USER_UNBLOCKED', req.user || null, blacklist.user, context, {
