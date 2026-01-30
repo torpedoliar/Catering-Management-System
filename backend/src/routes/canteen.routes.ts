@@ -130,8 +130,10 @@ router.post('/', authMiddleware, adminMiddleware, async (req: AuthRequest, res: 
 
         const { name, location, capacity, isActive } = validationResult.data;
 
-        // Check duplicate name
-        const existing = await prisma.canteen.findUnique({ where: { name } });
+        // Check duplicate name (case-insensitive)
+        const existing = await prisma.canteen.findFirst({
+            where: { name: { equals: name, mode: 'insensitive' } }
+        });
         if (existing) {
             return res.status(400).json({ error: 'Nama kantin sudah digunakan' });
         }
@@ -176,9 +178,14 @@ router.put('/:id', authMiddleware, adminMiddleware, async (req: AuthRequest, res
             return res.status(404).json({ error: 'Kantin tidak ditemukan' });
         }
 
-        // Check duplicate name if changing
+        // Check duplicate name if changing (case-insensitive)
         if (name && name !== existing.name) {
-            const duplicate = await prisma.canteen.findUnique({ where: { name } });
+            const duplicate = await prisma.canteen.findFirst({
+                where: {
+                    name: { equals: name, mode: 'insensitive' },
+                    id: { not: id }
+                }
+            });
             if (duplicate) {
                 return res.status(400).json({ error: 'Nama kantin sudah digunakan' });
             }

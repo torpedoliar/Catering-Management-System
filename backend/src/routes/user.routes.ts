@@ -302,6 +302,13 @@ router.put('/:id', authMiddleware, adminMiddleware, upload.single('photo'), asyn
             data: updateData,
         });
 
+        // Invalidate canteen cache if preferred canteen changed (to update user counts)
+        if (preferredCanteenId !== undefined) {
+            const { cacheService } = await import('../services/cache.service');
+            await cacheService.delete('canteens:active');
+            await cacheService.delete('canteens:all');
+        }
+
         // Log audit
         await logUserManagement('UPDATE', req.user || null, user, getRequestContext(req), { oldValue: oldUser });
 
@@ -441,9 +448,9 @@ router.post('/import', authMiddleware, adminMiddleware, apiRateLimitMiddleware('
         });
 
         for (const canteenName of uniqueCanteenNames) {
-            // Look up canteen by NAME (not by id)
-            let canteen = await prisma.canteen.findUnique({
-                where: { name: canteenName }
+            // Look up canteen by NAME (case-insensitive)
+            let canteen = await prisma.canteen.findFirst({
+                where: { name: { equals: canteenName, mode: 'insensitive' } }
             });
 
             if (!canteen) {
