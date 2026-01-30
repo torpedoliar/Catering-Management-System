@@ -9,6 +9,7 @@
         "Feature: Menu per break time saves to all shifts automatically",
         "Feature: Group menus by break time on Lihat Menu page",
         "Feature: Larger menu images with lightbox preview on Weekly Menu",
+        "Feature: Auto-select default canteen for CANTEEN role users on Check-in page",
         "UI: Renamed labels to 'Waktu Istirahat' across all pages",
         "Fix: Show shift names for all break times in Lihat Menu page",
         "Fix: Show all shift names in Dashboard break time groups",
