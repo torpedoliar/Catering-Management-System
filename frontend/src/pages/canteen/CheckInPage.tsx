@@ -1,7 +1,7 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
 import { format } from 'date-fns';
 import { id as idLocale } from 'date-fns/locale';
-import { api, useAuth } from '../../contexts/AuthContext';
+import { api } from '../../contexts/AuthContext';
 import { useSSE, useSSERefresh, ORDER_EVENTS } from '../../contexts/SSEContext';
 import { ScanLine, Search, CheckCircle2, AlertCircle, Loader2, Wifi, X, User as UserIcon, Building2, Briefcase, Clock, Zap, Calendar, Camera, MapPin } from 'lucide-react';
 import toast from 'react-hot-toast';
@@ -154,7 +154,6 @@ function SuccessPopup({ show, data, onClose }: SuccessPopupProps) {
 }
 
 export default function CheckInPage() {
-    const { user } = useAuth();
     const { isConnected, connectedClients } = useSSE();
     const [searchInput, setSearchInput] = useState('');
     const [isProcessing, setIsProcessing] = useState(false);
@@ -215,14 +214,29 @@ export default function CheckInPage() {
 
     // Auto-select default canteen for CANTEEN role users
     useEffect(() => {
-        if (user?.role === 'CANTEEN' && user.preferredCanteenId && canteens.length > 0) {
-            // Only auto-select if canteen exists in the list
-            const userCanteen = canteens.find(c => c.id === user.preferredCanteenId);
-            if (userCanteen && !selectedCanteenId) {
-                setSelectedCanteenId(user.preferredCanteenId);
+        const autoSelectCanteen = async () => {
+            // Fetch fresh user data to get latest preferredCanteenId
+            try {
+                const userRes = await api.get('/api/auth/me');
+                const userData = userRes.data;
+
+                if (userData?.role === 'CANTEEN' && userData.preferredCanteenId && canteens.length > 0) {
+                    // Only auto-select if canteen exists in the list and not already selected
+                    const userCanteen = canteens.find(c => c.id === userData.preferredCanteenId);
+                    if (userCanteen && !selectedCanteenId) {
+                        console.log('Auto-selecting canteen:', userCanteen.name);
+                        setSelectedCanteenId(userData.preferredCanteenId);
+                    }
+                }
+            } catch (error) {
+                console.error('Failed to fetch user for auto-select:', error);
             }
+        };
+
+        if (canteens.length > 0 && !selectedCanteenId) {
+            autoSelectCanteen();
         }
-    }, [user, canteens, selectedCanteenId]);
+    }, [canteens, selectedCanteenId]);
 
     const togglePhotoSetting = async () => {
         try {
