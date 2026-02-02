@@ -1371,6 +1371,7 @@ router.get('/export', authMiddleware, adminMiddleware, async (req: AuthRequest, 
         let totalMealCost = 0;
         let totalActualCost = 0;
         let totalWasteCost = 0;
+        let totalPendingCost = 0; // Biaya order dengan status ORDERED (menunggu)
 
         // Company cost breakdown
         const companyCosts: Record<string, { orders: number; pickedUp: number; noShow: number; cancelled: number; totalCost: number; wasteCost: number }> = {};
@@ -1389,6 +1390,8 @@ router.get('/export', authMiddleware, adminMiddleware, async (req: AuthRequest, 
                 actualCost = mealPrice;
             } else if (order.status === 'NO_SHOW') {
                 wasteCost = mealPrice;
+            } else if (order.status === 'ORDERED') {
+                totalPendingCost += mealPrice;
             }
             // Cancelled orders = no cost
 
@@ -1535,7 +1538,7 @@ router.get('/export', authMiddleware, adminMiddleware, async (req: AuthRequest, 
         const summaryData = [
             ['Total Pesanan', stats.total, '100%', totalMealCost],
             ['Diambil (PICKED_UP)', stats.pickedUp, `${stats.total > 0 ? Math.round((stats.pickedUp / stats.total) * 100) : 0}%`, totalActualCost],
-            ['Menunggu (ORDERED)', stats.pending, `${stats.total > 0 ? Math.round((stats.pending / stats.total) * 100) : 0}%`, stats.pending * 25000],
+            ['Menunggu (ORDERED)', stats.pending, `${stats.total > 0 ? Math.round((stats.pending / stats.total) * 100) : 0}%`, totalPendingCost],
             ['Tidak Diambil (NO_SHOW)', stats.noShow, `${wasteRate}%`, totalWasteCost],
             ['Dibatalkan', stats.cancelled, '-', 0],
         ];
