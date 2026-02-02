@@ -1775,7 +1775,7 @@ router.get('/stats/range', authMiddleware, adminMiddleware, async (req: AuthRequ
                     departmentStats[dept] = { total: 0, pickedUp: 0, pending: 0, cost: 0, byShift: {} };
                 }
                 departmentStats[dept].total++;
-                departmentStats[dept].cost += Number(order.shift?.mealPrice) || 25000;
+                departmentStats[dept].cost += Number((order as any).mealPrice) || Number(order.shift?.mealPrice) || 25000;
                 if (order.status === 'PICKED_UP') departmentStats[dept].pickedUp++;
                 if (order.status === 'ORDERED') departmentStats[dept].pending++;
 
