@@ -183,7 +183,7 @@ export async function listBackups(): Promise<BackupInfo[]> {
     }
 }
 
-export async function createBackup(userId: string, notes?: string): Promise<BackupInfo> {
+export async function createBackup(userId: string | null, notes?: string): Promise<BackupInfo> {
     const timestamp = new Date().toISOString().replace(/[:.]/g, '-');
     const filename = `backup_${timestamp}.sql`;
     const filepath = path.join(BACKUP_DIR, filename);

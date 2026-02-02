@@ -31,29 +31,48 @@ export function startScheduler() {
 
     // Run Auto Backup check daily at 02:00 AM
     cron.schedule('0 2 * * *', async () => {
-        try {
-            const settings = await prisma.settings.findUnique({ where: { id: 'default' } });
-            if (!settings?.autoBackupEnabled) return;
-
-            const now = new Date();
-            const lastBackup = settings.lastAutoBackup ? new Date(settings.lastAutoBackup) : new Date(0);
-            const intervalMs = settings.autoBackupInterval * 24 * 60 * 60 * 1000;
-
-            if (now.getTime() - lastBackup.getTime() >= intervalMs) {
-                console.log('[Scheduler] Running Auto Backup...');
-                await createBackup('SYSTEM', 'Auto Backup');
-                await prisma.settings.update({
-                    where: { id: 'default' },
-                    data: { lastAutoBackup: now }
-                });
-            }
-        } catch (error) {
-            console.error('[Scheduler] Auto Backup failed:', error);
-        }
+        await runAutoBackupCheck();
     });
+
+    // Also check for auto backup on startup (in case missed during downtime)
+    setTimeout(async () => {
+        await runAutoBackupCheck();
+    }, 5000); // Wait 5 seconds after startup
 
     isSchedulerRunning = true;
     console.log('[Scheduler] No-show scheduler started (runs at :05 every hour)');
+    console.log('[Scheduler] Auto backup scheduler started (runs at 02:00 AM daily)');
+}
+
+async function runAutoBackupCheck() {
+    try {
+        const settings = await prisma.settings.findUnique({ where: { id: 'default' } });
+        if (!settings?.autoBackupEnabled) {
+            console.log('[Scheduler] Auto backup is disabled, skipping');
+            return;
+        }
+
+        const now = new Date();
+        const lastBackup = settings.lastAutoBackup ? new Date(settings.lastAutoBackup) : new Date(0);
+        const intervalMs = settings.autoBackupInterval * 24 * 60 * 60 * 1000;
+        const timeSinceLastBackup = now.getTime() - lastBackup.getTime();
+
+        console.log(`[Scheduler] Auto backup check - Last: ${lastBackup.toISOString()}, Interval: ${settings.autoBackupInterval} days, Since last: ${Math.round(timeSinceLastBackup / (24 * 60 * 60 * 1000))} days`);
+
+        if (timeSinceLastBackup >= intervalMs) {
+            console.log('[Scheduler] Running Auto Backup...');
+            await createBackup(null, 'Auto Backup');
+            await prisma.settings.update({
+                where: { id: 'default' },
+                data: { lastAutoBackup: now }
+            });
+            console.log('[Scheduler] Auto Backup completed successfully');
+        } else {
+            console.log('[Scheduler] Auto backup not due yet');
+        }
+    } catch (error) {
+        console.error('[Scheduler] Auto Backup failed:', error);
+    }
 }
 
 /**
