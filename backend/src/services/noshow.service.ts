@@ -116,6 +116,9 @@ export async function processNoShows(): Promise<NoShowResult> {
         const blacklistStrikes = settings?.blacklistStrikes ?? 3;
         const blacklistDuration = settings?.blacklistDuration ?? 7;
 
+        // Track users already blacklisted in this batch to prevent duplicates
+        const usersBlacklistedThisBatch = new Set<string>();
+
         // Process each order
         for (const order of pendingOrders) {
             // Mark order as NO_SHOW
@@ -158,8 +161,9 @@ export async function processNoShows(): Promise<NoShowResult> {
             console.log(`[NoShow Service] User ${updatedUser.name} now has ${updatedUser.noShowCount} no-shows`);
 
             // Check if user should be blacklisted
-            if (updatedUser.noShowCount >= blacklistStrikes) {
-                // Check if already blacklisted
+            if (updatedUser.noShowCount >= blacklistStrikes && !usersBlacklistedThisBatch.has(updatedUser.id)) {
+
+                // Check if already blacklisted in database
                 const existingBlacklist = await prisma.blacklist.findFirst({
                     where: {
                         userId: updatedUser.id,
@@ -186,6 +190,9 @@ export async function processNoShows(): Promise<NoShowResult> {
                             user: { select: { name: true, externalId: true } },
                         },
                     });
+
+                    // Track this user to prevent duplicate blacklists in this batch
+                    usersBlacklistedThisBatch.add(updatedUser.id);
 
                     result.newBlacklists++;
 
