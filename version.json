@@ -1,6 +1,6 @@
 {
-    "version": "1.8.5",
-    "releaseDate": "2026-02-02",
+    "version": "1.8.6",
+    "releaseDate": "2026-02-09",
     "minDatabaseVersion": "1.0.0",
     "changelog": [
         "Feature: Group pickup stats by break time on Vendor Pickup Stats page",
@@ -11,6 +11,7 @@
         "Feature: Larger menu images with lightbox preview on Weekly Menu",
         "Feature: Auto-select default canteen for CANTEEN role users on Check-in page",
         "UI: Renamed labels to 'Waktu Istirahat' across all pages",
+        "Fix: Prevent duplicate blacklist entries when multiple no-shows processed in same batch",
         "Fix: Cost report now uses actual mealPrice for ORDERED status instead of hardcoded Rp 25,000",
         "Fix: Department stats use historical mealPrice from order",
         "Fix: Auto backup scheduler now works correctly with startup check",
