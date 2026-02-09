@@ -24,16 +24,16 @@ export function formatToWIB(
         let date: Date;
 
         if (typeof dateInput === 'string') {
-            // Check if it's an ISO string with Z (UTC format from database)
-            if (dateInput.endsWith('Z') || dateInput.includes('+')) {
-                // Keep as-is, let JavaScript parse as UTC
-                date = new Date(dateInput);
-            } else if (dateInput.includes('T')) {
-                // ISO format without timezone - assume it's already WIB, add +07:00
-                date = new Date(dateInput + '+07:00');
+            // Database stores timestamps in WIB but Prisma adds 'Z' suffix
+            // Remove 'Z' to prevent JavaScript from treating it as UTC
+            const cleanTimestamp = dateInput.replace('Z', '');
+
+            if (cleanTimestamp.includes('T')) {
+                // ISO format - parse without timezone conversion
+                date = new Date(cleanTimestamp);
             } else {
                 // Simple date string
-                date = new Date(dateInput);
+                date = new Date(cleanTimestamp);
             }
         } else {
             date = new Date(dateInput);
@@ -41,10 +41,8 @@ export function formatToWIB(
 
         if (isNaN(date.getTime())) return '-';
 
-        return date.toLocaleString('id-ID', {
-            timeZone: 'Asia/Jakarta',
-            ...options
-        });
+        // Format without timezone conversion since data is already in WIB
+        return date.toLocaleString('id-ID', options);
     } catch {
         return '-';
     }
