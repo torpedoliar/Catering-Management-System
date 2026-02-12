@@ -13,6 +13,7 @@ import { apiRateLimitMiddleware } from '../services/rate-limiter.service';
 import { validate } from '../middleware/validate.middleware';
 import { createUserSchema, updateUserSchema } from '../utils/validation';
 import { UserWhereFilter, ImportUserData, ImportError } from '../types';
+import { getNow } from '../services/time.service';
 
 const router = Router();
 const storage = multer.memoryStorage();
@@ -79,7 +80,13 @@ router.get('/', authMiddleware, adminMiddleware, async (req: AuthRequest, res: R
                         select: { id: true, name: true, location: true }
                     },
                     blacklists: {
-                        where: { isActive: true },
+                        where: {
+                            isActive: true,
+                            OR: [
+                                { endDate: null },
+                                { endDate: { gt: getNow() } },
+                            ],
+                        },
                         select: { id: true, endDate: true },
                     },
                 },
@@ -121,7 +128,13 @@ router.get('/:id', authMiddleware, async (req: AuthRequest, res: Response) => {
                     include: { shift: true },
                 },
                 blacklists: {
-                    where: { isActive: true },
+                    where: {
+                        isActive: true,
+                        OR: [
+                            { endDate: null },
+                            { endDate: { gt: getNow() } },
+                        ],
+                    },
                 },
             },
         });

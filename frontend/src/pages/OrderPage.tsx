@@ -51,7 +51,7 @@ interface Canteen {
 }
 
 export default function OrderPage() {
-    const { user, refreshUser } = useAuth();
+    const { user, refreshUser, isLoading: authLoading } = useAuth();
     const { isConnected } = useSSE();
     const [shifts, setShifts] = useState<Shift[]>([]);
     const [selectedShift, setSelectedShift] = useState<string>('');
@@ -87,12 +87,7 @@ export default function OrderPage() {
 
     // Use ref to track if canteen has been initialized to prevent infinite loop
     const canteenInitializedRef = useRef(false);
-    const userPreferredCanteenRef = useRef(user?.preferredCanteenId);
 
-    // Update ref when user changes
-    useEffect(() => {
-        userPreferredCanteenRef.current = user?.preferredCanteenId;
-    }, [user?.preferredCanteenId]);
 
     const loadData = useCallback(async () => {
         try {
@@ -108,18 +103,7 @@ export default function OrderPage() {
             setTodayOrder(orderRes.data.order);
             setMaxOrderDaysAhead(settingsRes.data.maxOrderDaysAhead || 7);
             setCanteens(canteensRes.data.canteens || []);
-            // Auto-select user's preferred canteen only on first load
-            if (canteensRes.data.canteens?.length > 0 && !canteenInitializedRef.current) {
-                canteenInitializedRef.current = true;
-                // Check if user has a preferred canteen and it exists in the active canteens list
-                const preferred = canteensRes.data.canteens.find((c: Canteen) => c.id === userPreferredCanteenRef.current);
-
-                if (preferred) {
-                    setSelectedCanteen(preferred.id);
-                } else {
-                    setSelectedCanteen(canteensRes.data.canteens[0].id);
-                }
-            }
+            // Auto-select logic moved to useEffect to handle race conditions with user loading
         } catch (error) {
             console.error('Failed to load data:', error);
         } finally {
@@ -132,6 +116,25 @@ export default function OrderPage() {
     useEffect(() => {
         maxOrderDaysAheadRef.current = maxOrderDaysAhead;
     }, [maxOrderDaysAhead]);
+
+    // Handle initial canteen selection (waits for both canteens and user profile to be ready)
+    useEffect(() => {
+        if (canteens.length > 0 && !authLoading && !canteenInitializedRef.current) {
+            canteenInitializedRef.current = true;
+
+            // 1. Try to match user preference
+            if (user?.preferredCanteenId) {
+                const preferred = canteens.find(c => c.id === user.preferredCanteenId);
+                if (preferred) {
+                    setSelectedCanteen(preferred.id);
+                    return;
+                }
+            }
+
+            // 2. Fallback to first available canteen
+            setSelectedCanteen(canteens[0].id);
+        }
+    }, [canteens, authLoading, user?.preferredCanteenId]);
 
     // Track if bulk data has been loaded to prevent duplicate calls
     const bulkDataLoadedRef = useRef(false);
@@ -792,7 +795,7 @@ export default function OrderPage() {
                 {/* Order Button */}
                 <button
                     onClick={handleBulkOrder}
-                    disabled={!selectedShift || isOrdering || selectedDates.length === 0}
+                    disabled={!selectedShift || isOrdering || selectedDates.length === 0 || (canteens.length > 0 && !selectedCanteen)}
                     className="btn-primary w-full flex items-center justify-center gap-3 py-4 text-lg"
                 >
                     {isOrdering ? (
