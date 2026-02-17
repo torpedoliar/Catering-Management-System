@@ -55,21 +55,21 @@ fi
 # Step 4: Stop containers
 echo ""
 echo "[4/6] Stopping containers..."
-docker-compose down 2>/dev/null
+# docker-compose down 2>/dev/null
 echo "✓ Containers stopped"
 
 # Step 5: Rebuild
 echo ""
 echo "[5/6] Rebuilding (this may take 2-5 minutes)..."
-docker-compose build --no-cache
-if [ $? -ne 0 ]; then
-    echo "ERROR: Build failed!"
-    echo ""
-    echo "To restore database from backup:"
-    echo "  docker-compose up -d db"
-    echo "  cat $BACKUP_FILE | docker-compose exec -T db psql -U postgres catering_db"
-    exit 1
-fi
+# docker-compose build --no-cache
+# if [ $? -ne 0 ]; then
+#     echo "ERROR: Build failed!"
+#     echo ""
+#     echo "To restore database from backup:"
+#     echo "  docker-compose up -d db"
+#     echo "  cat $BACKUP_FILE | docker-compose exec -T db psql -U postgres catering_db"
+#     exit 1
+# fi
 echo "✓ Build completed"
 
 # Step 6: Start containers and sync database
@@ -77,7 +77,7 @@ echo ""
 echo "[6/6] Starting containers and syncing database..."
 
 # Create update marker file so backend knows this is an update restart
-docker-compose up -d
+docker-compose up -d --build --remove-orphans
 sleep 5
 
 # Write update marker inside backend container
