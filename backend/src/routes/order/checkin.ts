@@ -74,6 +74,7 @@ router.post('/checkin/qr', authMiddleware, canteenMiddleware, upload.single('pho
             include: {
                 user: { select: { id: true, name: true, externalId: true, company: true, division: true, department: true, photo: true } },
                 shift: true,
+                canteen: { select: { id: true, name: true, location: true } },
             },
         });
 
@@ -82,7 +83,12 @@ router.post('/checkin/qr', authMiddleware, canteenMiddleware, upload.single('pho
         }
 
         if (order.status === 'PICKED_UP') {
-            return res.status(400).json({ error: 'Pesanan sudah di-check in sebelumnya', order });
+            return res.status(400).json({
+                error: 'Pesanan sudah di-check in sebelumnya',
+                order,
+                checkedInBy: order.checkedInBy || 'System',
+                checkInTime: order.checkInTime,
+            });
         }
 
         if (order.status === 'CANCELLED') {
@@ -148,6 +154,7 @@ router.post('/checkin/qr', authMiddleware, canteenMiddleware, upload.single('pho
             include: {
                 user: { select: { id: true, name: true, externalId: true, company: true, division: true, department: true, photo: true } },
                 shift: true,
+                canteen: { select: { id: true, name: true, location: true } },
             },
         });
 
@@ -242,6 +249,31 @@ router.post('/checkin/manual', authMiddleware, canteenMiddleware, async (req: Au
             order = todayOrder;
         }
 
+        // Duplicate check-in detection
+        if (!order) {
+            const pickedUpOrder = await prisma.order.findFirst({
+                where: {
+                    userId: user.id,
+                    orderDate: { gte: yesterday, lt: tomorrow },
+                    status: 'PICKED_UP',
+                },
+                include: {
+                    user: { select: { id: true, name: true, externalId: true, company: true, division: true, department: true, photo: true } },
+                    shift: true,
+                    canteen: { select: { id: true, name: true, location: true } },
+                },
+            });
+
+            if (pickedUpOrder) {
+                return res.status(400).json({
+                    error: 'Pesanan sudah di-check in sebelumnya',
+                    order: pickedUpOrder,
+                    checkedInBy: pickedUpOrder.checkedInBy || 'System',
+                    checkInTime: pickedUpOrder.checkInTime,
+                });
+            }
+        }
+
         if (!order) {
             return res.status(404).json({ error: 'Tidak ada pesanan aktif untuk pengguna ini hari ini' });
         }
@@ -289,6 +321,7 @@ router.post('/checkin/manual', authMiddleware, canteenMiddleware, async (req: Au
             include: {
                 user: { select: { id: true, name: true, externalId: true, company: true, division: true, department: true, photo: true } },
                 shift: true,
+                canteen: { select: { id: true, name: true, location: true } },
             },
         });
 
@@ -297,7 +330,12 @@ router.post('/checkin/manual', authMiddleware, canteenMiddleware, async (req: Au
             timestamp: getNow().toISOString(),
         });
 
-        res.json({ message: 'Check-in berhasil', order: updatedOrder, checkedInBy: checkedInByUser?.name });
+        res.json({
+            message: 'Check-in berhasil',
+            order: updatedOrder,
+            checkInTime: updatedOrder.checkInTime,
+            checkInBy: checkedInByUser?.name || 'Admin',
+        });
     } catch (error) {
         console.error('Manual check-in error:', error);
         res.status(500).json({ error: ErrorMessages.SERVER_ERROR });

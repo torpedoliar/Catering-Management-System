@@ -74,12 +74,12 @@ function SuccessPopup({ show, data, onClose }: SuccessPopupProps) {
 
     return (
         <div className="modal-backdrop flex items-center justify-center p-4 animate-fade-in">
-            <div className={`modal-content p-8 max-w-lg w-full relative overflow-hidden ${isSuccess ? 'border-success/30' : 'border-warning/30'}`}>
-                <div className={`absolute inset-0 opacity-30 ${isSuccess ? 'bg-gradient-to-br from-success/30 to-transparent' : 'bg-gradient-to-br from-warning/30 to-transparent'}`} />
+            <div className={`modal-content p-8 max-w-lg w-full relative overflow-hidden ${isSuccess ? 'border-success/30' : 'border-danger/30'}`}>
+                <div className={`absolute inset-0 opacity-30 ${isSuccess ? 'bg-gradient-to-br from-success/30 to-transparent' : 'bg-gradient-to-br from-danger/30 to-transparent'}`} />
                 <div className="relative z-10">
                     <div className="flex items-center justify-between mb-6">
                         <div className="flex items-center gap-4">
-                            <div className={`w-16 h-16 rounded-2xl flex items-center justify-center overflow-hidden ${isSuccess ? 'bg-gradient-to-br from-success to-accent-teal shadow-glow-success' : 'bg-gradient-to-br from-warning to-orange-500'}`}>
+                            <div className={`w-16 h-16 rounded-2xl flex items-center justify-center overflow-hidden ${isSuccess ? 'bg-gradient-to-br from-success to-accent-teal shadow-glow-success' : 'bg-gradient-to-br from-danger to-red-600 shadow-glow-danger'}`}>
                                 {data.order.user.photo ? (
                                     <img
                                         src={`${(import.meta as any).env?.VITE_API_URL || 'http://localhost:3012'}${data.order.user.photo}`}
@@ -91,7 +91,7 @@ function SuccessPopup({ show, data, onClose }: SuccessPopupProps) {
                                 )}
                             </div>
                             <div>
-                                <h2 className={`text-2xl font-bold ${isSuccess ? 'text-white' : 'text-warning'}`}>{data.message}</h2>
+                                <h2 className={`text-2xl font-bold ${isSuccess ? 'text-white' : 'text-danger'}`}>{isSuccess ? data.message : '⚠️ SUDAH AMBIL MAKAN ⚠️'}</h2>
                                 <p className="text-white/50">{isSuccess ? 'Makanan siap diambil' : 'Sudah pernah check-in'}</p>
                             </div>
                         </div>
@@ -130,8 +130,8 @@ function SuccessPopup({ show, data, onClose }: SuccessPopupProps) {
                                 )}
                             </div>
                         )}
-                        <div className={`p-4 rounded-2xl border ${isSuccess ? 'bg-success/10 border-success/20' : 'bg-warning/10 border-warning/20'}`}>
-                            <div className={`flex items-center gap-2 text-sm mb-2 ${isSuccess ? 'text-success' : 'text-warning'}`}>
+                        <div className={`p-4 rounded-2xl border ${isSuccess ? 'bg-success/10 border-success/20' : 'bg-danger/10 border-danger/20'}`}>
+                            <div className={`flex items-center gap-2 text-sm mb-2 ${isSuccess ? 'text-success' : 'text-danger'}`}>
                                 <Clock className="w-4 h-4" /><span>Waktu Check-In</span>
                             </div>
                             <p className="font-semibold text-white mb-2">{formattedTime}</p>
@@ -144,7 +144,7 @@ function SuccessPopup({ show, data, onClose }: SuccessPopupProps) {
                     <div className="text-center">
                         <p className="text-sm text-white/40 mb-2">Menutup dalam <span className="text-white font-bold">{countdown}</span> detik</p>
                         <div className="h-1.5 bg-white/10 rounded-full overflow-hidden">
-                            <div className={`h-full rounded-full transition-all duration-1000 ${isSuccess ? 'bg-gradient-to-r from-success to-accent-teal' : 'bg-gradient-to-r from-warning to-orange-500'}`} style={{ width: `${(countdown / 5) * 100}%` }} />
+                            <div className={`h-full rounded-full transition-all duration-1000 ${isSuccess ? 'bg-gradient-to-r from-success to-accent-teal' : 'bg-gradient-to-r from-danger to-red-600'}`} style={{ width: `${(countdown / 5) * 100}%` }} />
                         </div>
                     </div>
                 </div>
@@ -368,7 +368,7 @@ export default function CheckInPage() {
                 success: true,
                 message: 'Check-in Berhasil!',
                 order: res.data.order,
-                checkInBy: res.data.checkInBy,
+                checkInBy: res.data.checkInBy || res.data.checkedInBy || 'Admin',
                 checkInTime: res.data.checkInTime
             };
 
@@ -397,13 +397,12 @@ export default function CheckInPage() {
                     success: false,
                     message: 'Sudah Ambil Makan',
                     order: alreadyCheckedOrder,
-                    checkInTime: alreadyCheckedOrder.checkInTime,
-                    checkInBy: 'Unknown'
+                    checkInTime: error.response.data.checkInTime || alreadyCheckedOrder.checkInTime,
+                    checkInBy: error.response.data.checkedInBy || alreadyCheckedOrder.checkedInBy || 'Admin'
                 };
                 setSuccessData(warningResult);
                 setShowSuccessPopup(true);
                 setSearchInput('');
-                toast.error('User sudah check-in sebelumnya', { icon: '⚠️', duration: 3000 });
             } else {
                 setLastError(message);
                 toast.error(message);
