@@ -771,23 +771,30 @@ export default function OrderPage() {
                             Pilih Lokasi Kantin
                         </label>
                         <div className="flex flex-wrap gap-2">
-                            {canteens.map((canteen) => (
-                                <button
-                                    key={canteen.id}
-                                    type="button"
-                                    onClick={() => setSelectedCanteen(canteen.id)}
-                                    className={`px-4 py-2 rounded-xl text-sm flex items-center gap-2 transition-all ${selectedCanteen === canteen.id
-                                        ? 'bg-primary text-white shadow-lg shadow-primary/20'
-                                        : 'bg-dark-lighter text-white/60 hover:bg-dark-light hover:text-white'
-                                        }`}
-                                >
-                                    <MapPin className="w-4 h-4" />
-                                    <span>{canteen.name}</span>
-                                    {canteen.location && (
-                                        <span className="text-xs opacity-60">({canteen.location})</span>
-                                    )}
-                                </button>
-                            ))}
+                            {canteens.map((canteen) => {
+                                const isLocked = !!user?.preferredCanteenId && user.preferredCanteenId !== canteen.id;
+
+                                return (
+                                    <button
+                                        key={canteen.id}
+                                        type="button"
+                                        onClick={() => !isLocked && setSelectedCanteen(canteen.id)}
+                                        disabled={isLocked}
+                                        className={`px-4 py-2 rounded-xl text-sm flex items-center gap-2 transition-all ${selectedCanteen === canteen.id
+                                            ? 'bg-primary text-white shadow-lg shadow-primary/20'
+                                            : isLocked
+                                                ? 'bg-white/5 text-white/20 cursor-not-allowed'
+                                                : 'bg-dark-lighter text-white/60 hover:bg-dark-light hover:text-white'
+                                            }`}
+                                    >
+                                        {isLocked ? <Ban className="w-4 h-4" /> : <MapPin className="w-4 h-4" />}
+                                        <span>{canteen.name}</span>
+                                        {canteen.location && (
+                                            <span className={`text-xs ${isLocked ? 'opacity-40' : 'opacity-60'}`}>({canteen.location})</span>
+                                        )}
+                                    </button>
+                                );
+                            })}
                         </div>
                     </div>
                 )}
