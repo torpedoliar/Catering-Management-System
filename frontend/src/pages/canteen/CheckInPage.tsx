@@ -3,7 +3,7 @@ import { format } from 'date-fns';
 import { id as idLocale } from 'date-fns/locale';
 import { api } from '../../contexts/AuthContext';
 import { useSSE, useSSERefresh, ORDER_EVENTS } from '../../contexts/SSEContext';
-import { ScanLine, Search, CheckCircle2, AlertCircle, Loader2, Wifi, X, User as UserIcon, Building2, Briefcase, Clock, Zap, Calendar, Camera, MapPin } from 'lucide-react';
+import { ScanLine, Search, CheckCircle2, AlertCircle, Loader2, Wifi, X, User as UserIcon, Clock, Zap, Calendar, Camera, MapPin } from 'lucide-react';
 import toast from 'react-hot-toast';
 import Webcam from 'react-webcam';
 import { Html5Qrcode } from 'html5-qrcode';
@@ -29,13 +29,13 @@ interface CheckInResult {
     checkInTime?: Date | string;
 }
 
-interface SuccessPopupProps {
+interface CheckInResultPopupProps {
     show: boolean;
     data: CheckInResult | null;
     onClose: () => void;
 }
 
-function SuccessPopup({ show, data, onClose }: SuccessPopupProps) {
+function CheckInResultPopup({ show, data, onClose }: CheckInResultPopupProps) {
     const [countdown, setCountdown] = useState(5);
 
     useEffect(() => {
@@ -53,33 +53,43 @@ function SuccessPopup({ show, data, onClose }: SuccessPopupProps) {
 
     if (!show || !data || !data.order) return null;
 
-    const checkInTime = data.checkInTime || data.order.checkInTime;
-    let formattedTime = 'Baru saja';
-    if (checkInTime) {
-        // Parse the ISO string directly - toLocaleString with timeZone will handle conversion
-        const date = new Date(checkInTime);
-        formattedTime = date.toLocaleString('id-ID', {
-            weekday: 'long',
-            year: 'numeric',
-            month: 'long',
-            day: 'numeric',
-            hour: '2-digit',
-            minute: '2-digit',
-            second: '2-digit',
+    const isSuccess = data.success;
+
+    // For successful check-in, use the current operation time
+    // For duplicate (error), use the ORIGINAL check-in time
+    const displayTime = isSuccess
+        ? (data.checkInTime || data.order.checkInTime || new Date())
+        : (data.order.checkInTime || data.checkInTime);
+
+    let formattedTime = '-';
+    if (displayTime) {
+        const dateObj = new Date(displayTime);
+        formattedTime = dateObj.toLocaleString('en-US', {
+            hour: 'numeric',
+            minute: 'numeric',
+            hour12: true,
             timeZone: 'Asia/Jakarta'
         });
     }
 
-    const isSuccess = data.success;
+    if (isSuccess) {
+        // --- GREEN POPUP (SUCCESS) ---
+        return (
+            <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm animate-fade-in">
+                <div className="bg-white rounded-3xl overflow-hidden w-full max-w-sm shadow-2xl animate-scale-in relative">
+                    {/* Header Background */}
+                    <div className="h-32 bg-[#4CAF50] flex items-center justify-center relative overflow-hidden">
+                        <div className="absolute inset-0 bg-white/10" />
+                        <div className="w-20 h-20 bg-white rounded-full flex items-center justify-center shadow-lg relative z-10 animate-bounce-subtle">
+                            <CheckCircle2 className="w-12 h-12 text-[#4CAF50]" strokeWidth={3} />
+                        </div>
+                    </div>
 
-    return (
-        <div className="modal-backdrop flex items-center justify-center p-4 animate-fade-in">
-            <div className={`modal-content p-8 max-w-lg w-full relative overflow-hidden ${isSuccess ? 'border-success/30' : 'border-danger/30'}`}>
-                <div className={`absolute inset-0 opacity-30 ${isSuccess ? 'bg-gradient-to-br from-success/30 to-transparent' : 'bg-gradient-to-br from-danger/30 to-transparent'}`} />
-                <div className="relative z-10">
-                    <div className="flex items-center justify-between mb-6">
-                        <div className="flex items-center gap-4">
-                            <div className={`w-16 h-16 rounded-2xl flex items-center justify-center overflow-hidden ${isSuccess ? 'bg-gradient-to-br from-success to-accent-teal shadow-glow-success' : 'bg-gradient-to-br from-danger to-red-600 shadow-glow-danger'}`}>
+                    <div className="px-6 pt-12 pb-6 text-center -mt-10 relative z-10">
+                        <h2 className="text-2xl font-bold text-gray-800 mb-1">Successful Pickup</h2>
+
+                        <div className="mt-4 flex flex-col items-center">
+                            <div className="w-24 h-24 rounded-full overflow-hidden border-4 border-white shadow-md mb-3">
                                 {data.order.user.photo ? (
                                     <img
                                         src={`${(import.meta as any).env?.VITE_API_URL || 'http://localhost:3012'}${data.order.user.photo}`}
@@ -87,70 +97,83 @@ function SuccessPopup({ show, data, onClose }: SuccessPopupProps) {
                                         className="w-full h-full object-cover"
                                     />
                                 ) : (
-                                    isSuccess ? <CheckCircle2 className="w-8 h-8 text-white" /> : <AlertCircle className="w-8 h-8 text-white" />
+                                    <div className="w-full h-full bg-gray-200 flex items-center justify-center">
+                                        <UserIcon className="w-10 h-10 text-gray-400" />
+                                    </div>
                                 )}
                             </div>
-                            <div>
-                                <h2 className={`text-2xl font-bold ${isSuccess ? 'text-white' : 'text-danger'}`}>{isSuccess ? data.message : '⚠️ SUDAH AMBIL MAKAN ⚠️'}</h2>
-                                <p className="text-white/50">{isSuccess ? 'Makanan siap diambil' : 'Sudah pernah check-in'}</p>
+                            <h3 className="text-xl font-bold text-gray-800">{data.order.user.name}</h3>
+                        </div>
+
+                        <div className="mt-6 space-y-4 text-left">
+                            <div className="flex justify-between border-b border-gray-100 pb-2">
+                                <span className="text-gray-500 text-sm">Canteen Location:</span>
+                                <span className="font-semibold text-gray-800">{data.order.canteen?.name || 'N/A'}</span>
+                            </div>
+                            <div className="flex justify-between border-b border-gray-100 pb-2">
+                                <span className="text-gray-500 text-sm">Time Picked Up:</span>
+                                <span className="font-semibold text-gray-800">{formattedTime}</span>
+                            </div>
+                            <div className="flex justify-between border-b border-gray-100 pb-2">
+                                <span className="text-gray-500 text-sm">Canteen Staff:</span>
+                                <span className="font-semibold text-gray-800">{data.checkInBy || 'System'}</span>
                             </div>
                         </div>
-                        <button onClick={onClose} className="btn-icon"><X className="w-6 h-6" /></button>
-                    </div>
-                    <div className="space-y-4 mb-6">
-                        <div className="p-4 rounded-2xl bg-white/5 border border-white/10">
-                            <div className="flex items-center gap-2 text-white/40 text-sm mb-2">
-                                <UserIcon className="w-4 h-4" /><span>Informasi Pengguna</span>
-                            </div>
-                            <p className="text-xl font-bold text-white">{data.order.user.name}</p>
-                            <p className="text-primary-400 font-mono">ID: {data.order.user.externalId}</p>
-                        </div>
-                        <div className="grid grid-cols-2 gap-4">
-                            <div className="p-4 rounded-2xl bg-white/5 border border-white/10">
-                                <div className="flex items-center gap-2 text-white/40 text-xs mb-1">
-                                    <Building2 className="w-3.5 h-3.5" /><span>Perusahaan</span>
-                                </div>
-                                <p className="font-semibold text-white">{data.order.user.company || '-'}</p>
-                            </div>
-                            <div className="p-4 rounded-2xl bg-white/5 border border-white/10">
-                                <div className="flex items-center gap-2 text-white/40 text-xs mb-1">
-                                    <Briefcase className="w-3.5 h-3.5" /><span>Departemen</span>
-                                </div>
-                                <p className="font-semibold text-white">{data.order.user.department || '-'}</p>
-                            </div>
-                        </div>
-                        {data.order.canteen && (
-                            <div className="p-4 rounded-2xl bg-primary/10 border border-primary/20">
-                                <div className="flex items-center gap-2 text-primary text-xs mb-1">
-                                    <MapPin className="w-3.5 h-3.5" /><span>Lokasi Kantin</span>
-                                </div>
-                                <p className="font-semibold text-white">{data.order.canteen.name}</p>
-                                {data.order.canteen.location && (
-                                    <p className="text-sm text-white/50">{data.order.canteen.location}</p>
-                                )}
-                            </div>
-                        )}
-                        <div className={`p-4 rounded-2xl border ${isSuccess ? 'bg-success/10 border-success/20' : 'bg-danger/10 border-danger/20'}`}>
-                            <div className={`flex items-center gap-2 text-sm mb-2 ${isSuccess ? 'text-success' : 'text-danger'}`}>
-                                <Clock className="w-4 h-4" /><span>Waktu Check-In</span>
-                            </div>
-                            <p className="font-semibold text-white mb-2">{formattedTime}</p>
-                            <div className="flex items-center justify-between text-xs text-white/40">
-                                <span>Shift: <span className="text-primary-400">{data.order.shift.name}</span></span>
-                                <span>Admin: <span className="text-accent-purple">{data.checkInBy || 'Admin'}</span></span>
-                            </div>
-                        </div>
-                    </div>
-                    <div className="text-center">
-                        <p className="text-sm text-white/40 mb-2">Menutup dalam <span className="text-white font-bold">{countdown}</span> detik</p>
-                        <div className="h-1.5 bg-white/10 rounded-full overflow-hidden">
-                            <div className={`h-full rounded-full transition-all duration-1000 ${isSuccess ? 'bg-gradient-to-r from-success to-accent-teal' : 'bg-gradient-to-r from-danger to-red-600'}`} style={{ width: `${(countdown / 5) * 100}%` }} />
-                        </div>
+
+                        <button
+                            onClick={onClose}
+                            className="w-full mt-8 bg-[#4CAF50] hover:bg-[#43A047] text-white font-bold py-3 px-4 rounded-xl transition-colors shadow-lg shadow-green-500/30"
+                        >
+                            Close
+                        </button>
                     </div>
                 </div>
             </div>
-        </div>
-    );
+        );
+    } else {
+        // --- RED POPUP (DUPLICATE ERROR) ---
+        return (
+            <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm animate-fade-in">
+                <div className="bg-white rounded-3xl overflow-hidden w-full max-w-sm shadow-2xl animate-shake relative">
+                    {/* Header Background */}
+                    <div className="bg-red-50 p-6 flex flex-col items-center justify-center border-b border-red-100">
+                        <div className="w-16 h-16 bg-white rounded-full flex items-center justify-center shadow-md mb-3 border-2 border-red-100">
+                            <X className="w-8 h-8 text-[#F44336]" strokeWidth={3} />
+                        </div>
+                        <h2 className="text-xl font-bold text-[#D32F2F]">Duplicate Pickup Detected</h2>
+                    </div>
+
+                    <div className="p-6">
+                        <div className="space-y-3 text-sm">
+                            <div className="flex justify-between">
+                                <span className="text-gray-500">Employee Name:</span>
+                                <span className="font-semibold text-gray-800 text-right">{data.order.user.name}</span>
+                            </div>
+                            <div className="flex justify-between">
+                                <span className="text-gray-500">Canteen Location:</span>
+                                <span className="font-semibold text-gray-800 text-right">{data.order.canteen?.name || 'N/A'}</span>
+                            </div>
+                            <div className="flex justify-between">
+                                <span className="text-gray-500">Time Picked Up:</span>
+                                <span className="font-semibold text-gray-800 text-right">{formattedTime}</span>
+                            </div>
+                            <div className="bg-red-50 p-3 rounded-xl border border-red-100 mt-2">
+                                <span className="text-gray-500 block text-xs mb-1">First Check-in by:</span>
+                                <span className="font-bold text-gray-800 block text-lg">{data.checkInBy || 'System'}</span>
+                            </div>
+                        </div>
+
+                        <button
+                            onClick={onClose}
+                            className="w-full mt-6 bg-[#F44336] hover:bg-[#D32F2F] text-white font-bold py-3 px-4 rounded-xl transition-colors shadow-lg shadow-red-500/30"
+                        >
+                            Close
+                        </button>
+                    </div>
+                </div>
+            </div>
+        );
+    }
 }
 
 export default function CheckInPage() {
@@ -553,7 +576,7 @@ export default function CheckInPage() {
                 </div>
             </div>
 
-            <SuccessPopup show={showSuccessPopup} data={successData} onClose={() => { setShowSuccessPopup(false); setSuccessData(null); }} />
+            <CheckInResultPopup show={showSuccessPopup} data={successData} onClose={() => { setShowSuccessPopup(false); setSuccessData(null); }} />
 
             {showCamera && pendingOrder && (
                 <div className="fixed inset-0 bg-black/40 backdrop-blur-sm z-50 flex flex-col items-center justify-center p-4">
@@ -562,7 +585,7 @@ export default function CheckInPage() {
                             <div className="flex items-center gap-4">
                                 <div className="w-20 h-20 rounded-full overflow-hidden bg-white/10 flex-shrink-0">
                                     {pendingOrder.data?.order?.user?.photo ? (
-                                        <img src={`${import.meta.env.VITE_API_URL ?? 'http://localhost:3012'}${pendingOrder.data.order.user.photo}`} alt={pendingOrder.data.order.user.name} className="w-full h-full object-cover" />
+                                        <img src={`${(import.meta as any).env.VITE_API_URL ?? 'http://localhost:3012'}${pendingOrder.data.order.user.photo}`} alt={pendingOrder.data.order.user.name} className="w-full h-full object-cover" />
                                     ) : (
                                         <div className="w-full h-full flex items-center justify-center text-white/40"><UserIcon className="w-10 h-10" /></div>
                                     )}
