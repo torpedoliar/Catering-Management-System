@@ -1,8 +1,11 @@
 {
-    "version": "1.8.8",
-    "releaseDate": "2026-02-17",
+    "version": "1.8.9",
+    "releaseDate": "2026-02-18",
     "minDatabaseVersion": "1.0.0",
     "changelog": [
+        "Fixed critical timezone bug in Weekly Menu (Monday Morning Gap)",
+        "Fixed race condition in QR Check-in (Double Scanning Prevention)",
+        "Fixed Order Creation logic duplication and timezone offsets",
         "Feature: Group pickup stats by break time on Vendor Pickup Stats page",
         "Feature: Group shift stats by break time on Admin Dashboard",
         "Feature: Group shifts by break time on Weekly Menu page",

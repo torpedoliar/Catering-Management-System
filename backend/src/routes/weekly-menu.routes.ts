@@ -3,6 +3,17 @@ import { prisma } from '../lib/prisma';
 import { AuthRequest, authMiddleware, adminMiddleware } from '../middleware/auth.middleware';
 import { sseManager } from '../controllers/sse.controller';
 import { getNow } from '../services/time.service';
+import { toZonedTime } from 'date-fns-tz';
+
+const TIMEZONE = 'Asia/Jakarta';
+
+/**
+ * Get current time in Jakarta timezone
+ */
+function getNowJakarta(): Date {
+    const now = getNow(); // Get NTP-corrected time
+    return toZonedTime(now, TIMEZONE);
+}
 
 const router = Router();
 
@@ -54,7 +65,7 @@ function getWeekDates(week: number, year: number): { start: Date; end: Date; dat
  */
 router.get('/', authMiddleware, async (req: AuthRequest, res: Response) => {
     try {
-        const now = getNow();
+        const now = getNowJakarta(); // TIMEZONE FIX
         const currentWeek = getWeekNumber(now);
         const currentYear = now.getFullYear();
 
@@ -134,7 +145,7 @@ router.get('/', authMiddleware, async (req: AuthRequest, res: Response) => {
  */
 router.get('/today', async (req: AuthRequest, res: Response) => {
     try {
-        const now = getNow();
+        const now = getNowJakarta(); // TIMEZONE FIX
         const week = getWeekNumber(now);
         const year = now.getFullYear();
         const dayOfWeek = now.getDay();

@@ -24,14 +24,12 @@ import {
     validate,
     createOrderSchema,
     apiRateLimitMiddleware,
-    cutoffMiddleware,
-    parseDateToCateringTime,
 } from './shared';
 
 const router = Router();
 
 // Create order (with blacklist validation, rate limiting, cutoff validated per selected date inside)
-router.post('/', authMiddleware, blacklistMiddleware, apiRateLimitMiddleware('default'), cutoffMiddleware, validate(createOrderSchema), async (req: AuthRequest, res: Response) => {
+router.post('/', authMiddleware, blacklistMiddleware, apiRateLimitMiddleware('default'), validate(createOrderSchema), async (req: AuthRequest, res: Response) => {
     const context = getRequestContext(req);
 
     try {
@@ -45,10 +43,16 @@ router.post('/', authMiddleware, blacklistMiddleware, apiRateLimitMiddleware('de
         // Parse and validate orderDate
         let orderDate: Date;
         if (orderDateParam) {
-            // FIX: Use Catering Time (Fake UTC) to ensure "2026-02-18" is always "2026-02-18T00:00:00.000Z"
-            // regardless of server timezone. Matches "Shifted UTC" architecture.
-            orderDate = parseDateToCateringTime(orderDateParam);
-
+            // Parse date string as local date (avoid UTC timezone shift)
+            const dateParts = orderDateParam.split('-');
+            if (dateParts.length === 3) {
+                const year = parseInt(dateParts[0]);
+                const month = parseInt(dateParts[1]) - 1;
+                const day = parseInt(dateParts[2]);
+                orderDate = new Date(year, month, day, 0, 0, 0, 0);
+            } else {
+                orderDate = new Date(orderDateParam);
+            }
             if (isNaN(orderDate.getTime())) {
                 return res.status(400).json({ error: ErrorMessages.INVALID_ORDER_DATE });
             }
@@ -72,8 +76,33 @@ router.post('/', authMiddleware, blacklistMiddleware, apiRateLimitMiddleware('de
         const cutoffHours = settings?.cutoffHours || 6;
 
         // Validate based on cutoff mode
-        // Cutoff validation is now handled by cutoffMiddleware (DRY)
-        // Removed duplicated weekly/per-shift logic here
+        if (cutoffMode === 'weekly') {
+            const weeklyCheck = isDateOrderableWeekly(orderDate, {
+                weeklyCutoffDay: settings?.weeklyCutoffDay || 5,
+                weeklyCutoffHour: settings?.weeklyCutoffHour || 17,
+                weeklyCutoffMinute: settings?.weeklyCutoffMinute || 0,
+                orderableDays: settings?.orderableDays || '1,2,3,4,5,6',
+                maxWeeksAhead: settings?.maxWeeksAhead || 1,
+            });
+
+            if (!weeklyCheck.canOrder) {
+                return res.status(400).json({
+                    error: weeklyCheck.reason || ErrorMessages.DATE_NOT_ORDERABLE,
+                    cutoffMode: 'weekly'
+                });
+            }
+        } else {
+            // Per-shift mode
+            const maxDate = new Date(today);
+            maxDate.setDate(maxDate.getDate() + maxOrderDaysAhead);
+
+            if (orderDate > maxDate) {
+                return res.status(400).json({
+                    error: formatErrorMessage('MAX_DAYS_EXCEEDED', { days: maxOrderDaysAhead }),
+                    maxOrderDaysAhead
+                });
+            }
+        }
 
         // Check if user already has an order for this date
         const nextDay = new Date(orderDate);
@@ -131,10 +160,23 @@ router.post('/', authMiddleware, blacklistMiddleware, apiRateLimitMiddleware('de
         }
 
         // Calculate cutoff time for the selected date
-        // Calculate cutoff time for the selected date
-        // Logic removed in favor of cutoffMiddleware
-        // const [hours, minutes] = shift.startTime.split(':').map(Number);
-        // ...
+        const [hours, minutes] = shift.startTime.split(':').map(Number);
+        const shiftStartDateTime = new Date(orderDate);
+        shiftStartDateTime.setHours(hours, minutes, 0, 0);
+
+        const cutoffMs = (cutoffDays * 24 * 60 * 60 * 1000) + (cutoffHours * 60 * 60 * 1000);
+        const cutoffDateTime = new Date(shiftStartDateTime.getTime() - cutoffMs);
+        const now = getNow();
+
+        if (now >= cutoffDateTime) {
+            return res.status(403).json({
+                error: ErrorMessages.CUTOFF_PASSED,
+                message: `Pemesanan untuk ${shift.name} pada ${orderDate.toLocaleDateString('id-ID')} harus dilakukan sebelum ${cutoffDateTime.toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit', hour12: false })}`,
+                cutoffTime: cutoffDateTime.toISOString(),
+                shiftStart: shiftStartDateTime.toISOString(),
+                currentTime: now.toISOString(),
+            });
+        }
 
         // Generate unique QR code
         const qrCodeData = `ORDER-${uuidv4()}`;

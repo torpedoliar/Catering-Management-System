@@ -182,18 +182,6 @@ export function isPastCutoffForDate(orderDate: Date, shiftStartTime: string, cut
     };
 }
 
-/**
- * Parse a date string (YYYY-MM-DD) to a Date object in "Catering Time" (Fake UTC).
- * This ensures that 2026-02-18 becomes 2026-02-18T00:00:00.000Z regardless of server timezone.
- * This aligns with the system's "Shifted UTC" architecture where business dates are stored as UTC midnights.
- */
-export function parseDateToCateringTime(dateStr: string): Date {
-    const [year, month, day] = dateStr.split('-').map(Number);
-    // Construct Date using Date.UTC to force UTC midnight
-    // Month is 0-indexed in JS Date
-    return new Date(Date.UTC(year, month - 1, day, 0, 0, 0, 0));
-}
-
 // ============================================
 // Weekly Cutoff Mode Functions
 // ============================================

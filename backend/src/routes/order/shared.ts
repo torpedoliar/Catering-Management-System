@@ -12,7 +12,7 @@ import { AuthRequest, authMiddleware, adminMiddleware, canteenMiddleware } from 
 import { cutoffMiddleware } from '../../middleware/cutoff.middleware';
 import { blacklistMiddleware } from '../../middleware/blacklist.middleware';
 import { sseManager } from '../../controllers/sse.controller';
-import { getNow, getNowUTC, getToday, getTomorrow, isPastCutoff, isPastCutoffForDate, isDateOrderableWeekly } from '../../services/time.service';
+import { getNow, getNowUTC, getToday, getTomorrow, isPastCutoff, isPastCutoffForDate, isDateOrderableWeekly, parseDateToCateringTime } from '../../services/time.service';
 import { logOrder, getRequestContext } from '../../services/audit.service';
 import { ErrorMessages, formatErrorMessage } from '../../utils/errorMessages';
 import { apiRateLimitMiddleware } from '../../services/rate-limiter.service';
@@ -60,6 +60,7 @@ export {
     isPastCutoff,
     isPastCutoffForDate,
     isDateOrderableWeekly,
+    parseDateToCateringTime,
     logOrder,
     getRequestContext,
     ErrorMessages,

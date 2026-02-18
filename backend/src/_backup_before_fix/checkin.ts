@@ -69,44 +69,7 @@ router.post('/checkin/qr', authMiddleware, canteenMiddleware, upload.single('pho
             return res.status(400).json({ error: ErrorMessages.MISSING_REQUIRED_FIELDS });
         }
 
-        const checkedInByUser = req.user ? await prisma.user.findUnique({
-            where: { id: req.user.id },
-            select: { id: true, name: true, externalId: true }
-        }) : null;
-
-        // Atomic update: Verify status AND update in one query
-        const updateResult = await prisma.order.updateMany({
-            where: {
-                qrCode,
-                status: 'ORDERED' // Race condition fix: Atomic status check
-            },
-            data: {
-                status: 'PICKED_UP',
-                checkInTime: getNowUTC(),
-                checkedInById: checkedInByUser?.id || null, // Optional tracking
-                checkedInBy: checkedInByUser?.name || 'System',
-            }
-        });
-
-        if (updateResult.count === 0) {
-            // Determine why it failed (Already scanned vs Invalid QR)
-            const orderCheck = await prisma.order.findUnique({ where: { qrCode } });
-            if (!orderCheck) return res.status(404).json({ error: ErrorMessages.ORDER_NOT_FOUND });
-            if (orderCheck.status === 'PICKED_UP') {
-                return res.status(400).json({
-                    error: 'Pesanan sudah di-check in sebelumnya',
-                    order: orderCheck,
-                    checkedInBy: orderCheck.checkedInBy || 'System',
-                    checkInTime: orderCheck.checkInTime,
-                });
-            }
-            if (orderCheck.status === 'CANCELLED') return res.status(400).json({ error: 'Pesanan sudah dibatalkan' });
-
-            return res.status(400).json({ error: 'Order status invalid for check-in' });
-        }
-
-        // Fetch the updated order for response/logging
-        let order = await prisma.order.findUnique({
+        const order = await prisma.order.findUnique({
             where: { qrCode },
             include: {
                 user: { select: { id: true, name: true, externalId: true, company: true, division: true, department: true, photo: true } },
@@ -115,7 +78,22 @@ router.post('/checkin/qr', authMiddleware, canteenMiddleware, upload.single('pho
             },
         });
 
-        if (!order) throw new Error('Order disappeared after check-in'); // Should never happen
+        if (!order) {
+            return res.status(404).json({ error: ErrorMessages.ORDER_NOT_FOUND });
+        }
+
+        if (order.status === 'PICKED_UP') {
+            return res.status(400).json({
+                error: 'Pesanan sudah di-check in sebelumnya',
+                order,
+                checkedInBy: order.checkedInBy || 'System',
+                checkInTime: order.checkInTime,
+            });
+        }
+
+        if (order.status === 'CANCELLED') {
+            return res.status(400).json({ error: 'Pesanan sudah dibatalkan' });
+        }
 
         // Canteen check-in enforcement validation
         const { operatorCanteenId } = req.body;
@@ -145,11 +123,10 @@ router.post('/checkin/qr', authMiddleware, canteenMiddleware, upload.single('pho
             });
         }
 
-        // Logic moved up to atomic update block
-        // const checkedInByUser = req.user ? await prisma.user.findUnique({
-        //     where: { id: req.user.id },
-        //     select: { id: true, name: true, externalId: true }
-        // }) : null;
+        const checkedInByUser = req.user ? await prisma.user.findUnique({
+            where: { id: req.user.id },
+            select: { id: true, name: true, externalId: true }
+        }) : null;
 
         // Process photo if uploaded
         let photoUrl = undefined;
