@@ -52,32 +52,24 @@ else
     echo "✓ No schema changes detected"
 fi
 
-# Step 4: Stop containers
-echo ""
-echo "[4/6] Stopping containers..."
-# docker-compose down 2>/dev/null
-echo "✓ Containers stopped"
-
-# Step 5: Rebuild
+# Step 5: Rebuild (Done FIRST to prevent downtime if build fails)
 echo ""
 echo "[5/6] Rebuilding (this may take 2-5 minutes)..."
-# docker-compose build --no-cache
-# if [ $? -ne 0 ]; then
-#     echo "ERROR: Build failed!"
-#     echo ""
-#     echo "To restore database from backup:"
-#     echo "  docker-compose up -d db"
-#     echo "  cat $BACKUP_FILE | docker-compose exec -T db psql -U postgres catering_db"
-#     exit 1
-# fi
+docker-compose build
+if [ $? -ne 0 ]; then
+    echo "ERROR: Build failed! Aborting update."
+    exit 1
+fi
 echo "✓ Build completed"
 
-# Step 6: Start containers and sync database
+# Step 6: Stop and remove old containers (Safe now because build succeeded)
 echo ""
-echo "[6/6] Starting containers and syncing database..."
+echo "[6/6] Recreating containers..."
+docker-compose down --remove-orphans || true
 
-# Create update marker file so backend knows this is an update restart
-docker-compose up -d --build --remove-orphans
+# Step 7: Start containers
+docker-compose up -d
+echo "✓ Containers started"
 sleep 5
 
 # Write update marker inside backend container
