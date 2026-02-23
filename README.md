@@ -9,7 +9,7 @@
 </p>
 
 <p align="center">
-  <img src="https://img.shields.io/badge/version-2.0.0-blue.svg" alt="Version">
+  <img src="https://img.shields.io/badge/version-1.9.0-blue.svg" alt="Version">
   <img src="https://img.shields.io/badge/license-MIT-green.svg" alt="License">
   <img src="https://img.shields.io/badge/build-passing-brightgreen.svg" alt="Build Status">
   <br />
@@ -25,7 +25,7 @@
 
 The **Catering Management System** is an enterprise-grade platform designed to streamline corporate catering operations. It bridges the gap between employees, administration, and canteen operators through a unified, real-time interface. Built with scalability and data integrity in mind, it automates scheduling, minimizes food waste through rigid cutoff policies, and ensures seamless accountability.
 
-Recently upgraded to **Version 2.0**, the system now includes advanced guest management, bulk ordering capabilities, and an automated email notification engine.
+Recently upgraded with **Special Day Break Time**, the system now includes day-specific shift overrides, advanced guest management, bulk ordering capabilities, and an automated email notification engine.
 
 ---
 
@@ -35,7 +35,7 @@ Recently upgraded to **Version 2.0**, the system now includes advanced guest man
 | Feature | Functionality |
 |---------|-------------|
 | **Advanced Order Management** | **New:** Bulk ordering capability permitting multi-day meal planning in a single action. |
-| **Intelligent Shift Support** | Flexible configuration coverage for multiple shifts (Morning, Afternoon, Night) with dynamic cutoff times. |
+| **Intelligent Shift Support** | Flexible configuration for multiple shifts with **Special Day Break Times** allowing per-day break overrides. |
 | **Visual Identity Check-in** | **New:** Enhanced security at food collection points with user photo verification on QR scan. |
 | **Guest Registry** | **New:** Dedicated module for managing external guests, generating temporary access QR codes, and tracking visits. |
 
