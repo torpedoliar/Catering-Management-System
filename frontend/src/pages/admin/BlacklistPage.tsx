@@ -33,7 +33,7 @@ interface User {
 interface ConfirmModalProps {
     isOpen: boolean;
     onClose: () => void;
-    onConfirm: (password: string, reason: string) => Promise<void>;
+    onConfirm: (password: string, reason: string, reduceBy?: string) => Promise<void>;
     title: string;
     description: string;
     actionLabel: string;
@@ -41,6 +41,8 @@ interface ConfirmModalProps {
     targetUser: string;
     requireReason?: boolean;
     reasonPlaceholder?: string;
+    requireStrikeReduction?: boolean;
+    currentStrikes?: number;
 }
 
 function ConfirmModal({
@@ -54,9 +56,12 @@ function ConfirmModal({
     targetUser,
     requireReason = true,
     reasonPlaceholder = 'Masukkan alasan (minimal 10 karakter)...',
+    requireStrikeReduction = false,
+    currentStrikes = 0,
 }: ConfirmModalProps) {
     const [password, setPassword] = useState('');
     const [reason, setReason] = useState('');
+    const [reduceBy, setReduceBy] = useState('');
     const [showPassword, setShowPassword] = useState(false);
     const [isSubmitting, setIsSubmitting] = useState(false);
     const [error, setError] = useState('');
@@ -64,6 +69,14 @@ function ConfirmModal({
     const handleSubmit = async (e: React.FormEvent) => {
         e.preventDefault();
         setError('');
+
+        if (requireStrikeReduction && currentStrikes > 0) {
+            const reduceNum = parseInt(reduceBy);
+            if (!reduceBy || isNaN(reduceNum) || reduceNum < 1 || reduceNum > currentStrikes) {
+                setError(`Wajib memasukkan jumlah penurunan strike (angka antara 1-${currentStrikes})`);
+                return;
+            }
+        }
 
         if (!password) {
             setError('Password admin harus diisi');
@@ -77,9 +90,10 @@ function ConfirmModal({
 
         setIsSubmitting(true);
         try {
-            await onConfirm(password, reason.trim());
+            await onConfirm(password, reason.trim(), reduceBy);
             setPassword('');
             setReason('');
+            setReduceBy('');
             onClose();
         } catch (err: any) {
             setError(err.response?.data?.error || 'Terjadi kesalahan');
@@ -91,6 +105,7 @@ function ConfirmModal({
     const handleClose = () => {
         setPassword('');
         setReason('');
+        setReduceBy('');
         setError('');
         onClose();
     };
@@ -145,6 +160,27 @@ function ConfirmModal({
                         </div>
                     )}
 
+                    {requireStrikeReduction && currentStrikes > 0 && (
+                        <div>
+                            <label className="block text-sm font-medium text-slate-300 mb-2">
+                                Kurangi Strike (Total saat ini: {currentStrikes}) <span className="text-red-400">*</span>
+                            </label>
+                            <input
+                                type="number"
+                                value={reduceBy}
+                                onChange={(e) => setReduceBy(e.target.value)}
+                                min={1}
+                                max={currentStrikes}
+                                placeholder={`Masukkan angka (1-${currentStrikes})`}
+                                className="w-full px-4 py-2 bg-slate-700 border border-slate-600 rounded-lg text-slate-100 placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-cyan-500"
+                                required
+                            />
+                            <p className="text-xs text-slate-400 mt-1">
+                                Wajib menurunkan strike agar user tidak langsung melewati batas strike saat unblock.
+                            </p>
+                        </div>
+                    )}
+
                     <div>
                         <label className="block text-sm font-medium text-slate-300 mb-2">
                             Konfirmasi Password Admin <span className="text-red-400">*</span>
@@ -183,8 +219,8 @@ function ConfirmModal({
                             type="submit"
                             disabled={isSubmitting}
                             className={`flex-1 px-4 py-2 rounded-lg transition-colors disabled:opacity-50 flex items-center justify-center gap-2 ${actionColor === 'red'
-                                    ? 'bg-red-600 hover:bg-red-700 text-white'
-                                    : 'bg-green-600 hover:bg-green-700 text-white'
+                                ? 'bg-red-600 hover:bg-red-700 text-white'
+                                : 'bg-green-600 hover:bg-green-700 text-white'
                                 }`}
                         >
                             {isSubmitting ? (
@@ -544,12 +580,13 @@ export default function BlacklistPage() {
         loadBlacklists();
     };
 
-    const handleUnblockUser = async (password: string, reason: string) => {
+    const handleUnblockUser = async (password: string, reason: string, reduceBy?: string) => {
         if (!unblockTarget) return;
 
         await api.post(`/api/blacklist/${unblockTarget.id}/unblock`, {
             adminPassword: password,
             reason,
+            reduceBy: reduceBy || undefined,
         });
         toast.success('User berhasil di-unblock');
         loadBlacklists();
@@ -690,6 +727,8 @@ export default function BlacklistPage() {
                 actionColor="green"
                 requireReason={true}
                 reasonPlaceholder="Jelaskan alasan unblock user ini..."
+                requireStrikeReduction={true}
+                currentStrikes={unblockTarget?.user.noShowCount || 0}
             />
         </div>
     );

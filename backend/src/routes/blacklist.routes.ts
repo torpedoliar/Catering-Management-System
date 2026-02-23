@@ -187,7 +187,7 @@ router.post('/:id/unblock', authMiddleware, adminMiddleware, async (req: AuthReq
     const context = getRequestContext(req);
 
     try {
-        const { adminPassword, reason } = req.body;
+        const { adminPassword, reason, reduceBy } = req.body;
 
         // Validate required fields
         if (!adminPassword) {
@@ -227,6 +227,15 @@ router.post('/:id/unblock', authMiddleware, adminMiddleware, async (req: AuthReq
             return res.status(400).json({ error: 'User is already unblocked' });
         }
 
+        // Validate reduceBy if user has strikes
+        const currentStrikes = currentBlacklist.user.noShowCount;
+        if (currentStrikes > 0) {
+            const reduceAmount = parseInt(reduceBy);
+            if (!reduceBy || isNaN(reduceAmount) || reduceAmount < 1 || reduceAmount > currentStrikes) {
+                return res.status(400).json({ error: `User memiliki ${currentStrikes} strike. Wajib memasukkan jumlah penurunan strike (1-${currentStrikes}).` });
+            }
+        }
+
         const blacklist = await prisma.blacklist.update({
             where: { id: req.params.id },
             data: {
@@ -234,12 +243,20 @@ router.post('/:id/unblock', authMiddleware, adminMiddleware, async (req: AuthReq
                 endDate: getNow(),
             },
             include: {
-                user: { select: { id: true, name: true, externalId: true } },
+                user: { select: { id: true, name: true, externalId: true, noShowCount: true } },
             },
         });
 
-        // NOTE: We do NOT reset noShowCount here to preserve strike history
-        // Admin can use reset-strikes endpoint separately if needed
+        // Deduct strikes
+        let newCount = blacklist.user.noShowCount;
+        if (currentStrikes > 0 && reduceBy) {
+            newCount = Math.max(0, currentStrikes - parseInt(reduceBy));
+            await prisma.user.update({
+                where: { id: blacklist.userId },
+                data: { noShowCount: newCount },
+            });
+            blacklist.user.noShowCount = newCount;
+        }
 
         // Log unblock action with detailed info
         await logBlacklist('USER_UNBLOCKED', req.user || null, blacklist.user, context, {
@@ -249,6 +266,8 @@ router.post('/:id/unblock', authMiddleware, adminMiddleware, async (req: AuthReq
                 unblockReason: reason.trim(),
                 previousBlacklistReason: currentBlacklist.reason,
                 previousEndDate: currentBlacklist.endDate?.toISOString() || 'Permanent',
+                strikesReducedBy: currentStrikes > 0 && reduceBy ? parseInt(reduceBy) : 0,
+                newStrikeCount: newCount,
             },
         });
 
