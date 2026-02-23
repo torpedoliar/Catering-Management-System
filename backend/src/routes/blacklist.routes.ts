@@ -340,8 +340,8 @@ router.post('/reset-strikes/:userId', authMiddleware, adminMiddleware, async (re
         // Check if user should be auto-unblocked (if newCount is below threshold)
         let autoUnblocked = false;
         if (newCount < blacklistStrikes) {
-            // Check if user is currently blacklisted
-            const activeBlacklist = await prisma.blacklist.findFirst({
+            // Check if user has ANY active blacklists (might be multiple due to previous duplicate bug)
+            const activeBlacklists = await prisma.blacklist.findMany({
                 where: {
                     userId,
                     isActive: true,
@@ -352,10 +352,12 @@ router.post('/reset-strikes/:userId', authMiddleware, adminMiddleware, async (re
                 },
             });
 
-            if (activeBlacklist) {
-                // Auto-unblock the user
-                await prisma.blacklist.update({
-                    where: { id: activeBlacklist.id },
+            if (activeBlacklists.length > 0) {
+                // Auto-unblock the user (deactivate ALL active blacklists)
+                await prisma.blacklist.updateMany({
+                    where: {
+                        id: { in: activeBlacklists.map((b: any) => b.id) }
+                    },
                     data: {
                         isActive: false,
                         endDate: getNow(),
@@ -367,7 +369,7 @@ router.post('/reset-strikes/:userId', authMiddleware, adminMiddleware, async (re
                 await logBlacklist('USER_UNBLOCKED', req.user || null, user, context, {
                     metadata: {
                         autoUnblock: true,
-                        reason: `Auto-unblocked: strikes reduced from ${previousCount} to ${newCount} (below threshold ${blacklistStrikes})`,
+                        reason: `Auto-unblocked: strikes reduced from ${previousCount} to ${newCount} (below threshold ${blacklistStrikes}). Deactivated ${activeBlacklists.length} blacklist records.`,
                         strikesReductionReason: reason.trim(),
                     },
                 });
