@@ -84,7 +84,7 @@ router.get('/weekly-summary', authMiddleware, vendorMiddleware, async (req: Auth
             prisma.shift.findMany({
                 where: { isActive: true },
                 orderBy: { startTime: 'asc' },
-                select: { id: true, name: true, startTime: true, endTime: true, mealPrice: true, breakStartTime: true, breakEndTime: true }
+                select: { id: true, name: true, startTime: true, endTime: true, mealPrice: true, breakStartTime: true, breakEndTime: true, hasSpecialDayBreaks: true, dayBreaks: { select: { dayOfWeek: true, breakStartTime: true, breakEndTime: true } } }
             }),
             prisma.canteen.findMany({
                 where: { isActive: true },
@@ -210,7 +210,9 @@ router.get('/weekly-summary', authMiddleware, vendorMiddleware, async (req: Auth
                 endTime: s.endTime,
                 mealPrice: s.mealPrice,
                 breakStartTime: s.breakStartTime,
-                breakEndTime: s.breakEndTime
+                breakEndTime: s.breakEndTime,
+                hasSpecialDayBreaks: s.hasSpecialDayBreaks,
+                dayBreaks: s.dayBreaks
             })),
             canteens: canteens.map(c => ({
                 id: c.id,
@@ -365,7 +367,7 @@ router.get('/pickup-stats', authMiddleware, vendorMiddleware, async (req: AuthRe
             prisma.shift.findMany({
                 where: { isActive: true },
                 orderBy: { startTime: 'asc' },
-                select: { id: true, name: true, startTime: true, endTime: true, breakStartTime: true, breakEndTime: true }
+                select: { id: true, name: true, startTime: true, endTime: true, breakStartTime: true, breakEndTime: true, hasSpecialDayBreaks: true, dayBreaks: { select: { dayOfWeek: true, breakStartTime: true, breakEndTime: true } } }
             }),
             prisma.order.findMany({
                 where: {
@@ -411,6 +413,8 @@ router.get('/pickup-stats', authMiddleware, vendorMiddleware, async (req: AuthRe
                     endTime: shift.endTime,
                     breakStartTime: shift.breakStartTime,
                     breakEndTime: shift.breakEndTime,
+                    hasSpecialDayBreaks: shift.hasSpecialDayBreaks,
+                    dayBreaks: shift.dayBreaks,
                     status: getShiftStatus(shift.startTime, shift.endTime, date, now),
                     stats: {
                         ordered,

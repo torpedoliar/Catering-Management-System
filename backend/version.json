@@ -1,8 +1,9 @@
 {
-    "version": "1.8.9",
-    "releaseDate": "2026-02-18",
+    "version": "1.9.0",
+    "releaseDate": "2026-02-23",
     "minDatabaseVersion": "1.0.0",
     "changelog": [
+        "Feature: Special Day Break Time allows per-day break overrides for shifts",
         "Fixed critical timezone bug in Weekly Menu (Monday Morning Gap)",
         "Fixed race condition in QR Check-in (Double Scanning Prevention)",
         "Fixed Order Creation logic duplication and timezone offsets",

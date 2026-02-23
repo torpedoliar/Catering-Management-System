@@ -1722,7 +1722,7 @@ router.get('/stats/range', authMiddleware, adminMiddleware, async (req: AuthRequ
                 where: { orderDate: { gte: startDate, lte: endDate }, status: { not: 'CANCELLED' } },
                 _count: { id: true },
             }),
-            prisma.shift.findMany({ where: { isActive: true } }),
+            prisma.shift.findMany({ where: { isActive: true }, include: { dayBreaks: true } }),
             prisma.holiday.findMany({
                 where: {
                     date: { gte: startDate, lte: endDate },
@@ -1797,6 +1797,8 @@ router.get('/stats/range', authMiddleware, adminMiddleware, async (req: AuthRequ
                 endTime: shift?.endTime,
                 breakStartTime: shift?.breakStartTime,
                 breakEndTime: shift?.breakEndTime,
+                hasSpecialDayBreaks: shift?.hasSpecialDayBreaks,
+                dayBreaks: shift?.dayBreaks || [],
                 count: s._count.id,
             };
         });

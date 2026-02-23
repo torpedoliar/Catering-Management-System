@@ -43,6 +43,8 @@ interface Shift {
     endTime: string;
     breakStartTime?: string | null;
     breakEndTime?: string | null;
+    hasSpecialDayBreaks?: boolean;
+    dayBreaks?: { dayOfWeek: number; breakStartTime: string; breakEndTime: string }[];
 }
 
 interface ShiftGroup {

@@ -11,6 +11,8 @@ interface Shift {
     mealPrice: number;
     breakStartTime?: string | null;
     breakEndTime?: string | null;
+    hasSpecialDayBreaks?: boolean;
+    dayBreaks?: { dayOfWeek: number; breakStartTime: string; breakEndTime: string }[];
 }
 
 interface ShiftGroup {

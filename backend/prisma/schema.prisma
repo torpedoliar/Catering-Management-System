@@ -198,11 +198,12 @@ model Shift {
   endTime        String   // "17:00" format (HH:mm) - shift work end
   breakStartTime String?  // "12:00" format (HH:mm) - meal pickup start
   breakEndTime   String?  // "13:00" format (HH:mm) - meal pickup end
-  mealPrice      Decimal  @default(25000) @db.Decimal(12, 2)  // Harga per porsi makanan
-  description    String?  // Deskripsi menu (opsional)
-  isActive       Boolean  @default(true)
-  createdAt      DateTime @default(now())
-  updatedAt      DateTime @updatedAt
+  mealPrice              Decimal  @default(25000) @db.Decimal(12, 2)  // Harga per porsi makanan
+  description            String?  // Deskripsi menu (opsional)
+  isActive               Boolean  @default(true)
+  hasSpecialDayBreaks    Boolean  @default(false) // Enable per-day break time overrides
+  createdAt              DateTime @default(now())
+  updatedAt              DateTime @updatedAt
 
   orders           Order[]
   departments      Department[]      @relation("DepartmentDefaultShift")
@@ -211,6 +212,21 @@ model Shift {
   holidays         Holiday[]
   messages         Message[]
   weeklyMenus      WeeklyMenu[]
+  dayBreaks        ShiftDayBreak[]
+}
+
+// Per-day break time overrides for shifts
+model ShiftDayBreak {
+  id             String  @id @default(uuid())
+  shiftId        String
+  dayOfWeek      Int     // 0=Minggu, 1=Senin, 2=Selasa, 3=Rabu, 4=Kamis, 5=Jumat, 6=Sabtu
+  breakStartTime String  // "11:45" format HH:mm
+  breakEndTime   String  // "12:45" format HH:mm
+
+  shift          Shift   @relation(fields: [shiftId], references: [id], onDelete: Cascade)
+
+  @@unique([shiftId, dayOfWeek])
+  @@index([shiftId])
 }
 
 model Order {

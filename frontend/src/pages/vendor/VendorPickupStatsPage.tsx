@@ -19,6 +19,8 @@ interface ShiftData {
     endTime: string;
     breakStartTime?: string | null;
     breakEndTime?: string | null;
+    hasSpecialDayBreaks?: boolean;
+    dayBreaks?: { dayOfWeek: number; breakStartTime: string; breakEndTime: string }[];
     status: 'completed' | 'in_progress' | 'upcoming';
     stats: ShiftStats;
 }

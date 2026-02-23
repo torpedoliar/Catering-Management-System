@@ -118,13 +118,57 @@ export function calculateShiftStartDateTime(
 }
 
 /**
- * Shift type with optional break times
+ * Day break override entry
+ */
+export interface DayBreak {
+    dayOfWeek: number;    // 0=Sunday, 1=Monday, ..., 6=Saturday
+    breakStartTime: string;
+    breakEndTime: string;
+}
+
+/**
+ * Shift type with optional break times and day-specific overrides
  */
 export interface ShiftWithBreakTime {
     startTime: string;
     endTime: string;
     breakStartTime?: string | null;
     breakEndTime?: string | null;
+    hasSpecialDayBreaks?: boolean;
+    dayBreaks?: DayBreak[];
+}
+
+/**
+ * Resolve the effective break time for a specific day.
+ * If the shift has special day breaks enabled and the given day matches,
+ * returns the day-specific override. Otherwise falls back to the default break times.
+ * 
+ * For overnight shifts, use currentTime (not orderDate) to determine the day,
+ * because the break may occur after midnight on a different day than the order.
+ * 
+ * @param shift - Shift with break time data and optional day overrides
+ * @param referenceDate - The date to check against (use currentTime for overnight shifts)
+ * @returns Resolved breakStartTime and breakEndTime (may be null)
+ */
+export function resolveBreakTimeForDay(
+    shift: ShiftWithBreakTime,
+    referenceDate: Date
+): { breakStartTime: string | null; breakEndTime: string | null } {
+    if (shift.hasSpecialDayBreaks && shift.dayBreaks && shift.dayBreaks.length > 0) {
+        const dayOfWeek = referenceDate.getDay(); // 0=Sunday ... 6=Saturday
+        const dayBreak = shift.dayBreaks.find(db => db.dayOfWeek === dayOfWeek);
+        if (dayBreak) {
+            return {
+                breakStartTime: dayBreak.breakStartTime,
+                breakEndTime: dayBreak.breakEndTime
+            };
+        }
+    }
+    // Fallback to default break times
+    return {
+        breakStartTime: shift.breakStartTime || null,
+        breakEndTime: shift.breakEndTime || null
+    };
 }
 
 /**
@@ -211,8 +255,21 @@ export function validateCheckinTimeWindow(
         shiftEnd.setDate(shiftEnd.getDate() + 1);
     }
 
+    // Resolve day-specific break time.
+    // For overnight shifts, use currentTime to determine the day (break may be after midnight).
+    const isOvernight = isOvernightShift(order.shift.startTime, order.shift.endTime);
+    const referenceDate = isOvernight ? currentTime : orderDate;
+    const resolvedBreak = resolveBreakTimeForDay(order.shift, referenceDate);
+
+    // Create a shift-like object with resolved break times for calculateBreakWindow
+    const shiftWithResolvedBreak: ShiftWithBreakTime = {
+        ...order.shift,
+        breakStartTime: resolvedBreak.breakStartTime,
+        breakEndTime: resolvedBreak.breakEndTime,
+    };
+
     // Check if break times are set
-    const breakWindow = calculateBreakWindow(orderDate, order.shift, shiftStart, shiftEnd);
+    const breakWindow = calculateBreakWindow(orderDate, shiftWithResolvedBreak, shiftStart, shiftEnd);
 
     if (breakWindow) {
         // Use break time window for validation

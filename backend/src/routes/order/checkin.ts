@@ -110,7 +110,7 @@ router.post('/checkin/qr', authMiddleware, canteenMiddleware, upload.single('pho
             where: { qrCode },
             include: {
                 user: { select: { id: true, name: true, externalId: true, company: true, division: true, department: true, photo: true } },
-                shift: true,
+                shift: { include: { dayBreaks: true } },
                 canteen: { select: { id: true, name: true, location: true } },
             },
         });
@@ -176,7 +176,7 @@ router.post('/checkin/qr', authMiddleware, canteenMiddleware, upload.single('pho
             },
             include: {
                 user: { select: { id: true, name: true, externalId: true, company: true, division: true, department: true, photo: true } },
-                shift: true,
+                shift: { include: { dayBreaks: true } },
                 canteen: { select: { id: true, name: true, location: true } },
             },
         });
@@ -239,7 +239,7 @@ router.post('/checkin/manual', authMiddleware, canteenMiddleware, async (req: Au
                 orderDate: { gte: today, lt: tomorrow },
                 status: 'ORDERED',
             },
-            include: { shift: true },
+            include: { shift: { include: { dayBreaks: true } } },
         });
 
         let yesterdayOrder = await prisma.order.findFirst({
@@ -248,7 +248,7 @@ router.post('/checkin/manual', authMiddleware, canteenMiddleware, async (req: Au
                 orderDate: { gte: yesterday, lt: today },
                 status: 'ORDERED',
             },
-            include: { shift: true },
+            include: { shift: { include: { dayBreaks: true } } },
         });
 
         const isOrderValidForCheckin = (order: any): boolean => {
@@ -343,7 +343,7 @@ router.post('/checkin/manual', authMiddleware, canteenMiddleware, async (req: Au
             },
             include: {
                 user: { select: { id: true, name: true, externalId: true, company: true, division: true, department: true, photo: true } },
-                shift: true,
+                shift: { include: { dayBreaks: true } },
                 canteen: { select: { id: true, name: true, location: true } },
             },
         });

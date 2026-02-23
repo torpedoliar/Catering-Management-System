@@ -22,6 +22,7 @@ router.get('/', authMiddleware, async (req: AuthRequest, res: Response) => {
                 const shifts = await prisma.shift.findMany({
                     where: includeInactive ? {} : { isActive: true },
                     orderBy: { name: 'asc' },
+                    include: { dayBreaks: true },
                 });
 
                 // Add cutoff validation info
@@ -258,6 +259,7 @@ router.get('/:id', authMiddleware, async (req: AuthRequest, res: Response) => {
     try {
         const shift = await prisma.shift.findUnique({
             where: { id: req.params.id },
+            include: { dayBreaks: true },
         });
 
         if (!shift) {
@@ -274,7 +276,7 @@ router.get('/:id', authMiddleware, async (req: AuthRequest, res: Response) => {
 // Create shift (Admin only)
 router.post('/', authMiddleware, adminMiddleware, async (req: AuthRequest, res: Response) => {
     try {
-        const { name, startTime, endTime, mealPrice, breakStartTime, breakEndTime } = req.body;
+        const { name, startTime, endTime, mealPrice, breakStartTime, breakEndTime, hasSpecialDayBreaks, dayBreaks } = req.body;
 
         if (!name || !startTime || !endTime) {
             return res.status(400).json({ error: 'Name, start time, and end time are required' });
@@ -297,6 +299,18 @@ router.post('/', authMiddleware, adminMiddleware, async (req: AuthRequest, res: 
             return res.status(400).json({ error: 'Invalid break end time format. Use HH:mm' });
         }
 
+        // Validate dayBreaks if provided
+        if (dayBreaks && Array.isArray(dayBreaks)) {
+            for (const db of dayBreaks) {
+                if (db.dayOfWeek < 0 || db.dayOfWeek > 6) {
+                    return res.status(400).json({ error: `Invalid dayOfWeek: ${db.dayOfWeek}. Must be 0-6` });
+                }
+                if (!timeRegex.test(db.breakStartTime) || !timeRegex.test(db.breakEndTime)) {
+                    return res.status(400).json({ error: `Invalid time format in dayBreak for day ${db.dayOfWeek}` });
+                }
+            }
+        }
+
         const shift = await prisma.shift.create({
             data: {
                 name,
@@ -305,7 +319,18 @@ router.post('/', authMiddleware, adminMiddleware, async (req: AuthRequest, res: 
                 ...(mealPrice !== undefined && { mealPrice }),
                 ...(breakStartTime && { breakStartTime }),
                 ...(breakEndTime && { breakEndTime }),
+                ...(hasSpecialDayBreaks !== undefined && { hasSpecialDayBreaks }),
+                ...(dayBreaks && dayBreaks.length > 0 && {
+                    dayBreaks: {
+                        create: dayBreaks.map((db: any) => ({
+                            dayOfWeek: db.dayOfWeek,
+                            breakStartTime: db.breakStartTime,
+                            breakEndTime: db.breakEndTime,
+                        }))
+                    }
+                }),
             },
+            include: { dayBreaks: true },
         });
 
         // Log audit
@@ -334,10 +359,10 @@ router.post('/', authMiddleware, adminMiddleware, async (req: AuthRequest, res: 
 // Update shift (Admin only)
 router.put('/:id', authMiddleware, adminMiddleware, async (req: AuthRequest, res: Response) => {
     try {
-        const { name, startTime, endTime, isActive, mealPrice, breakStartTime, breakEndTime } = req.body;
+        const { name, startTime, endTime, isActive, mealPrice, breakStartTime, breakEndTime, hasSpecialDayBreaks, dayBreaks } = req.body;
 
         // Get old shift for audit
-        const oldShift = await prisma.shift.findUnique({ where: { id: req.params.id } });
+        const oldShift = await prisma.shift.findUnique({ where: { id: req.params.id }, include: { dayBreaks: true } });
 
         // Validate time format if provided
         const timeRegex = /^([01]?[0-9]|2[0-3]):[0-5][0-9]$/;
@@ -356,18 +381,56 @@ router.put('/:id', authMiddleware, adminMiddleware, async (req: AuthRequest, res
             return res.status(400).json({ error: 'Invalid break end time format. Use HH:mm' });
         }
 
-        const shift = await prisma.shift.update({
-            where: { id: req.params.id },
-            data: {
-                ...(name && { name }),
-                ...(startTime && { startTime }),
-                ...(endTime && { endTime }),
-                ...(isActive !== undefined && { isActive }),
-                ...(mealPrice !== undefined && { mealPrice }),
-                // Allow setting to null or a value
-                ...(breakStartTime !== undefined && { breakStartTime: breakStartTime || null }),
-                ...(breakEndTime !== undefined && { breakEndTime: breakEndTime || null }),
-            },
+        // Validate dayBreaks if provided
+        if (dayBreaks && Array.isArray(dayBreaks)) {
+            for (const db of dayBreaks) {
+                if (db.dayOfWeek < 0 || db.dayOfWeek > 6) {
+                    return res.status(400).json({ error: `Invalid dayOfWeek: ${db.dayOfWeek}. Must be 0-6` });
+                }
+                if (!timeRegex.test(db.breakStartTime) || !timeRegex.test(db.breakEndTime)) {
+                    return res.status(400).json({ error: `Invalid time format in dayBreak for day ${db.dayOfWeek}` });
+                }
+            }
+        }
+
+        // Use transaction to update shift + dayBreaks atomically
+        const shiftId = req.params.id;
+        const shift = await prisma.$transaction(async (tx) => {
+            // Update shift fields
+            const updated = await tx.shift.update({
+                where: { id: shiftId },
+                data: {
+                    ...(name && { name }),
+                    ...(startTime && { startTime }),
+                    ...(endTime && { endTime }),
+                    ...(isActive !== undefined && { isActive }),
+                    ...(mealPrice !== undefined && { mealPrice }),
+                    ...(breakStartTime !== undefined && { breakStartTime: breakStartTime || null }),
+                    ...(breakEndTime !== undefined && { breakEndTime: breakEndTime || null }),
+                    ...(hasSpecialDayBreaks !== undefined && { hasSpecialDayBreaks }),
+                },
+            });
+
+            // If dayBreaks array is provided, replace all existing dayBreaks
+            if (dayBreaks !== undefined && Array.isArray(dayBreaks)) {
+                await tx.shiftDayBreak.deleteMany({ where: { shiftId } });
+                if (dayBreaks.length > 0) {
+                    await tx.shiftDayBreak.createMany({
+                        data: dayBreaks.map((db: any) => ({
+                            shiftId,
+                            dayOfWeek: db.dayOfWeek,
+                            breakStartTime: db.breakStartTime,
+                            breakEndTime: db.breakEndTime,
+                        }))
+                    });
+                }
+            }
+
+            // Return updated shift with dayBreaks
+            return tx.shift.findUnique({
+                where: { id: shiftId },
+                include: { dayBreaks: true },
+            });
         });
 
         // Log audit

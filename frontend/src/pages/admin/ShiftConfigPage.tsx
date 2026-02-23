@@ -6,6 +6,12 @@ import toast from 'react-hot-toast';
 import TimeInput from '../../components/TimeInput';
 
 
+interface DayBreak {
+    dayOfWeek: number;
+    breakStartTime: string;
+    breakEndTime: string;
+}
+
 interface Shift {
     id: string;
     name: string;
@@ -15,6 +21,8 @@ interface Shift {
     breakEndTime?: string | null;
     mealPrice: number;
     isActive: boolean;
+    hasSpecialDayBreaks?: boolean;
+    dayBreaks?: DayBreak[];
 }
 
 interface Settings {
@@ -110,6 +118,8 @@ export default function ShiftConfigPage() {
                     isActive: shift.isActive,
                     breakStartTime: shift.breakStartTime || null,
                     breakEndTime: shift.breakEndTime || null,
+                    hasSpecialDayBreaks: shift.hasSpecialDayBreaks || false,
+                    dayBreaks: shift.hasSpecialDayBreaks ? (shift.dayBreaks || []) : [],
                 });
             }
 
@@ -334,6 +344,99 @@ export default function ShiftConfigPage() {
                                     <p className="text-xs text-slate-400 mt-2">
                                         Kosongkan untuk mengizinkan pengambilan kapan saja selama shift
                                     </p>
+                                )}
+
+                                {/* Special Day Break Time Toggle */}
+                                {shift.breakStartTime && shift.breakEndTime && (
+                                    <div className="mt-4 pt-3 border-t border-dashed border-slate-200">
+                                        <label className="flex items-center gap-2 cursor-pointer">
+                                            <input
+                                                type="checkbox"
+                                                checked={shift.hasSpecialDayBreaks || false}
+                                                onChange={(e) => updateShiftLocal(shift.id, {
+                                                    hasSpecialDayBreaks: e.target.checked,
+                                                    dayBreaks: e.target.checked ? (shift.dayBreaks || []) : []
+                                                })}
+                                                className="w-4 h-4 rounded border-slate-300 text-orange-500 focus:ring-orange-500"
+                                            />
+                                            <span className="text-sm font-medium text-slate-600">⚙️ Hari Khusus Istirahat</span>
+                                        </label>
+                                        <p className="text-xs text-slate-400 mt-1 ml-6">Atur jam istirahat berbeda untuk hari tertentu</p>
+
+                                        {shift.hasSpecialDayBreaks && (
+                                            <div className="mt-3 space-y-2 ml-2">
+                                                {[
+                                                    { value: 1, label: 'Senin' },
+                                                    { value: 2, label: 'Selasa' },
+                                                    { value: 3, label: 'Rabu' },
+                                                    { value: 4, label: 'Kamis' },
+                                                    { value: 5, label: 'Jumat' },
+                                                    { value: 6, label: 'Sabtu' },
+                                                    { value: 0, label: 'Minggu' },
+                                                ].map(day => {
+                                                    const dayBreak = (shift.dayBreaks || []).find(db => db.dayOfWeek === day.value);
+                                                    const isChecked = !!dayBreak;
+                                                    return (
+                                                        <div key={day.value} className="flex items-center gap-3 py-1">
+                                                            <label className="flex items-center gap-2 cursor-pointer min-w-[100px]">
+                                                                <input
+                                                                    type="checkbox"
+                                                                    checked={isChecked}
+                                                                    onChange={(e) => {
+                                                                        const currentBreaks = [...(shift.dayBreaks || [])];
+                                                                        if (e.target.checked) {
+                                                                            currentBreaks.push({
+                                                                                dayOfWeek: day.value,
+                                                                                breakStartTime: shift.breakStartTime || '12:00',
+                                                                                breakEndTime: shift.breakEndTime || '13:00'
+                                                                            });
+                                                                        } else {
+                                                                            const idx = currentBreaks.findIndex(db => db.dayOfWeek === day.value);
+                                                                            if (idx !== -1) currentBreaks.splice(idx, 1);
+                                                                        }
+                                                                        updateShiftLocal(shift.id, { dayBreaks: currentBreaks });
+                                                                    }}
+                                                                    className="w-4 h-4 rounded border-slate-300 text-orange-500 focus:ring-orange-500"
+                                                                />
+                                                                <span className={`text-sm ${isChecked ? 'text-slate-700 font-medium' : 'text-slate-400'}`}>{day.label}</span>
+                                                            </label>
+                                                            {isChecked && (
+                                                                <div className="flex items-center gap-2">
+                                                                    <TimeInput
+                                                                        value={dayBreak?.breakStartTime || ''}
+                                                                        onChange={(v) => {
+                                                                            const currentBreaks = [...(shift.dayBreaks || [])];
+                                                                            const idx = currentBreaks.findIndex(db => db.dayOfWeek === day.value);
+                                                                            if (idx !== -1) currentBreaks[idx] = { ...currentBreaks[idx], breakStartTime: v || '' };
+                                                                            updateShiftLocal(shift.id, { dayBreaks: currentBreaks });
+                                                                        }}
+                                                                        className="w-20 !text-xs !py-1 !px-2"
+                                                                    />
+                                                                    <span className="text-slate-400 text-xs">—</span>
+                                                                    <TimeInput
+                                                                        value={dayBreak?.breakEndTime || ''}
+                                                                        onChange={(v) => {
+                                                                            const currentBreaks = [...(shift.dayBreaks || [])];
+                                                                            const idx = currentBreaks.findIndex(db => db.dayOfWeek === day.value);
+                                                                            if (idx !== -1) currentBreaks[idx] = { ...currentBreaks[idx], breakEndTime: v || '' };
+                                                                            updateShiftLocal(shift.id, { dayBreaks: currentBreaks });
+                                                                        }}
+                                                                        className="w-20 !text-xs !py-1 !px-2"
+                                                                    />
+                                                                </div>
+                                                            )}
+                                                            {!isChecked && (
+                                                                <span className="text-xs text-slate-300">— Pakai default ({shift.breakStartTime} - {shift.breakEndTime})</span>
+                                                            )}
+                                                        </div>
+                                                    );
+                                                })}
+                                                <p className="text-xs text-orange-500 mt-2">
+                                                    ℹ️ Hari yang tidak dicentang menggunakan jam default ({shift.breakStartTime} - {shift.breakEndTime})
+                                                </p>
+                                            </div>
+                                        )}
+                                    </div>
                                 )}
                             </div>
                         </div>
