@@ -16,6 +16,14 @@ export function startScheduler() {
         return;
     }
 
+    // PM2 Cluster Mode Fix: Ensure scheduler only runs on one instance (instance 0)
+    // PM2 passes INSTANCE_ID (custom to ecosystem.config.js) or NODE_APP_INSTANCE by default
+    const instanceId = process.env.INSTANCE_ID || process.env.NODE_APP_INSTANCE;
+    if (instanceId && instanceId !== '0') {
+        console.log(`[Scheduler] Skipping scheduler on instance ${instanceId} (only runs on instance 0 in cluster mode)`);
+        return;
+    }
+
     // Run at minute 5 of every hour (gives 5 min grace period after shift ends)
     cron.schedule('5 * * * *', async () => {
         console.log('[Scheduler] Running no-show check...');
