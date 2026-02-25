@@ -1,4 +1,8 @@
 import 'dotenv/config';  // Load .env file FIRST before other imports
+
+// FORCE NODE ENVIRONMENT TO UTC FOR FAKE-UTC SHIFTING LOGIC TO WORK
+process.env.TZ = 'UTC';
+
 import express from 'express';
 import cors from 'cors';
 import compression from 'compression';

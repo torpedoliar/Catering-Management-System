@@ -85,13 +85,12 @@ export function getNow(): Date {
 
 /**
  * Get current time adjusted with NTP offset only (no timezone conversion).
- * Use this for storing timestamps in the database.
- * The database stores in UTC, and the frontend handles timezone display.
+ * WARNING: Historically used for REAL UTC. Now aliased to getNow() to ensure FAKE UTC
+ * is stored in the database, maintaining compatibility with frontend's formatToWIB
+ * which strips 'Z' and parses as local time.
  */
 export function getNowUTC(): Date {
-    const now = new Date();
-    // Apply NTP offset only
-    return new Date(now.getTime() + cachedOffset);
+    return getNow();
 }
 
 /**
@@ -509,7 +508,7 @@ export async function syncNTP(): Promise<{ success: boolean; offset: number; err
         }
 
         cachedOffset = offset;
-        lastSyncTime = new Date();
+        lastSyncTime = getNow(); // Use Fake UTC for DB storage so frontend renders correct local time without timezone conversion
 
         // Update settings with sync info
         await prisma.settings.update({
