@@ -14,6 +14,7 @@ import { blacklistMiddleware } from '../../middleware/blacklist.middleware';
 import { sseManager } from '../../controllers/sse.controller';
 import { getNow, getNowUTC, getToday, getTomorrow, isPastCutoff, isPastCutoffForDate, isDateOrderableWeekly, parseDateToCateringTime } from '../../services/time.service';
 import { logOrder, getRequestContext } from '../../services/audit.service';
+import { getCachedSettings } from '../../services/cache.service';
 import { ErrorMessages, formatErrorMessage } from '../../utils/errorMessages';
 import { apiRateLimitMiddleware } from '../../services/rate-limiter.service';
 import { OrderService } from '../../services/order.service';
@@ -63,6 +64,7 @@ export {
     parseDateToCateringTime,
     logOrder,
     getRequestContext,
+    getCachedSettings,
     ErrorMessages,
     formatErrorMessage,
     apiRateLimitMiddleware,
