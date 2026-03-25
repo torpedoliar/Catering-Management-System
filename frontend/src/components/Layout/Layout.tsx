@@ -329,9 +329,9 @@ export default function Layout({ children }: LayoutProps) {
                 />
             )}
 
-            {/* Desktop Sidebar — Bulletproof CSS hiding */}
-            <div className={`desktop-sidebar-container ${sidebarCollapsed ? 'is-collapsed' : ''} flex-shrink-0 transition-all duration-300 ease-in-out`}>
-                <div className={`sidebar-dark inner-sidebar flex flex-col fixed left-0 top-0 z-30 transition-all duration-300 ease-in-out`}>
+            {/* Desktop Sidebar — Bulletproof Tailwind Layout */}
+            <div className={`hidden lg:block ${sidebarWidth} flex-shrink-0 transition-all duration-300 ease-in-out`}>
+                <div className={`sidebar-dark flex flex-col fixed left-0 top-0 z-30 transition-all duration-300 ease-in-out ${sidebarWidth} h-screen`}>
                     {renderSidebarContent()}
                 </div>
             </div>
