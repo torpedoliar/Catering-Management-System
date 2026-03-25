@@ -55,7 +55,7 @@ fi
 # Step 5: Rebuild (Done FIRST to prevent downtime if build fails)
 echo ""
 echo "[5/6] Rebuilding (this may take 2-5 minutes)..."
-docker-compose build
+docker-compose build --no-cache
 if [ $? -ne 0 ]; then
     echo "ERROR: Build failed! Aborting update."
     exit 1
