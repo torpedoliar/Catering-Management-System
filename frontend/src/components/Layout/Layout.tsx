@@ -317,10 +317,11 @@ export default function Layout({ children }: LayoutProps) {
         </>
     );
 
-    const sidebarWidth = sidebarCollapsed ? 'w-[72px]' : 'w-[260px]';
+    const desktopSidebarWidth = sidebarCollapsed ? 'lg:w-[72px]' : 'lg:w-[260px]';
+    const mobileSidebarWidth = sidebarCollapsed ? 'w-[72px]' : 'w-[260px]';
 
     return (
-        <div className="min-h-screen flex border-4 border-blue-500" style={{ background: 'var(--color-bg-secondary)' }}>
+        <div className="min-h-screen flex bg-slate-50" style={{ background: 'var(--color-bg-secondary)' }}>
             {/* Mobile backdrop */}
             {sidebarOpen && (
                 <div
@@ -329,10 +330,9 @@ export default function Layout({ children }: LayoutProps) {
                 />
             )}
 
-            {/* Desktop Sidebar — Bulletproof Tailwind Layout */}
-            <div className={`hidden lg:block ${sidebarWidth} flex-shrink-0 transition-all duration-300 ease-in-out border-4 border-green-500 relative`}>
-                <div style={{ position: 'absolute', zIndex: 99, background: 'black', color: 'white' }}>Desktop Outer</div>
-                <div className={`sidebar-dark flex flex-col fixed left-0 top-0 z-30 transition-all duration-300 ease-in-out ${sidebarWidth} h-screen border-4 border-yellow-500`}>
+            {/* Desktop Sidebar — Always visible on lg+ */}
+            <div className={`hidden lg:flex ${desktopSidebarWidth} flex-shrink-0 transition-all duration-300 ease-in-out`}>
+                <div className={`sidebar-dark flex flex-col fixed left-0 top-0 z-30 transition-all duration-300 ease-in-out ${mobileSidebarWidth} h-screen`}>
                     {renderSidebarContent()}
                 </div>
             </div>
@@ -340,14 +340,13 @@ export default function Layout({ children }: LayoutProps) {
             {/* Mobile Sidebar */}
             <div
                 className={`fixed inset-y-0 left-0 z-50 w-[260px] sidebar-dark flex flex-col lg:hidden transform transition-transform duration-300 ease-out ${sidebarOpen ? 'translate-x-0' : '-translate-x-full'
-                    } border-4 border-purple-500`}
+                    }`}
             >
                 {renderSidebarContent()}
             </div>
 
             {/* Main content */}
-            <div className="flex-1 flex flex-col min-w-0 border-4 border-pink-500 relative">
-                <div style={{ position: 'absolute', zIndex: 99, background: 'black', color: 'pink' }}>Main Content</div>
+            <div className="flex-1 flex flex-col min-w-0 w-full max-w-[100vw] overflow-x-hidden relative lg:ml-0">
                 {/* Top bar */}
                 <header className="bg-white/80 backdrop-blur-md border-b sticky top-0 z-20" style={{ borderColor: 'var(--color-border)' }}>
                     <div className="flex items-center justify-between px-4 lg:px-6 h-16">
