@@ -329,8 +329,8 @@ export default function Layout({ children }: LayoutProps) {
                 />
             )}
 
-            {/* Desktop Sidebar */}
-            <div className={`hidden lg:flex ${sidebarWidth} flex-shrink-0 transition-all duration-300 ease-in-out w-0 lg:w-auto`}>
+            {/* Desktop Sidebar — completely hidden below lg */}
+            <div className={`hidden lg:block ${sidebarWidth} flex-shrink-0 transition-all duration-300 ease-in-out`}>
                 <div className={`sidebar-dark ${sidebarWidth} h-screen flex flex-col fixed left-0 top-0 z-30 transition-all duration-300 ease-in-out`}>
                     {renderSidebarContent()}
                 </div>
