@@ -1058,12 +1058,9 @@ select {
 .bg-dark-lighter { background-color: var(--color-bg-tertiary) !important; }
 .bg-dark-light { background-color: var(--color-bg-secondary) !important; }
 
-:not(.sidebar-dark) > .bg-white\/5,
-main .bg-white\/5 { background-color: var(--color-bg-tertiary) !important; }
-:not(.sidebar-dark) > .bg-white\/10,
-main .bg-white\/10 { background-color: var(--color-bg-secondary) !important; }
-:not(.sidebar-dark) > .bg-white\/20,
-main .bg-white\/20 { background-color: rgba(0, 0, 0, 0.05) !important; }
+.bg-white\/5 { background-color: var(--color-bg-tertiary) !important; }
+.bg-white\/10 { background-color: var(--color-bg-secondary) !important; }
+.bg-white\/20 { background-color: rgba(0, 0, 0, 0.05) !important; }
 
 /* Slate backgrounds → warm light equivalents */
 .bg-slate-800 { background-color: white !important; box-shadow: var(--shadow-lg); }
@@ -1072,10 +1069,8 @@ main .bg-white\/20 { background-color: rgba(0, 0, 0, 0.05) !important; }
 .bg-slate-600 { background-color: var(--color-bg-tertiary) !important; }
 
 /* Hover states */
-:not(.sidebar-dark) > .hover\:bg-white\/5:hover,
-main .hover\:bg-white\/5:hover { background-color: var(--color-bg-tertiary) !important; }
-:not(.sidebar-dark) > .hover\:bg-white\/10:hover,
-main .hover\:bg-white\/10:hover { background-color: var(--color-bg-secondary) !important; }
+.hover\:bg-white\/5:hover { background-color: var(--color-bg-tertiary) !important; }
+.hover\:bg-white\/10:hover { background-color: var(--color-bg-secondary) !important; }
 .hover\:bg-slate-700:hover { background-color: var(--color-bg-tertiary) !important; }
 .hover\:bg-slate-700\/50:hover { background-color: var(--color-bg-secondary) !important; }
 .hover\:bg-slate-600:hover { background-color: var(--color-border) !important; }
@@ -1246,6 +1241,36 @@ input[type="radio"].text-cyan-500 {
 .card table .text-white\/50 { color: var(--color-text-tertiary) !important; }
 .card table .border-white\/10 { border-color: var(--color-border) !important; }
 .card table .border-white\/5 { border-color: var(--color-border-light) !important; }
+
+/* ==================== SIDEBAR PROTECTION ==================== */
+/* Undo ALL bridge overrides inside .sidebar-dark so it keeps dark theme */
+.sidebar-dark .bg-white\/5 { background-color: rgba(255, 255, 255, 0.05) !important; }
+.sidebar-dark .bg-white\/10 { background-color: rgba(255, 255, 255, 0.1) !important; }
+.sidebar-dark .bg-white\/20 { background-color: rgba(255, 255, 255, 0.2) !important; }
+.sidebar-dark .hover\:bg-white\/5:hover { background-color: rgba(255, 255, 255, 0.05) !important; }
+.sidebar-dark .hover\:bg-white\/10:hover { background-color: rgba(255, 255, 255, 0.1) !important; }
+.sidebar-dark .hover\:bg-white\/\[0\.04\]:hover { background-color: rgba(255, 255, 255, 0.04) !important; }
+.sidebar-dark .bg-white\/\[0\.04\] { background-color: rgba(255, 255, 255, 0.04) !important; }
+.sidebar-dark .bg-white\/\[0\.06\] { background-color: rgba(255, 255, 255, 0.06) !important; }
+.sidebar-dark .hover\:bg-white\/\[0\.04\]:hover { background-color: rgba(255, 255, 255, 0.04) !important; }
+.sidebar-dark .text-white { color: #ffffff !important; }
+.sidebar-dark .text-white\/70 { color: rgba(255, 255, 255, 0.7) !important; }
+.sidebar-dark .text-white\/60 { color: rgba(255, 255, 255, 0.6) !important; }
+.sidebar-dark .text-white\/50 { color: rgba(255, 255, 255, 0.5) !important; }
+.sidebar-dark .text-white\/40 { color: rgba(255, 255, 255, 0.4) !important; }
+.sidebar-dark .text-white\/20 { color: rgba(255, 255, 255, 0.2) !important; }
+.sidebar-dark .text-slate-100 { color: #f1f5f9 !important; }
+.sidebar-dark .text-slate-200 { color: #e2e8f0 !important; }
+.sidebar-dark .text-slate-300 { color: #cbd5e1 !important; }
+.sidebar-dark .text-slate-400 { color: #94a3b8 !important; }
+.sidebar-dark .text-slate-500 { color: #64748b !important; }
+.sidebar-dark .border-white\/5 { border-color: rgba(255, 255, 255, 0.05) !important; }
+.sidebar-dark .border-white\/10 { border-color: rgba(255, 255, 255, 0.1) !important; }
+.sidebar-dark .border-white\/\[0\.06\] { border-color: rgba(255, 255, 255, 0.06) !important; }
+.sidebar-dark .bg-slate-700 { background-color: #334155 !important; }
+.sidebar-dark .bg-slate-800 { background-color: #1e293b !important; box-shadow: none !important; }
+.sidebar-dark .hover\:bg-slate-700:hover { background-color: #334155 !important; }
+.sidebar-dark .hover\:bg-slate-600:hover { background-color: #475569 !important; }
 
 /* ==================== RESPONSIVE ==================== */
 @media (max-width: 768px) {

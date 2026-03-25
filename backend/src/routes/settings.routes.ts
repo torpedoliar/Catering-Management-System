@@ -19,9 +19,19 @@ const router = Router();
 const brandingStorage = multer.memoryStorage();
 const brandingUpload = multer({
     storage: brandingStorage,
-    limits: { fileSize: 500 * 1024 }, // 500KB
+    limits: { fileSize: 500 * 1024 }, // 500KB for logo/favicon
     fileFilter: (_req, file, cb) => {
         const allowed = ['image/png', 'image/svg+xml', 'image/x-icon', 'image/jpeg', 'image/webp', 'image/vnd.microsoft.icon'];
+        cb(null, allowed.includes(file.mimetype));
+    }
+});
+
+// Separate upload config for background (larger files allowed)
+const bgUpload = multer({
+    storage: brandingStorage,
+    limits: { fileSize: 5 * 1024 * 1024 }, // 5MB for background
+    fileFilter: (_req, file, cb) => {
+        const allowed = ['image/png', 'image/jpeg', 'image/webp'];
         cb(null, allowed.includes(file.mimetype));
     }
 });
@@ -364,7 +374,17 @@ router.post('/branding/favicon', authMiddleware, adminMiddleware, brandingUpload
 });
 
 // POST /api/settings/branding/background - Upload login background
-router.post('/branding/background', authMiddleware, adminMiddleware, brandingUpload.single('background'), async (req: AuthRequest, res: Response) => {
+router.post('/branding/background', authMiddleware, adminMiddleware, (req: any, res: Response, next: any) => {
+    bgUpload.single('background')(req, res, (err: any) => {
+        if (err) {
+            if (err.code === 'LIMIT_FILE_SIZE') {
+                return res.status(400).json({ error: 'File terlalu besar. Maksimal 5MB.' });
+            }
+            return res.status(400).json({ error: err.message || 'Upload gagal' });
+        }
+        next();
+    });
+}, async (req: AuthRequest, res: Response) => {
     try {
         if (!req.file) {
             return res.status(400).json({ error: 'No file uploaded' });
