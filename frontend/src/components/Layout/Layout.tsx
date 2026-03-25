@@ -330,7 +330,7 @@ export default function Layout({ children }: LayoutProps) {
             )}
 
             {/* Desktop Sidebar */}
-            <div className={`hidden lg:flex ${sidebarWidth} flex-shrink-0 transition-all duration-300 ease-in-out`}>
+            <div className={`hidden lg:flex ${sidebarWidth} flex-shrink-0 transition-all duration-300 ease-in-out w-0 lg:w-auto`}>
                 <div className={`sidebar-dark ${sidebarWidth} h-screen flex flex-col fixed left-0 top-0 z-30 transition-all duration-300 ease-in-out`}>
                     {renderSidebarContent()}
                 </div>
@@ -345,7 +345,7 @@ export default function Layout({ children }: LayoutProps) {
             </div>
 
             {/* Main content */}
-            <div className="flex-1 flex flex-col min-w-0">
+            <div className="flex-1 flex flex-col min-w-0 w-full max-w-[100vw] overflow-x-hidden relative">
                 {/* Top bar */}
                 <header className="bg-white/80 backdrop-blur-md border-b sticky top-0 z-20" style={{ borderColor: 'var(--color-border)' }}>
                     <div className="flex items-center justify-between px-4 lg:px-6 h-16">
