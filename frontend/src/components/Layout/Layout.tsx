@@ -61,8 +61,26 @@ export default function Layout({ children }: LayoutProps) {
     const [vendorExpanded, setVendorExpanded] = useState(true);
     const [serverExpanded, setServerExpanded] = useState(true);
     const [branding, setBranding] = useState<{ logoUrl?: string | null, appShortName?: string }>({});
+    const [isMobile, setIsMobile] = useState(window.innerWidth < 1024);
 
     const isActive = (path: string) => location.pathname === path;
+
+    // Handle responsive layout detection
+    useEffect(() => {
+        const handleResize = () => {
+            const mobile = window.innerWidth < 1024;
+            setIsMobile(mobile);
+            if (!mobile && sidebarOpen) {
+                setSidebarOpen(false); // Close mobile sidebar if resized to desktop
+            }
+        };
+        
+        // Initial check
+        handleResize();
+        
+        window.addEventListener('resize', handleResize);
+        return () => window.removeEventListener('resize', handleResize);
+    }, [sidebarOpen]);
 
     // Persist sidebar state
     useEffect(() => {
@@ -329,20 +347,24 @@ export default function Layout({ children }: LayoutProps) {
                 />
             )}
 
-            {/* Desktop Sidebar — hidden below 1024px via CSS */}
-            <div className={`desktop-sidebar-wrapper ${sidebarWidth} flex-shrink-0 transition-all duration-300 ease-in-out`}>
-                <div className={`sidebar-dark ${sidebarWidth} h-screen flex flex-col fixed left-0 top-0 z-30 transition-all duration-300 ease-in-out`}>
+            {/* Desktop Sidebar — Completely unmounted on mobile for bulletproof layout */}
+            {!isMobile && (
+                <div className={`hidden lg:block ${sidebarWidth} flex-shrink-0 transition-all duration-300 ease-in-out`}>
+                    <div className={`sidebar-dark ${sidebarWidth} h-screen flex flex-col fixed left-0 top-0 z-30 transition-all duration-300 ease-in-out`}>
+                        {renderSidebarContent()}
+                    </div>
+                </div>
+            )}
+
+            {/* Mobile Sidebar - Only rendered on mobile */}
+            {isMobile && (
+                <div
+                    className={`fixed inset-y-0 left-0 z-50 w-[260px] sidebar-dark flex flex-col lg:hidden transform transition-transform duration-300 ease-out ${sidebarOpen ? 'translate-x-0' : '-translate-x-full'
+                        }`}
+                >
                     {renderSidebarContent()}
                 </div>
-            </div>
-
-            {/* Mobile Sidebar */}
-            <div
-                className={`fixed inset-y-0 left-0 z-50 w-[260px] sidebar-dark flex flex-col lg:hidden transform transition-transform duration-300 ease-out ${sidebarOpen ? 'translate-x-0' : '-translate-x-full'
-                    }`}
-            >
-                {renderSidebarContent()}
-            </div>
+            )}
 
             {/* Main content */}
             <div className="flex-1 flex flex-col min-w-0">
