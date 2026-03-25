@@ -1,8 +1,14 @@
 {
-    "version": "2.0.0",
+    "version": "2.1.0",
     "releaseDate": "2026-03-25",
     "minDatabaseVersion": "1.0.0",
     "changelog": [
+        "Feature: Custom login background image via Admin Branding settings",
+        "Feature: Dynamic app name on login page from Branding settings",
+        "Feature: Glassmorphism icon layout on login hero panel",
+        "Fix: Sidebar CSS bridge scoped to exclude dark sidebar elements",
+        "Fix: Mobile responsive layout - prevent content overflow on small screens",
+        "Fix: Backend graceful fallback for loginBackgroundUrl column sync",
         "Major UI Redesign: Implemented Warm Luxury design system across all 34 pages",
         "Feature: Special Day Break Time allows per-day break overrides for shifts",
         "Fixed critical timezone bug in Weekly Menu (Monday Morning Gap)",
