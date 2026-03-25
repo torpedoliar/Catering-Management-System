@@ -27,7 +27,7 @@ export default function AboutPage() {
         <div className="max-w-4xl mx-auto space-y-6 animate-fade-in">
             {/* Header */}
             <div className="card py-12 text-center">
-                <div className="w-20 h-20 mx-auto mb-6 rounded-2xl bg-gradient-to-br from-orange-400 to-orange-600 flex items-center justify-center shadow-lg">
+                <div className="w-20 h-20 mx-auto mb-6 rounded-2xl bg-gradient-to-br from-amber-400 to-amber-600 flex items-center justify-center shadow-lg shadow-amber-500/20">
                     <FileText className="w-10 h-10 text-white" />
                 </div>
                 <h1 className="text-3xl font-bold text-[#1a1f37] mb-2">Catering Management System</h1>
@@ -38,7 +38,7 @@ export default function AboutPage() {
                     </div>
                 ) : (
                     <>
-                        <p className="text-lg font-semibold text-orange-500 mb-2">Version {version}</p>
+                        <p className="text-lg font-semibold text-amber-500 mb-2">Version {version}</p>
                         {releaseDate && <p className="text-sm text-slate-400 mb-4">Released: {releaseDate}</p>}
                     </>
                 )}
@@ -194,14 +194,14 @@ export default function AboutPage() {
             {/* Developer Info */}
             <div className="card">
                 <div className="flex items-center gap-3 mb-6">
-                    <div className="w-10 h-10 rounded-xl bg-teal-50 flex items-center justify-center">
-                        <Users className="w-6 h-6 text-teal-500" />
+                    <div className="w-10 h-10 rounded-xl bg-amber-50 flex items-center justify-center">
+                        <Users className="w-6 h-6 text-amber-500" />
                     </div>
                     <h2 className="text-xl font-bold text-[#1a1f37]">Pengembang</h2>
                 </div>
 
                 <div className="flex flex-col items-center text-center p-6 rounded-xl bg-slate-50">
-                    <div className="w-16 h-16 rounded-full bg-gradient-to-br from-orange-400 to-orange-600 flex items-center justify-center mb-4">
+                    <div className="w-16 h-16 rounded-full bg-gradient-to-br from-amber-400 to-amber-600 flex items-center justify-center mb-4">
                         <span className="text-2xl font-bold text-white">YO</span>
                     </div>
                     <h3 className="text-lg font-semibold text-[#1a1f37] mb-2">Yohanes Octavian Rizky</h3>

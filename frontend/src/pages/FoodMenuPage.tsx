@@ -247,7 +247,7 @@ export default function FoodMenuPage() {
     if (loading && !weekData) {
         return (
             <div className="flex items-center justify-center h-64">
-                <div className="animate-spin rounded-full h-8 w-8 border-t-2 border-b-2 border-teal-500"></div>
+                <div className="animate-spin rounded-full h-8 w-8 border-t-2 border-b-2 border-amber-500"></div>
             </div>
         );
     }
@@ -257,7 +257,7 @@ export default function FoodMenuPage() {
             {/* Header */}
             <div>
                 <h1 className="text-2xl font-bold text-slate-800 flex items-center gap-2">
-                    <UtensilsCrossed className="w-7 h-7 text-teal-500" />
+                    <UtensilsCrossed className="w-7 h-7 text-amber-500" />
                     Menu Makanan
                 </h1>
                 <p className="text-slate-500">Lihat menu makanan mingguan</p>
@@ -270,7 +270,7 @@ export default function FoodMenuPage() {
                         <ChevronLeft className="w-5 h-5 text-slate-600" />
                     </button>
                     <div className="text-center">
-                        <div className="flex items-center justify-center gap-2 text-teal-600">
+                        <div className="flex items-center justify-center gap-2 text-amber-600">
                             <Calendar className="w-5 h-5" />
                             <span className="font-semibold">Week {selectedWeek?.week}, {selectedWeek?.year}</span>
                         </div>
@@ -292,9 +292,9 @@ export default function FoodMenuPage() {
                     {weekData.dailyMenus.map(day => (
                         <div
                             key={day.date}
-                            className={`card overflow-hidden ${isToday(day.date) ? 'ring-2 ring-teal-500' : ''}`}
+                            className={`card overflow-hidden ${isToday(day.date) ? 'ring-2 ring-amber-500' : ''}`}
                         >
-                            <div className={`px-4 py-3 ${isToday(day.date) ? 'bg-teal-500 text-white' : 'bg-slate-50'}`}>
+                            <div className={`px-4 py-3 ${isToday(day.date) ? 'bg-amber-500 text-white' : 'bg-slate-50'}`}>
                                 <div className="flex items-center justify-between">
                                     <div className="flex items-center gap-2">
                                         <Calendar className={`w-4 h-4 ${isToday(day.date) ? 'text-white' : 'text-slate-400'}`} />
@@ -330,7 +330,7 @@ export default function FoodMenuPage() {
                                                     )}
                                                     <div className="flex-1 min-w-0">
                                                         <div className="flex flex-wrap gap-1 mb-1">
-                                                            <span className="inline-block px-2 py-0.5 bg-teal-100 text-teal-700 text-xs rounded font-medium">
+                                                            <span className="inline-block px-2 py-0.5 bg-amber-100 text-amber-700 text-xs rounded font-medium">
                                                                 {group.label}
                                                             </span>
                                                             {group.isGrouped && (
