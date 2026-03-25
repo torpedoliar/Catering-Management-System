@@ -11,7 +11,7 @@ export default function LoginPage() {
     const [externalId, setExternalId] = useState('');
     const [password, setPassword] = useState('');
     const [isLoading, setIsLoading] = useState(false);
-    const [branding, setBranding] = useState<{ logoUrl?: string | null, appName?: string }>({});
+    const [branding, setBranding] = useState<{ logoUrl?: string | null, appName?: string, loginBackgroundUrl?: string | null }>({});
 
     const handleSubmit = async (e: React.FormEvent) => {
         e.preventDefault();
@@ -87,77 +87,77 @@ export default function LoginPage() {
     return (
         <div className="min-h-screen flex" style={{ background: 'var(--color-bg-secondary)' }}>
             {/* Left — Hero Panel */}
-            <div className="hidden lg:flex lg:w-[55%] relative overflow-hidden" style={{ background: 'linear-gradient(135deg, #0f172a 0%, #1e293b 50%, #0f172a 100%)' }}>
-                {/* Decorative elements */}
-                <div className="absolute inset-0">
-                    {/* Gradient orbs */}
-                    <div className="absolute top-20 left-20 w-72 h-72 rounded-full opacity-20" style={{ background: 'radial-gradient(circle, #f59e0b 0%, transparent 70%)' }}></div>
-                    <div className="absolute bottom-32 right-16 w-96 h-96 rounded-full opacity-10" style={{ background: 'radial-gradient(circle, #fbbf24 0%, transparent 70%)' }}></div>
-                    <div className="absolute top-1/2 left-1/3 w-64 h-64 rounded-full opacity-10" style={{ background: 'radial-gradient(circle, #d97706 0%, transparent 70%)' }}></div>
+            <div className="hidden lg:flex lg:w-[55%] relative overflow-hidden" style={{ background: '#0f172a' }}>
+                {/* Background Image / Pattern */}
+                {branding.loginBackgroundUrl ? (
+                    <img 
+                        src={branding.loginBackgroundUrl} 
+                        alt="Login Background" 
+                        className="absolute inset-0 w-full h-full object-cover" 
+                        style={{ filter: 'brightness(0.75)' }}
+                    />
+                ) : (
+                    <div className="absolute inset-0" style={{ background: 'linear-gradient(135deg, #0f172a 0%, #1e293b 50%, #0f172a 100%)' }}>
+                        {/* Gradient orbs */}
+                        <div className="absolute top-20 left-20 w-72 h-72 rounded-full opacity-20" style={{ background: 'radial-gradient(circle, #f59e0b 0%, transparent 70%)' }}></div>
+                        <div className="absolute bottom-32 right-16 w-96 h-96 rounded-full opacity-10" style={{ background: 'radial-gradient(circle, #fbbf24 0%, transparent 70%)' }}></div>
+                        <div className="absolute top-1/2 left-1/3 w-64 h-64 rounded-full opacity-10" style={{ background: 'radial-gradient(circle, #d97706 0%, transparent 70%)' }}></div>
 
-                    {/* Grid pattern */}
-                    <div className="absolute inset-0 opacity-[0.03]" style={{
-                        backgroundImage: 'linear-gradient(rgba(255,255,255,0.1) 1px, transparent 1px), linear-gradient(90deg, rgba(255,255,255,0.1) 1px, transparent 1px)',
-                        backgroundSize: '64px 64px'
-                    }}></div>
-                </div>
+                        {/* Grid pattern */}
+                        <div className="absolute inset-0 opacity-[0.03]" style={{
+                            backgroundImage: 'linear-gradient(rgba(255,255,255,0.1) 1px, transparent 1px), linear-gradient(90deg, rgba(255,255,255,0.1) 1px, transparent 1px)',
+                            backgroundSize: '64px 64px'
+                        }}></div>
+                    </div>
+                )}
 
                 {/* Content */}
-                <div className="relative z-10 flex flex-col justify-center px-16 xl:px-24">
-                    {/* Floating food icons */}
-                    <div className="absolute top-32 right-24 p-4 rounded-2xl bg-white/[0.05] border border-white/[0.08] backdrop-blur-sm" style={{ animation: 'float 6s ease-in-out infinite' }}>
-                        <ChefHat className="w-8 h-8 text-amber-400/80" />
-                    </div>
-                    <div className="absolute bottom-48 right-40 p-3 rounded-xl bg-white/[0.05] border border-white/[0.08] backdrop-blur-sm" style={{ animation: 'float 8s ease-in-out infinite 1s' }}>
-                        <Utensils className="w-6 h-6 text-amber-300/70" />
-                    </div>
-                    <div className="absolute top-1/2 right-12 p-3 rounded-xl bg-white/[0.05] border border-white/[0.08] backdrop-blur-sm" style={{ animation: 'float 7s ease-in-out infinite 2s' }}>
-                        <Coffee className="w-6 h-6 text-amber-200/60" />
-                    </div>
-
-                    {/* Main text */}
-                    <div className="max-w-lg">
-                        <div className="inline-flex items-center gap-2 px-4 py-2 rounded-full bg-amber-500/10 border border-amber-500/20 mb-8">
-                            <div className="w-2 h-2 rounded-full bg-amber-400 animate-pulse"></div>
-                            <span className="text-amber-300 text-sm font-medium">Corporate Catering</span>
+                <div className="relative z-10 flex flex-col justify-center px-16 xl:px-24 w-full h-full pb-20">
+                    <div className="max-w-xl">
+                        {/* Badge */}
+                        <div className="inline-flex items-center gap-2 px-4 py-2 rounded-full mb-8 shadow-xl" style={{ background: 'rgba(0, 0, 0, 0.5)', border: '1px solid rgba(245, 158, 11, 0.4)', backdropFilter: 'blur(8px)' }}>
+                            <div className="w-2 h-2 rounded-full bg-amber-400 animate-pulse" style={{ boxShadow: '0 0 10px rgba(251, 191, 36, 0.8)' }}></div>
+                            <span style={{ color: '#fcd34d', textShadow: '0 2px 4px rgba(0,0,0,0.5)' }} className="text-sm font-semibold tracking-wide">Corporate Catering</span>
                         </div>
 
-                        <h1 className="text-5xl xl:text-6xl font-extrabold text-white leading-tight tracking-tight" style={{ letterSpacing: '-0.03em' }}>
-                            Smart{' '}
-                            <span className="bg-gradient-to-r from-amber-300 via-amber-400 to-amber-500 bg-clip-text text-transparent">
-                                Catering
-                            </span>
-                            <br />
-                            Management
+                        {/* Title */}
+                        <h1 className="text-5xl xl:text-6xl font-extrabold leading-tight tracking-tight" style={{ color: '#ffffff', letterSpacing: '-0.03em', textShadow: '0 4px 24px rgba(0,0,0,0.8), 0 2px 8px rgba(0,0,0,0.6)' }}>
+                            {branding.appName ? (
+                                <>
+                                    {branding.appName.split(' ')[0]}{' '}
+                                    <span className="bg-gradient-to-r from-amber-300 via-amber-400 to-amber-500 bg-clip-text text-transparent" style={{ filter: 'drop-shadow(0 4px 12px rgba(0,0,0,0.6))' }}>
+                                        {branding.appName.split(' ').slice(1).join(' ')}
+                                    </span>
+                                </>
+                            ) : (
+                                <>
+                                    Smart{' '}
+                                    <span className="bg-gradient-to-r from-amber-300 via-amber-400 to-amber-500 bg-clip-text text-transparent" style={{ filter: 'drop-shadow(0 4px 12px rgba(0,0,0,0.6))' }}>
+                                        Catering
+                                    </span>
+                                    <br />
+                                    Management
+                                </>
+                            )}
                         </h1>
 
-                        <p className="text-slate-400 text-lg mt-6 leading-relaxed max-w-md">
-                            Kelola pemesanan makanan korporat dengan efisien.
-                            Zero waste, real-time tracking, dan laporan lengkap dalam satu platform.
-                        </p>
-
-                        {/* Stats */}
-                        <div className="flex gap-8 mt-12">
-                            <div>
-                                <p className="text-3xl font-extrabold text-white tracking-tight">10K+</p>
-                                <p className="text-slate-500 text-sm mt-1">Pengguna aktif</p>
+                        {/* Floating Icons alternative (neatly arranged) */}
+                        <div className="flex gap-4 mt-12 w-fit">
+                            <div className="p-4 rounded-xl shadow-2xl transition hover:scale-105 duration-300" style={{ background: 'rgba(0,0,0,0.4)', backdropFilter: 'blur(12px)', border: '1px solid rgba(255,255,255,0.1)' }}>
+                                <ChefHat className="w-7 h-7 text-amber-400 drop-shadow-md" />
                             </div>
-                            <div className="w-px bg-white/10"></div>
-                            <div>
-                                <p className="text-3xl font-extrabold text-white tracking-tight">99.9%</p>
-                                <p className="text-slate-500 text-sm mt-1">Uptime server</p>
+                            <div className="p-4 rounded-xl shadow-2xl transition hover:scale-105 duration-300" style={{ background: 'rgba(0,0,0,0.4)', backdropFilter: 'blur(12px)', border: '1px solid rgba(255,255,255,0.1)' }}>
+                                <Utensils className="w-7 h-7 text-amber-400 drop-shadow-md" />
                             </div>
-                            <div className="w-px bg-white/10"></div>
-                            <div>
-                                <p className="text-3xl font-extrabold text-amber-400 tracking-tight">0%</p>
-                                <p className="text-slate-500 text-sm mt-1">Food waste</p>
+                            <div className="p-4 rounded-xl shadow-2xl transition hover:scale-105 duration-300" style={{ background: 'rgba(0,0,0,0.4)', backdropFilter: 'blur(12px)', border: '1px solid rgba(255,255,255,0.1)' }}>
+                                <Coffee className="w-7 h-7 text-amber-400 drop-shadow-md" />
                             </div>
                         </div>
                     </div>
                 </div>
 
-                {/* Bottom gradient fade */}
-                <div className="absolute bottom-0 left-0 right-0 h-32" style={{ background: 'linear-gradient(to top, rgba(15,23,42,0.8), transparent)' }}></div>
+                {/* Bottom dark gradient fade so it blends well */}
+                <div className="absolute bottom-0 left-0 right-0 h-48" style={{ background: 'linear-gradient(to top, rgba(0,0,0,0.8), transparent)' }}></div>
             </div>
 
             {/* Right — Login Form */}

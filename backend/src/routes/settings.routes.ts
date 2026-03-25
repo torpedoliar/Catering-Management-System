@@ -206,6 +206,7 @@ router.get('/branding', async (_req, res: Response) => {
                 appShortName: true,
                 logoUrl: true,
                 faviconUrl: true,
+                loginBackgroundUrl: true,
             }
         });
 
@@ -215,6 +216,7 @@ router.get('/branding', async (_req, res: Response) => {
                 appShortName: 'Catering',
                 logoUrl: null,
                 faviconUrl: null,
+                loginBackgroundUrl: null,
             };
         }
 
@@ -340,6 +342,49 @@ router.post('/branding/favicon', authMiddleware, adminMiddleware, brandingUpload
     }
 });
 
+// POST /api/settings/branding/background - Upload login background
+router.post('/branding/background', authMiddleware, adminMiddleware, brandingUpload.single('background'), async (req: AuthRequest, res: Response) => {
+    try {
+        if (!req.file) {
+            return res.status(400).json({ error: 'No file uploaded' });
+        }
+
+        const existing = await prisma.settings.findUnique({ where: { id: 'default' } });
+        if (existing?.loginBackgroundUrl) {
+            const oldPath = path.join(process.cwd(), existing.loginBackgroundUrl);
+            if (fs.existsSync(oldPath)) {
+                fs.unlinkSync(oldPath);
+            }
+        }
+
+        const timestamp = Date.now();
+        const filename = `bg-${timestamp}.webp`;
+        const filepath = path.join(brandingDir, filename);
+        
+        // Resize and optimize background to webp
+        await sharp(req.file.buffer)
+            .resize(1920, 1080, { fit: 'cover', withoutEnlargement: true })
+            .webp({ quality: 80 })
+            .toFile(filepath);
+            
+        const loginBackgroundUrl = `/uploads/branding/${filename}`;
+
+        await prisma.settings.upsert({
+            where: { id: 'default' },
+            update: { loginBackgroundUrl },
+            create: { id: 'default', loginBackgroundUrl }
+        });
+
+        await cacheService.delete(CACHE_KEYS.SETTINGS);
+        sseManager.broadcast('branding:updated', { loginBackgroundUrl, timestamp: getNow().toISOString() });
+
+        res.json({ loginBackgroundUrl, message: 'Background uploaded successfully' });
+    } catch (error) {
+        console.error('Upload background error:', error);
+        res.status(500).json({ error: 'Failed to upload background' });
+    }
+});
+
 // PUT /api/settings/branding - Update app name/short name
 router.put('/branding', authMiddleware, adminMiddleware, async (req: AuthRequest, res: Response) => {
     try {
@@ -422,6 +467,33 @@ router.delete('/branding/favicon', authMiddleware, adminMiddleware, async (req: 
     } catch (error) {
         console.error('Delete favicon error:', error);
         res.status(500).json({ error: 'Failed to remove favicon' });
+    }
+});
+
+// DELETE /api/settings/branding/background - Remove background (reset to default)
+router.delete('/branding/background', authMiddleware, adminMiddleware, async (req: AuthRequest, res: Response) => {
+    try {
+        const existing = await prisma.settings.findUnique({ where: { id: 'default' } });
+
+        if (existing?.loginBackgroundUrl) {
+            const oldPath = path.join(process.cwd(), existing.loginBackgroundUrl);
+            if (fs.existsSync(oldPath)) {
+                fs.unlinkSync(oldPath);
+            }
+        }
+
+        await prisma.settings.update({
+            where: { id: 'default' },
+            data: { loginBackgroundUrl: null }
+        });
+
+        await cacheService.delete(CACHE_KEYS.SETTINGS);
+        sseManager.broadcast('branding:updated', { loginBackgroundUrl: null, timestamp: getNow().toISOString() });
+
+        res.json({ message: 'Background removed' });
+    } catch (error) {
+        console.error('Delete background error:', error);
+        res.status(500).json({ error: 'Failed to remove background' });
     }
 });
 

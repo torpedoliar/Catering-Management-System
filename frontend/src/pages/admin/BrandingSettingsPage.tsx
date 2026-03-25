@@ -8,6 +8,7 @@ interface BrandingSettings {
     appShortName: string;
     logoUrl: string | null;
     faviconUrl: string | null;
+    loginBackgroundUrl: string | null;
 }
 
 export default function BrandingSettingsPage() {
@@ -16,17 +17,21 @@ export default function BrandingSettingsPage() {
         appShortName: 'Catering',
         logoUrl: null,
         faviconUrl: null,
+        loginBackgroundUrl: null,
     });
     const [originalSettings, setOriginalSettings] = useState<BrandingSettings | null>(null);
     const [isLoading, setIsLoading] = useState(true);
     const [isSaving, setIsSaving] = useState(false);
     const [logoPreview, setLogoPreview] = useState<string | null>(null);
     const [faviconPreview, setFaviconPreview] = useState<string | null>(null);
+    const [bgPreview, setBgPreview] = useState<string | null>(null);
     const [logoFile, setLogoFile] = useState<File | null>(null);
     const [faviconFile, setFaviconFile] = useState<File | null>(null);
+    const [bgFile, setBgFile] = useState<File | null>(null);
 
     const logoInputRef = useRef<HTMLInputElement>(null);
     const faviconInputRef = useRef<HTMLInputElement>(null);
+    const bgInputRef = useRef<HTMLInputElement>(null);
 
     const loadSettings = useCallback(async () => {
         try {
@@ -75,6 +80,21 @@ export default function BrandingSettingsPage() {
         reader.readAsDataURL(file);
     };
 
+    const handleBgSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
+        const file = e.target.files?.[0];
+        if (!file) return;
+
+        if (file.size > 2000 * 1024) {
+            toast.error('Ukuran file maksimal 2MB');
+            return;
+        }
+
+        setBgFile(file);
+        const reader = new FileReader();
+        reader.onload = () => setBgPreview(reader.result as string);
+        reader.readAsDataURL(file);
+    };
+
     const uploadLogo = async () => {
         if (!logoFile) return;
 
@@ -115,6 +135,23 @@ export default function BrandingSettingsPage() {
         }
     };
 
+    const uploadBackground = async () => {
+        if (!bgFile) return;
+
+        const formData = new FormData();
+        formData.append('background', bgFile);
+
+        try {
+            const res = await api.post('/api/settings/branding/background', formData);
+            setSettings(s => ({ ...s, loginBackgroundUrl: res.data.loginBackgroundUrl }));
+            setBgFile(null);
+            setBgPreview(null);
+            toast.success('Background berhasil diupload');
+        } catch (error: any) {
+            toast.error(error.response?.data?.error || 'Gagal upload background');
+        }
+    };
+
     const deleteLogo = async () => {
         try {
             await api.delete('/api/settings/branding/logo');
@@ -138,6 +175,16 @@ export default function BrandingSettingsPage() {
             }
         } catch (error: any) {
             toast.error(error.response?.data?.error || 'Gagal menghapus favicon');
+        }
+    };
+
+    const deleteBackground = async () => {
+        try {
+            await api.delete('/api/settings/branding/background');
+            setSettings(s => ({ ...s, loginBackgroundUrl: null }));
+            toast.success('Background dihapus');
+        } catch (error: any) {
+            toast.error(error.response?.data?.error || 'Gagal menghapus background');
         }
     };
 
@@ -400,6 +447,91 @@ export default function BrandingSettingsPage() {
 
                         <p className="text-xs text-slate-500">
                             Format: PNG, SVG, ICO. Maksimal 500KB. Rekomendasi: 64x64px
+                        </p>
+                    </div>
+                </div>
+            </div>
+
+            {/* Background Upload */}
+            <div className="card p-6">
+                <div className="flex items-center gap-3 mb-6">
+                    <div className="w-10 h-10 rounded-xl bg-slate-100 flex items-center justify-center">
+                        <Image className="w-5 h-5 text-slate-600" />
+                    </div>
+                    <div>
+                        <h2 className="text-lg font-semibold text-[#1a1f37]">Login Background</h2>
+                        <p className="text-sm text-slate-500">Foto kustom untuk latar panel kiri halaman Login</p>
+                    </div>
+                </div>
+
+                <div className="flex flex-col md:flex-row gap-6">
+                    {/* Current/Preview Background */}
+                    <div className="flex-shrink-0">
+                        <p className="text-sm font-medium text-slate-700 mb-2">
+                            {bgPreview ? 'Preview' : 'Background Saat Ini'}
+                        </p>
+                        <div className="w-48 h-32 rounded-xl border-2 border-dashed border-slate-300 flex items-center justify-center bg-slate-50 overflow-hidden relative">
+                            {bgPreview ? (
+                                <img src={bgPreview} alt="Preview" className="absolute inset-0 w-full h-full object-cover" />
+                            ) : settings.loginBackgroundUrl ? (
+                                <img src={settings.loginBackgroundUrl} alt="Background" className="absolute inset-0 w-full h-full object-cover" />
+                            ) : (
+                                <div className="text-center text-slate-400 z-10">
+                                    <Image className="w-6 h-6 mx-auto mb-1" />
+                                    <span className="text-xs">Default Theme</span>
+                                </div>
+                            )}
+                        </div>
+                    </div>
+
+                    {/* Upload Controls */}
+                    <div className="flex-1 space-y-3">
+                        <input
+                            ref={bgInputRef}
+                            type="file"
+                            accept="image/png,image/jpeg,image/webp"
+                            onChange={handleBgSelect}
+                            className="hidden"
+                        />
+
+                        <button
+                            onClick={() => bgInputRef.current?.click()}
+                            className="btn-secondary flex items-center gap-2"
+                        >
+                            <Upload className="w-4 h-4" />
+                            Pilih Foto Background
+                        </button>
+
+                        {bgFile && (
+                            <div className="flex items-center gap-2">
+                                <span className="text-sm text-slate-600 truncate max-w-[150px]">{bgFile.name}</span>
+                                <button
+                                    onClick={uploadBackground}
+                                    className="btn-primary text-sm py-1 px-3"
+                                >
+                                    Upload
+                                </button>
+                                <button
+                                    onClick={() => { setBgFile(null); setBgPreview(null); }}
+                                    className="text-slate-400 hover:text-slate-600"
+                                >
+                                    <RotateCcw className="w-4 h-4" />
+                                </button>
+                            </div>
+                        )}
+
+                        {settings.loginBackgroundUrl && !bgFile && (
+                            <button
+                                onClick={deleteBackground}
+                                className="text-red-500 hover:text-red-600 text-sm flex items-center gap-1"
+                            >
+                                <Trash2 className="w-4 h-4" />
+                                Kembalikan ke Tema Default
+                            </button>
+                        )}
+
+                        <p className="text-xs text-slate-500">
+                            Format: PNG, JPG, WebP. Maksimal 2MB. Rekomendasi: 1920x1080px (Lanskap)
                         </p>
                     </div>
                 </div>

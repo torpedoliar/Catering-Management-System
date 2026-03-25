@@ -348,6 +348,7 @@ model Settings {
   appShortName       String   @default("Catering")
   logoUrl            String?  // /uploads/branding/logo.webp
   faviconUrl         String?  // /uploads/branding/favicon.png
+  loginBackgroundUrl String?  // /uploads/branding/background.webp
 
   createdAt          DateTime @default(now())
   updatedAt          DateTime @updatedAt
