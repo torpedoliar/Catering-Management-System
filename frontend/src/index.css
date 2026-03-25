@@ -1058,9 +1058,12 @@ select {
 .bg-dark-lighter { background-color: var(--color-bg-tertiary) !important; }
 .bg-dark-light { background-color: var(--color-bg-secondary) !important; }
 
-.bg-white\/5 { background-color: var(--color-bg-tertiary) !important; }
-.bg-white\/10 { background-color: var(--color-bg-secondary) !important; }
-.bg-white\/20 { background-color: rgba(0, 0, 0, 0.05) !important; }
+:not(.sidebar-dark) > .bg-white\/5,
+main .bg-white\/5 { background-color: var(--color-bg-tertiary) !important; }
+:not(.sidebar-dark) > .bg-white\/10,
+main .bg-white\/10 { background-color: var(--color-bg-secondary) !important; }
+:not(.sidebar-dark) > .bg-white\/20,
+main .bg-white\/20 { background-color: rgba(0, 0, 0, 0.05) !important; }
 
 /* Slate backgrounds → warm light equivalents */
 .bg-slate-800 { background-color: white !important; box-shadow: var(--shadow-lg); }
@@ -1069,8 +1072,10 @@ select {
 .bg-slate-600 { background-color: var(--color-bg-tertiary) !important; }
 
 /* Hover states */
-.hover\:bg-white\/5:hover { background-color: var(--color-bg-tertiary) !important; }
-.hover\:bg-white\/10:hover { background-color: var(--color-bg-secondary) !important; }
+:not(.sidebar-dark) > .hover\:bg-white\/5:hover,
+main .hover\:bg-white\/5:hover { background-color: var(--color-bg-tertiary) !important; }
+:not(.sidebar-dark) > .hover\:bg-white\/10:hover,
+main .hover\:bg-white\/10:hover { background-color: var(--color-bg-secondary) !important; }
 .hover\:bg-slate-700:hover { background-color: var(--color-bg-tertiary) !important; }
 .hover\:bg-slate-700\/50:hover { background-color: var(--color-bg-secondary) !important; }
 .hover\:bg-slate-600:hover { background-color: var(--color-border) !important; }

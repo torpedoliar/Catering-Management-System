@@ -199,16 +199,37 @@ router.put('/', authMiddleware, adminMiddleware, async (req: AuthRequest, res: R
 // GET /api/settings/branding - Public branding data (no auth required)
 router.get('/branding', async (_req, res: Response) => {
     try {
-        let settings = await prisma.settings.findUnique({
-            where: { id: 'default' },
-            select: {
-                appName: true,
-                appShortName: true,
-                logoUrl: true,
-                faviconUrl: true,
-                loginBackgroundUrl: true,
+        let settings: any = null;
+        try {
+            settings = await prisma.settings.findUnique({
+                where: { id: 'default' },
+                select: {
+                    appName: true,
+                    appShortName: true,
+                    logoUrl: true,
+                    faviconUrl: true,
+                    loginBackgroundUrl: true,
+                }
+            });
+        } catch (selectErr: any) {
+            // Fallback: loginBackgroundUrl column might not exist yet
+            if (selectErr?.message?.includes('loginBackgroundUrl')) {
+                settings = await prisma.settings.findUnique({
+                    where: { id: 'default' },
+                    select: {
+                        appName: true,
+                        appShortName: true,
+                        logoUrl: true,
+                        faviconUrl: true,
+                    }
+                });
+                if (settings) {
+                    settings.loginBackgroundUrl = null;
+                }
+            } else {
+                throw selectErr;
             }
-        });
+        }
 
         if (!settings) {
             settings = {
@@ -379,8 +400,11 @@ router.post('/branding/background', authMiddleware, adminMiddleware, brandingUpl
         sseManager.broadcast('branding:updated', { loginBackgroundUrl, timestamp: getNow().toISOString() });
 
         res.json({ loginBackgroundUrl, message: 'Background uploaded successfully' });
-    } catch (error) {
+    } catch (error: any) {
         console.error('Upload background error:', error);
+        if (error?.message?.includes('loginBackgroundUrl') || error?.code === 'P2009') {
+            return res.status(500).json({ error: 'Database belum disinkronkan. Jalankan: npx prisma db push --accept-data-loss di server.' });
+        }
         res.status(500).json({ error: 'Failed to upload background' });
     }
 });
