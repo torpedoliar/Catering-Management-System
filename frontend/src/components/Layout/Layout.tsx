@@ -317,11 +317,15 @@ export default function Layout({ children }: LayoutProps) {
         </>
     );
 
-    const desktopSidebarWidth = sidebarCollapsed ? 'lg:w-[72px]' : 'lg:w-[260px]';
+    const getDesktopPadding = () => {
+        if (sidebarCollapsed) return 'lg:pl-[72px]';
+        return 'lg:pl-[260px]';
+    };
+
     const mobileSidebarWidth = sidebarCollapsed ? 'w-[72px]' : 'w-[260px]';
 
     return (
-        <div className="min-h-screen flex bg-slate-50" style={{ background: 'var(--color-bg-secondary)' }}>
+        <div className={`min-h-screen bg-slate-50 transition-all duration-300 ease-in-out ${getDesktopPadding()}`} style={{ background: 'var(--color-bg-secondary)' }}>
             {/* Mobile backdrop */}
             {sidebarOpen && (
                 <div
@@ -330,11 +334,9 @@ export default function Layout({ children }: LayoutProps) {
                 />
             )}
 
-            {/* Desktop Sidebar — Always visible on lg+ */}
-            <div className={`hidden lg:flex ${desktopSidebarWidth} flex-shrink-0 transition-all duration-300 ease-in-out`}>
-                <div className={`sidebar-dark flex flex-col fixed left-0 top-0 z-30 transition-all duration-300 ease-in-out ${mobileSidebarWidth} h-screen`}>
-                    {renderSidebarContent()}
-                </div>
+            {/* Desktop Sidebar — Always visible on lg+ (Fixed, not in flex flow) */}
+            <div className={`hidden lg:flex flex-col fixed left-0 top-0 z-30 transition-all duration-300 ease-in-out ${mobileSidebarWidth} h-screen sidebar-dark`}>
+                {renderSidebarContent()}
             </div>
 
             {/* Mobile Sidebar */}
@@ -346,7 +348,7 @@ export default function Layout({ children }: LayoutProps) {
             </div>
 
             {/* Main content */}
-            <div className="flex-1 flex flex-col min-w-0 w-full max-w-[100vw] overflow-x-hidden relative lg:ml-0">
+            <div className="flex flex-col w-full min-h-screen overflow-x-hidden relative">
                 {/* Top bar */}
                 <header className="bg-white/80 backdrop-blur-md border-b sticky top-0 z-20" style={{ borderColor: 'var(--color-border)' }}>
                     <div className="flex items-center justify-between px-4 lg:px-6 h-16">
