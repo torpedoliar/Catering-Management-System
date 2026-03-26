@@ -339,7 +339,7 @@ export default function Layout({ children }: LayoutProps) {
 
             {/* Desktop Sidebar - Strictly hidden on mobile */}
             <div 
-                className={`hidden lg:flex flex-col sidebar-dark z-30 transition-all duration-300 ease-in-out h-full overflow-hidden flex-shrink-0`}
+                className={`relative hidden lg:flex flex-col sidebar-dark z-30 transition-all duration-300 ease-in-out h-full overflow-hidden flex-shrink-0`}
                 style={{ width: sidebarCollapsed ? '72px' : '260px' }}
             >
                 {renderSidebarContent()}

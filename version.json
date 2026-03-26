@@ -1,8 +1,9 @@
 {
-    "version": "2.1.1",
+    "version": "2.1.2",
     "releaseDate": "2026-03-26",
     "minDatabaseVersion": "1.0.0",
     "changelog": [
+        "Fix: Removed relative positioning from sidebar-dark in CSS to prevent overriding Mobile Sidebar's fixed utility",
         "Fix: Mobile layout squished content and ghost left space eliminated by strict flex sizing on Desktop Sidebar",
         "Feature: Custom login background image via Admin Branding settings",
         "Feature: Dynamic app name on login page from Branding settings",

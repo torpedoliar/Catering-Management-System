@@ -157,7 +157,6 @@ body {
 .sidebar-dark {
   background: linear-gradient(180deg, #0f172a 0%, #1e293b 100%);
   border-right: 1px solid var(--color-sidebar-border);
-  position: relative;
 }
 
 .sidebar-dark::before {
