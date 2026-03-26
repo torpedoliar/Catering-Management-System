@@ -5,7 +5,6 @@ import { v4 as uuidv4 } from 'uuid';
 import ExcelJS from 'exceljs';
 import { AuthRequest, authMiddleware, adminMiddleware, canteenMiddleware } from '../middleware/auth.middleware';
 import { cutoffMiddleware } from '../middleware/cutoff.middleware';
-import { blacklistMiddleware } from '../middleware/blacklist.middleware';
 import { sseManager } from '../controllers/sse.controller';
 import { getNow, getNowUTC, getToday, getTomorrow, isPastCutoff, isPastCutoffForDate, isDateOrderableWeekly } from '../services/time.service';
 import { logOrder, getRequestContext } from '../services/audit.service';
@@ -117,8 +116,8 @@ router.get('/today', authMiddleware, async (req: AuthRequest, res: Response) => 
     }
 });
 
-// Create order (with blacklist validation, cutoff validated per selected date inside)
-router.post('/', authMiddleware, blacklistMiddleware, validate(createOrderSchema), async (req: AuthRequest, res: Response) => {
+// Create order (with cutoff validated per selected date inside)
+router.post('/', authMiddleware, validate(createOrderSchema), async (req: AuthRequest, res: Response) => {
     const context = getRequestContext(req);
 
     try {
@@ -153,6 +152,29 @@ router.post('/', authMiddleware, blacklistMiddleware, validate(createOrderSchema
 
         // Normalize to start of day (redundant but safe)
         orderDate.setHours(0, 0, 0, 0);
+
+        // Date-specific Blacklist Validation
+        const blacklistEntry = await prisma.blacklist.findFirst({
+            where: {
+                userId,
+                isActive: true,
+                OR: [
+                    { endDate: null },
+                    { endDate: { gt: getNow() } }, // End date is in the future
+                ],
+            },
+        });
+
+        if (blacklistEntry) {
+            // If the order date is <= the blacklist end date, block it.
+            const isOrderDateBlacklisted = !blacklistEntry.endDate || orderDate <= blacklistEntry.endDate;
+            if (isOrderDateBlacklisted) {
+                return res.status(403).json({
+                    error: 'User is blacklisted for this date',
+                    message: `Akun dibatasi hingga ${blacklistEntry.endDate?.toLocaleDateString('id-ID') || 'permanen'}`,
+                });
+            }
+        }
 
         // Check if date is in the past
         const today = getToday();
@@ -330,8 +352,8 @@ router.post('/', authMiddleware, blacklistMiddleware, validate(createOrderSchema
     }
 });
 
-// Bulk create orders (with blacklist validation)
-router.post('/bulk', authMiddleware, blacklistMiddleware, apiRateLimitMiddleware('bulk-order'), validate(bulkOrderSchema), async (req: AuthRequest, res: Response) => {
+// Bulk create orders (with date-specific blacklist validation)
+router.post('/bulk', authMiddleware, apiRateLimitMiddleware('bulk-order'), validate(bulkOrderSchema), async (req: AuthRequest, res: Response) => {
     const context = getRequestContext(req);
 
     try {
@@ -346,6 +368,18 @@ router.post('/bulk', authMiddleware, blacklistMiddleware, apiRateLimitMiddleware
         if (orderRequests.length > 30) {
             return res.status(400).json({ error: 'Maximum 30 orders per bulk request' });
         }
+
+        // Get active blacklist entry if any
+        const blacklistEntry = await prisma.blacklist.findFirst({
+            where: {
+                userId,
+                isActive: true,
+                OR: [
+                    { endDate: null },
+                    { endDate: { gt: getNow() } }, // End date is in the future
+                ],
+            },
+        });
 
         // Get settings
         const settings = await getCachedSettings();
@@ -473,6 +507,19 @@ router.post('/bulk', authMiddleware, blacklistMiddleware, apiRateLimitMiddleware
                     reason: 'Tidak bisa memesan untuk tanggal yang sudah lewat'
                 });
                 continue;
+            }
+
+            // Date-specific Blacklist Validation
+            if (blacklistEntry) {
+                const isOrderDateBlacklisted = !blacklistEntry.endDate || orderDate <= blacklistEntry.endDate;
+                if (isOrderDateBlacklisted) {
+                    failedOrders.push({
+                        date: orderDateParam,
+                        shiftId,
+                        reason: `Akun dibatasi hingga ${blacklistEntry.endDate?.toLocaleDateString('id-ID') || 'permanen'}`
+                    });
+                    continue;
+                }
             }
 
             // Validate based on cutoff mode

@@ -407,31 +407,7 @@ export default function OrderPage() {
         );
     }
 
-    // Blacklisted user
-    if (user?.isBlacklisted) {
-        return (
-            <div className="w-full max-w-7xl mx-auto animate-fade-in">
-                <div className="card text-center py-16">
-                    <div className="w-24 h-24 mx-auto mb-6 rounded-full bg-gradient-to-br from-red-500 to-rose-600 flex items-center justify-center shadow-lg shadow-red-500/20">
-                        <Ban className="w-12 h-12 text-white" />
-                    </div>
-                    <h2 className="text-2xl font-bold text-[#1a1f37] mb-3">Akun Dibatasi</h2>
-                    <p className="text-slate-500 mb-6 max-w-sm mx-auto">
-                        Akun Anda sementara dibatasi karena beberapa kali tidak mengambil pesanan.
-                    </p>
-                    {user.blacklistEndDate && (
-                        <div className="inline-flex items-center gap-2 px-4 py-2 rounded-full bg-red-50 border border-red-200">
-                            <Clock className="w-4 h-4 text-red-600" />
-                            <span className="text-red-600 text-sm">
-                                Berakhir: {new Date(user.blacklistEndDate).toLocaleDateString('id-ID')}
-                            </span>
-                        </div>
-                    )}
-                </div>
-            </div>
-        );
-    }
-
+    // Remove full-page block so users can order for dates after blacklist expires
 
 
     // Bulk order result view
@@ -642,7 +618,8 @@ export default function OrderPage() {
                         <div className="space-y-2 max-h-[300px] overflow-y-auto pr-2">
                             {availableDates.map((dateInfo) => {
                                 const hasAvailableShift = dateInfo.shifts.some(s => s.canOrder);
-                                const isDisabled = dateInfo.hasOrder || !hasAvailableShift;
+                                const isDateBlacklisted = user?.isBlacklisted && (!user.blacklistEndDate || new Date(dateInfo.date + 'T00:00:00') <= new Date(user.blacklistEndDate));
+                                const isDisabled = dateInfo.hasOrder || !hasAvailableShift || isDateBlacklisted;
                                 const isSelected = selectedDates.includes(dateInfo.date);
 
                                 return (
@@ -676,7 +653,10 @@ export default function OrderPage() {
                                             {dateInfo.hasOrder && (
                                                 <p className="text-warning text-xs">Sudah ada pesanan</p>
                                             )}
-                                            {!hasAvailableShift && !dateInfo.hasOrder && (
+                                            {isDateBlacklisted && !dateInfo.hasOrder && (
+                                                <p className="text-danger text-xs">Akun dibatasi pada tanggal ini</p>
+                                            )}
+                                            {!hasAvailableShift && !dateInfo.hasOrder && !isDateBlacklisted && (
                                                 <p className="text-danger text-xs">
                                                     {dateInfo.shifts[0]?.holiday
                                                         ? `Libur: ${dateInfo.shifts[0].holiday.name}`
