@@ -9,7 +9,7 @@ interface SystemMetrics {
     memory: { total: number; used: number; free: number; usagePercent: number };
     disk: { total: number; used: number; free: number; usagePercent: number };
     uptime: { system: number; process: number };
-    nodejs: { version: string; memoryUsage: NodeJS.MemoryUsage };
+    nodejs: { version: string; memoryUsage: { heapUsed: number; heapTotal: number; rss: number; external: number; } };
     database: { connected: boolean; tableCount: number; totalRecords: number };
 }
 
@@ -33,6 +33,7 @@ function formatUptime(seconds: number): string {
 
 export default function PerformancePage() {
     const [metrics, setMetrics] = useState<SystemMetrics | null>(null);
+    const [intervalId, setIntervalId] = useState<ReturnType<typeof setInterval> | null>(null);
     const [loading, setLoading] = useState(true);
     const [refreshing, setRefreshing] = useState(false);
     const [autoRefresh, setAutoRefresh] = useState(true);
@@ -64,11 +65,18 @@ export default function PerformancePage() {
     useEffect(() => {
         fetchMetrics();
 
-        let interval: NodeJS.Timeout;
+        let id: ReturnType<typeof setInterval>;
         if (autoRefresh) {
-            interval = setInterval(() => fetchMetrics(false), 5000);
+            id = setInterval(() => fetchMetrics(false), 5000);
+            setIntervalId(id);
+        } else if (intervalId) {
+            clearInterval(intervalId);
+            setIntervalId(null);
         }
-        return () => clearInterval(interval);
+        return () => {
+            if (id) clearInterval(id);
+            if (intervalId) clearInterval(intervalId); // Clear if autoRefresh was turned off
+        };
     }, [autoRefresh]);
 
     const getUsageColor = (percent: number) => {

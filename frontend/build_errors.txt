@@ -1,0 +1,34 @@
+
+> catering-frontend@1.5.0 build
+> tsc && vite build
+
+src/constants/translations.ts(107,5): error TS1117: An object literal cannot have multiple properties with the same name.
+src/constants/translations.ts(237,5): error TS1117: An object literal cannot have multiple properties with the same name.
+src/contexts/AuthContext.tsx(4,29): error TS2339: Property 'env' does not exist on type 'ImportMeta'.
+src/contexts/SSEContext.tsx(5,29): error TS2339: Property 'env' does not exist on type 'ImportMeta'.
+src/contexts/SSEContext.tsx(67,40): error TS2503: Cannot find namespace 'NodeJS'.
+src/pages/admin/AuditLogPage.tsx(2,1): error TS6133: 'format' is declared but its value is never read.
+src/pages/admin/AuditLogPage.tsx(3,1): error TS6133: 'id' is declared but its value is never read.
+src/pages/admin/AuditLogPage.tsx(14,5): error TS6133: 'Download' is declared but its value is never read.
+src/pages/admin/AuditLogPage.tsx(22,5): error TS6133: 'UserMinus' is declared but its value is never read.
+src/pages/admin/AuditLogPage.tsx(37,29): error TS2339: Property 'env' does not exist on type 'ImportMeta'.
+src/pages/admin/BackupRestorePage.tsx(5,29): error TS2339: Property 'env' does not exist on type 'ImportMeta'.
+src/pages/admin/CompanyManagementPage.tsx(253,46): error TS2339: Property 'env' does not exist on type 'ImportMeta'.
+src/pages/admin/CostAnalysisPage.tsx(10,5): error TS6133: 'Download' is declared but its value is never read.
+src/pages/admin/CostAnalysisPage.tsx(197,40): error TS2339: Property 'env' does not exist on type 'ImportMeta'.
+src/pages/admin/EmailSettingsPage.tsx(3,24): error TS6133: 'Lock' is declared but its value is never read.
+src/pages/admin/EmailSettingsPage.tsx(3,58): error TS6133: 'XCircle' is declared but its value is never read.
+src/pages/admin/ExportPage.tsx(23,40): error TS2339: Property 'env' does not exist on type 'ImportMeta'.
+src/pages/admin/PerformancePage.tsx(5,29): error TS2339: Property 'env' does not exist on type 'ImportMeta'.
+src/pages/admin/PerformancePage.tsx(12,45): error TS2503: Cannot find namespace 'NodeJS'.
+src/pages/admin/PerformancePage.tsx(67,23): error TS2503: Cannot find namespace 'NodeJS'.
+src/pages/admin/TimeSettingsPage.tsx(6,29): error TS2339: Property 'env' does not exist on type 'ImportMeta'.
+src/pages/admin/UpdatePage.tsx(5,29): error TS2339: Property 'env' does not exist on type 'ImportMeta'.
+src/pages/admin/UptimeHistoryPage.tsx(5,29): error TS2339: Property 'env' does not exist on type 'ImportMeta'.
+src/pages/admin/UserManagementPage.tsx(173,40): error TS2339: Property 'env' does not exist on type 'ImportMeta'.
+src/pages/admin/UserManagementPage.tsx(240,36): error TS2339: Property 'env' does not exist on type 'ImportMeta'.
+src/pages/admin/UserManagementPage.tsx(867,86): error TS2339: Property 'env' does not exist on type 'ImportMeta'.
+src/pages/admin/WeeklyMenuPage.tsx(91,22): error TS6133: 'setMenuMode' is declared but its value is never read.
+src/pages/SettingsPage.tsx(9,29): error TS2339: Property 'env' does not exist on type 'ImportMeta'.
+src/pages/SettingsPage.tsx(98,12): error TS6133: 'savingProfile' is declared but its value is never read.
+src/pages/SettingsPage.tsx(211,11): error TS6133: 'handleSaveProfile' is declared but its value is never read.

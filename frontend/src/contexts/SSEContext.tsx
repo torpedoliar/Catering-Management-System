@@ -64,7 +64,7 @@ export function SSEProvider({ children }: { children: ReactNode }) {
     // Use ref for subscribers to avoid stale closures
     const subscribersRef = useRef<Map<string, Set<EventCallback>>>(new Map());
     const eventSourceRef = useRef<EventSource | null>(null);
-    const reconnectTimeoutRef = useRef<NodeJS.Timeout | null>(null);
+    const reconnectTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
     const reconnectAttemptsRef = useRef(0);
     const isConnectingRef = useRef(false);
 
