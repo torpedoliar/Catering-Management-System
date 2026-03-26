@@ -92,6 +92,12 @@ echo "Generating Prisma client..."
 docker-compose exec -T backend npx prisma generate 2>&1
 echo "✓ Prisma client generated"
 
+# Restart backend to ensure it picks up the regenerated Prisma Client and new Database Schema
+echo ""
+echo "Restarting backend to apply schema changes..."
+docker-compose restart backend
+echo "✓ Backend restarted successfully"
+
 # Cleanup old backups (keep last 5)
 echo ""
 echo "Cleaning up old backups (keeping last 5)..."
