@@ -328,7 +328,7 @@ export default function Layout({ children }: LayoutProps) {
     };
 
     return (
-        <div className="min-h-screen flex bg-slate-50 w-full overflow-x-hidden" style={{ background: 'var(--color-bg-secondary)' }}>
+        <div className="flex h-screen w-full bg-slate-50 overflow-hidden" style={{ background: 'var(--color-bg-secondary)' }}>
             {/* Mobile backdrop */}
             {sidebarOpen && (
                 <div
@@ -337,14 +337,12 @@ export default function Layout({ children }: LayoutProps) {
                 />
             )}
 
-            {/* Desktop Sidebar Wrapper - Takes literal 0 width on mobile, and proper width on desktop */}
-            <div className={`hidden lg:block ${getDesktopSidebarWidth()} flex-shrink-0 transition-all duration-300 ease-in-out bg-transparent`}>
-                <div className={`sidebar-dark flex flex-col fixed left-0 top-0 z-30 transition-all duration-300 ease-in-out ${getMobileSidebarWidth()} h-screen`}>
-                    {renderSidebarContent()}
-                </div>
+            {/* Desktop Sidebar - In Flow! NO FIXED POSITION! */}
+            <div className={`hidden lg:flex flex-col sidebar-dark z-30 transition-all duration-300 ease-in-out ${getDesktopSidebarWidth()} h-full`}>
+                {renderSidebarContent()}
             </div>
 
-            {/* Mobile Sidebar */}
+            {/* Mobile Sidebar - Fixed and overlaying */}
             <div
                 className={`fixed inset-y-0 left-0 z-50 w-[260px] sidebar-dark flex flex-col lg:hidden transform transition-transform duration-300 ease-out ${sidebarOpen ? 'translate-x-0' : '-translate-x-full'
                     }`}
@@ -352,10 +350,10 @@ export default function Layout({ children }: LayoutProps) {
                 {renderSidebarContent()}
             </div>
 
-            {/* Main content - Takes up remaining width */}
-            <div className="flex-1 flex flex-col min-w-0 min-h-screen relative">
-                {/* Top bar */}
-                <header className="bg-white/80 backdrop-blur-md border-b sticky top-0 z-20" style={{ borderColor: 'var(--color-border)' }}>
+            {/* Main content - Takes up remaining width, Has own vertical scroll */}
+            <div className="flex-1 flex flex-col min-w-0 h-full overflow-y-auto overflow-x-hidden relative bg-slate-50">
+                {/* Top bar - Sticky inside scrolling container */}
+                <header className="bg-white/80 backdrop-blur-md border-b sticky top-0 z-20 flex-shrink-0" style={{ borderColor: 'var(--color-border)' }}>
                     <div className="flex items-center justify-between px-4 lg:px-6 h-16">
                         {/* Left — mobile menu + search */}
                         <div className="flex items-center gap-3">
