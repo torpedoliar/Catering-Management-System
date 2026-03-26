@@ -337,24 +337,26 @@ export default function Layout({ children }: LayoutProps) {
                 />
             )}
 
-            {/* Desktop Sidebar - In Flow! NO FIXED POSITION! */}
-            <div className={`hidden lg:flex flex-col sidebar-dark z-30 transition-all duration-300 ease-in-out ${getDesktopSidebarWidth()} h-full`}>
-                {renderSidebarContent()}
-            </div>
-
-            {/* Mobile Sidebar - Fixed and overlaying */}
-            <div
-                className={`fixed inset-y-0 left-0 z-50 w-[260px] sidebar-dark flex flex-col lg:hidden transform transition-transform duration-300 ease-out ${sidebarOpen ? 'translate-x-0' : '-translate-x-full'
-                    }`}
+            {/* Desktop Sidebar - Strictly hidden on mobile */}
+            <div 
+                className={`hidden lg:flex flex-col sidebar-dark z-30 transition-all duration-300 ease-in-out h-full overflow-hidden flex-shrink-0`}
+                style={{ width: sidebarCollapsed ? '72px' : '260px' }}
             >
                 {renderSidebarContent()}
             </div>
 
-            {/* Main content - Takes up remaining width, Has own vertical scroll */}
-            <div className="flex-1 flex flex-col min-w-0 h-full overflow-y-auto overflow-x-hidden relative bg-slate-50">
-                {/* Top bar - Sticky inside scrolling container */}
+            {/* Mobile Sidebar - Fixed overlay */}
+            <div
+                className={`fixed inset-y-0 left-0 z-50 w-[260px] sidebar-dark flex flex-col lg:hidden transform transition-transform duration-300 ease-out ${sidebarOpen ? 'translate-x-0' : '-translate-x-full'}`}
+            >
+                {renderSidebarContent()}
+            </div>
+
+            {/* Main content */}
+            <div className="flex-1 flex flex-col min-w-0 w-full h-full overflow-y-auto overflow-x-hidden relative bg-slate-50">
+                {/* Top bar - Sticky */}
                 <header className="bg-white/80 backdrop-blur-md border-b sticky top-0 z-20 flex-shrink-0" style={{ borderColor: 'var(--color-border)' }}>
-                    <div className="flex items-center justify-between px-4 lg:px-6 h-16">
+                    <div className="flex items-center justify-between px-4 lg:px-6 h-16 w-full">
                         {/* Left — mobile menu + search */}
                         <div className="flex items-center gap-3">
                             <button
@@ -376,7 +378,7 @@ export default function Layout({ children }: LayoutProps) {
                         </div>
 
                         {/* Right — status + user */}
-                        <div className="flex items-center gap-3">
+                        <div className="flex items-center gap-3 shrink-0">
                             {/* Connection status */}
                             <div className={`flex items-center gap-1.5 px-2.5 py-1.5 rounded-full text-xs font-semibold transition-colors ${isConnected
                                 ? 'bg-emerald-50 text-emerald-600 border border-emerald-100'
@@ -411,7 +413,7 @@ export default function Layout({ children }: LayoutProps) {
                 </header>
 
                 {/* Page content */}
-                <main className="flex-1 p-4 lg:p-6">
+                <main className="flex-1 w-full flex flex-col p-4 lg:p-6 min-w-0">
                     {children}
                 </main>
             </div>

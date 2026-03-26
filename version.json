@@ -1,8 +1,9 @@
 {
-    "version": "2.1.0",
-    "releaseDate": "2026-03-25",
+    "version": "2.1.1",
+    "releaseDate": "2026-03-26",
     "minDatabaseVersion": "1.0.0",
     "changelog": [
+        "Fix: Mobile layout squished content and ghost left space eliminated by strict flex sizing on Desktop Sidebar",
         "Feature: Custom login background image via Admin Branding settings",
         "Feature: Dynamic app name on login page from Branding settings",
         "Feature: Glassmorphism icon layout on login hero panel",
