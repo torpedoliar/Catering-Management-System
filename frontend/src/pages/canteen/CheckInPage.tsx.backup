@@ -231,7 +231,7 @@ export default function CheckInPage() {
     };
 
     return (
-        <div className="max-w-2xl mx-auto space-y-6 animate-fade-in">
+        <div className="w-full max-w-7xl mx-auto space-y-6 animate-fade-in">
             {/* SSE Status Banner */}
             <div className={`flex items-center justify-between p-3 rounded-xl ${isConnected ? 'bg-emerald-500/10 border border-emerald-500/30' : 'bg-red-500/10 border border-red-500/30'
                 }`}>

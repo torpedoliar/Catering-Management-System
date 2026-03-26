@@ -410,7 +410,7 @@ export default function OrderPage() {
     // Blacklisted user
     if (user?.isBlacklisted) {
         return (
-            <div className="max-w-2xl mx-auto animate-fade-in">
+            <div className="w-full max-w-7xl mx-auto animate-fade-in">
                 <div className="card text-center py-16">
                     <div className="w-24 h-24 mx-auto mb-6 rounded-full bg-gradient-to-br from-red-500 to-rose-600 flex items-center justify-center shadow-lg shadow-red-500/20">
                         <Ban className="w-12 h-12 text-white" />
@@ -437,7 +437,7 @@ export default function OrderPage() {
     // Bulk order result view
     if (bulkResult) {
         return (
-            <div className="max-w-2xl mx-auto animate-fade-in space-y-6">
+            <div className="w-full max-w-7xl mx-auto animate-fade-in space-y-6">
                 {/* Connection Status */}
                 <div className={`inline-flex items-center gap-2 px-4 py-2 rounded-full text-sm font-medium ${isConnected
                     ? 'bg-emerald-50 text-emerald-600'
@@ -521,7 +521,7 @@ export default function OrderPage() {
 
     // Order form
     return (
-        <div className="max-w-2xl mx-auto animate-fade-in space-y-6">
+        <div className="w-full max-w-7xl mx-auto animate-fade-in space-y-6">
             {/* Connection Status */}
             <div className={`inline-flex items-center gap-2 px-4 py-2 rounded-full text-sm font-medium ${isConnected
                 ? 'bg-emerald-50 text-emerald-600'

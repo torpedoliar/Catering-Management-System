@@ -373,7 +373,7 @@ export default function SettingsPage() {
     };
 
     return (
-        <div className="max-w-4xl mx-auto space-y-6 animate-fade-in">
+        <div className="w-full max-w-7xl mx-auto space-y-6 animate-fade-in">
             {/* Header */}
             <div className="flex items-center gap-4">
                 <div className="w-14 h-14 rounded-apple-lg bg-dark-bg-tertiary flex items-center justify-center">

@@ -24,7 +24,7 @@ export default function AboutPage() {
     }, []);
 
     return (
-        <div className="max-w-4xl mx-auto space-y-6 animate-fade-in">
+        <div className="w-full max-w-7xl mx-auto space-y-6 animate-fade-in">
             {/* Header */}
             <div className="card py-12 text-center">
                 <div className="w-20 h-20 mx-auto mb-6 rounded-2xl bg-gradient-to-br from-amber-400 to-amber-600 flex items-center justify-center shadow-lg shadow-amber-500/20">
@@ -42,7 +42,7 @@ export default function AboutPage() {
                         {releaseDate && <p className="text-sm text-slate-400 mb-4">Released: {releaseDate}</p>}
                     </>
                 )}
-                <p className="text-slate-500 max-w-2xl mx-auto">
+                <p className="text-slate-500 w-full max-w-7xl mx-auto">
                     Sistem manajemen pemesanan katering yang modern dan efisien dengan fitur multi-shift,
                     multi-day ordering, QR code check-in, dan kontrol administratif yang lengkap.
                 </p>

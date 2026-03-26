@@ -55,7 +55,7 @@ export default function ExportPage() {
     };
 
     return (
-        <div className="max-w-2xl mx-auto space-y-6 animate-fade-in">
+        <div className="w-full max-w-7xl mx-auto space-y-6 animate-fade-in">
             <div>
                 <h1 className="text-2xl font-bold text-white">Export Transactions</h1>
                 <p className="text-slate-400">Download order history as Excel file</p>

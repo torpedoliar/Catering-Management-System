@@ -123,7 +123,7 @@ export default function HistoryPage() {
     ];
 
     return (
-        <div className="max-w-4xl mx-auto animate-fade-in">
+        <div className="w-full max-w-7xl mx-auto animate-fade-in">
             {/* Header */}
             <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 mb-8">
                 <div className="flex items-center gap-4">

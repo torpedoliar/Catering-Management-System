@@ -96,7 +96,7 @@ export default function TermsPage() {
     }
 
     return (
-        <div className="max-w-4xl mx-auto animate-fade-in">
+        <div className="w-full max-w-7xl mx-auto animate-fade-in">
             {/* Header */}
             <div className="flex items-center gap-4 mb-8">
                 <div className="w-14 h-14 rounded-2xl bg-gradient-to-br from-indigo-500 to-purple-600 flex items-center justify-center shadow-lg shadow-indigo-500/20">
