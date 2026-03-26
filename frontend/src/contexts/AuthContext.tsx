@@ -1,7 +1,7 @@
 import { createContext, useContext, useState, useEffect, ReactNode, useCallback } from 'react';
 import axios from 'axios';
 
-const API_URL = import.meta.env.VITE_API_URL ?? 'http://localhost:3012';
+const API_URL = import.meta.env.VITE_API_URL || '';
 
 // Create axios instance with interceptor
 const api = axios.create({

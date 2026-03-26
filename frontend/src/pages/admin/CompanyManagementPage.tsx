@@ -250,7 +250,7 @@ export default function CompanyManagementPage() {
 
                     {/* Template & Import */}
                     <a
-                        href={`${import.meta.env.VITE_API_URL ?? 'http://localhost:3012'}/api/companies/export/template?token=${localStorage.getItem('token')}`}
+                        href={`${import.meta.env.VITE_API_URL || ''}/api/companies/export/template?token=${localStorage.getItem('token')}`}
                         target="_blank"
                         rel="noopener noreferrer"
                         className="btn-secondary flex items-center gap-2"

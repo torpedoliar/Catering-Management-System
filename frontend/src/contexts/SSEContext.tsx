@@ -2,7 +2,7 @@ import { createContext, useContext, useEffect, useState, ReactNode, useCallback,
 import { useAuth } from './AuthContext';
 import toast from 'react-hot-toast';
 
-const API_URL = import.meta.env.VITE_API_URL ?? 'http://localhost:3012';
+const API_URL = import.meta.env.VITE_API_URL || '';
 
 // Generate unique tab ID for this browser tab
 const TAB_ID = `tab_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;

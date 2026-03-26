@@ -170,7 +170,7 @@ export default function UserManagementPage() {
     const downloadTemplate = async () => {
         try {
             const token = localStorage.getItem('token');
-            const apiUrl = import.meta.env.VITE_API_URL ?? 'http://localhost:3012';
+            const apiUrl = import.meta.env.VITE_API_URL || '';
 
             const response = await fetch(`${apiUrl}/api/users/export/template`, {
                 method: 'GET',
@@ -237,7 +237,7 @@ export default function UserManagementPage() {
             preferredCanteenId: user.preferredCanteenId || '',
             vendorId: (user as any).vendorId || ''
         });
-        const apiUrl = import.meta.env.VITE_API_URL ?? 'http://localhost:3012';
+        const apiUrl = import.meta.env.VITE_API_URL || '';
         setPhotoPreview(user.photo ? `${apiUrl}${user.photo}` : null);
         setPhotoFile(null);
 
@@ -864,7 +864,7 @@ export default function UserManagementPage() {
                                                 <div className="flex items-center gap-3">
                                                     <div className="w-10 h-10 rounded-full overflow-hidden bg-slate-100 flex-shrink-0">
                                                         {user.photo ? (
-                                                            <img src={`${import.meta.env.VITE_API_URL ?? 'http://localhost:3012'}${user.photo}`} alt={user.name} className="w-full h-full object-cover" />
+                                                            <img src={`${import.meta.env.VITE_API_URL ?? ''}${user.photo}`} alt={user.name} className="w-full h-full object-cover" />
                                                         ) : (
                                                             <div className="w-full h-full flex items-center justify-center text-slate-400">
                                                                 <Users className="w-5 h-5" />

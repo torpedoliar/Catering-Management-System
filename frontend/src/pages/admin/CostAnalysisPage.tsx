@@ -194,7 +194,7 @@ export default function CostAnalysisPage() {
         setIsExporting(true);
         try {
             const token = localStorage.getItem('token');
-            const apiUrl = import.meta.env.VITE_API_URL ?? 'http://localhost:3012';
+            const apiUrl = import.meta.env.VITE_API_URL || '';
 
             const response = await fetch(
                 `${apiUrl}/api/orders/export?startDate=${startDate}&endDate=${endDate}`,

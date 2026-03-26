@@ -34,7 +34,7 @@ import {
     Loader2
 } from 'lucide-react';
 
-const API_URL = import.meta.env.VITE_API_URL ?? 'http://localhost:3012';
+const API_URL = import.meta.env.VITE_API_URL || '';
 
 // Helper to format timestamp - timestamps are stored in WIB already
 const formatWIBDate = (timestamp: string): string => {

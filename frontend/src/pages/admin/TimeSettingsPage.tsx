@@ -3,7 +3,7 @@ import { useState, useEffect } from 'react';
 import { formatDateTimeShortWIB } from '../../utils/timezone';
 import toast from 'react-hot-toast';
 
-const API_URL = import.meta.env.VITE_API_URL ?? 'http://localhost:3012';
+const API_URL = import.meta.env.VITE_API_URL || '';
 
 interface NTPSettings {
     ntpEnabled: boolean;

@@ -92,7 +92,7 @@ function CheckInResultPopup({ show, data, onClose }: CheckInResultPopupProps) {
                             <div className="w-24 h-24 rounded-full overflow-hidden border-4 border-white shadow-md mb-3">
                                 {data.order.user.photo ? (
                                     <img
-                                        src={`${(import.meta as any).env?.VITE_API_URL || 'http://localhost:3012'}${data.order.user.photo}`}
+                                        src={`${(import.meta as any).env?.VITE_API_URL || ''}${data.order.user.photo}`}
                                         alt={data.order.user.name}
                                         className="w-full h-full object-cover"
                                     />
@@ -585,7 +585,7 @@ export default function CheckInPage() {
                             <div className="flex items-center gap-4">
                                 <div className="w-20 h-20 rounded-full overflow-hidden bg-white/10 flex-shrink-0">
                                     {pendingOrder.data?.order?.user?.photo ? (
-                                        <img src={`${(import.meta as any).env.VITE_API_URL ?? 'http://localhost:3012'}${pendingOrder.data.order.user.photo}`} alt={pendingOrder.data.order.user.name} className="w-full h-full object-cover" />
+                                        <img src={`${(import.meta as any).env.VITE_API_URL || ''}${pendingOrder.data.order.user.photo}`} alt={pendingOrder.data.order.user.name} className="w-full h-full object-cover" />
                                     ) : (
                                         <div className="w-full h-full flex items-center justify-center text-white/40"><UserIcon className="w-10 h-10" /></div>
                                     )}
