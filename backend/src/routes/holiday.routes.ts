@@ -567,4 +567,128 @@ router.post('/sundays/override/:date', authMiddleware, adminMiddleware, async (r
     }
 });
 
+// ============================================
+// NATIONAL HOLIDAY AUTO-SYNC ENDPOINTS
+// ============================================
+
+// Get National holiday sync status for a year
+router.get('/national/status', authMiddleware, async (req: AuthRequest, res: Response) => {
+    try {
+        const year = parseInt(req.query.year as string) || new Date().getFullYear();
+        const startDate = new Date(year, 0, 1);
+        const endDate = new Date(year, 11, 31);
+
+        const existingCount = await prisma.holiday.count({
+            where: {
+                date: {
+                    gte: startDate,
+                    lte: endDate
+                },
+                description: 'Libur Nasional (otomatis)',
+                isActive: true
+            }
+        });
+
+        res.json({
+            enabled: existingCount > 0
+        });
+    } catch (error) {
+        console.error('Get National Holiday status error:', error);
+        res.status(500).json({ error: ErrorMessages.SERVER_ERROR });
+    }
+});
+
+// Toggle National holiday sync (Admin only)
+router.post('/national/toggle', authMiddleware, adminMiddleware, async (req: AuthRequest, res: Response) => {
+    const context = getRequestContext(req);
+    try {
+        const { year, enabled } = req.body;
+        
+        if (!year) {
+            return res.status(400).json({ error: 'Year is required' });
+        }
+
+        const targetYear = parseInt(year);
+        const startDate = new Date(targetYear, 0, 1);
+        const endDate = new Date(targetYear, 11, 31);
+        const now = getNow();
+
+        let created = 0;
+        let deleted = 0;
+
+        if (enabled) {
+            // Fetch holidays from libur.deno.dev
+            const response = await fetch('https://libur.deno.dev/api');
+            if (!response.ok) {
+                return res.status(500).json({ error: 'Gagal menghubungi API libur.deno.dev' });
+            }
+            const apiHolidays = (await response.json()) as any[];
+
+            // Filter for the requested year just in case the API returns multiple years
+            const targetHolidays = apiHolidays.filter((h: any) => h.date.startsWith(targetYear.toString()));
+
+            for (const item of targetHolidays) {
+                const holidayDate = new Date(item.date);
+                holidayDate.setHours(0, 0, 0, 0);
+
+                // Check if already exists
+                const existing = await prisma.holiday.findFirst({
+                    where: {
+                        date: holidayDate,
+                        description: 'Libur Nasional (otomatis)',
+                        shiftId: null
+                    }
+                });
+
+                if (!existing) {
+                    await prisma.holiday.create({
+                        data: {
+                            date: holidayDate,
+                            name: item.name,
+                            description: 'Libur Nasional (otomatis)',
+                            shiftId: null,
+                            isActive: true
+                        }
+                    });
+                    created++;
+                }
+            }
+        } else {
+            // Delete all generated national holidays for that year
+            const result = await prisma.holiday.deleteMany({
+                where: {
+                    date: {
+                        gte: startDate,
+                        lte: endDate
+                    },
+                    description: 'Libur Nasional (otomatis)'
+                }
+            });
+            deleted = result.count;
+        }
+
+        // Broadcast update
+        sseManager.broadcast('holiday:updated', {
+            action: 'national-toggle',
+            year: targetYear,
+            enabled,
+            created,
+            deleted,
+            timestamp: now.toISOString(),
+        });
+
+        res.json({
+            message: enabled
+                ? `Sinkronisasi berhasil. ${created} Libur Nasional ditambahkan untuk tahun ${targetYear}.`
+                : `Sinkronisasi dibatalkan. ${deleted} Libur Nasional dihapus dari tahun ${targetYear}.`,
+            enabled,
+            created,
+            deleted
+        });
+    } catch (error) {
+        console.error('Toggle National Holiday error:', error);
+        res.status(500).json({ error: ErrorMessages.SERVER_ERROR });
+    }
+});
+
 export default router;

@@ -64,6 +64,10 @@ export default function CalendarPage() {
     const [sundayAutoHoliday, setSundayAutoHoliday] = useState(false);
     const [isTogglingSunday, setIsTogglingSunday] = useState(false);
 
+    // National Auto-Holiday state
+    const [nationalAutoHoliday, setNationalAutoHoliday] = useState(false);
+    const [isTogglingNational, setIsTogglingNational] = useState(false);
+
     const year = currentDate.getFullYear();
     const month = currentDate.getMonth() + 1;
 
@@ -114,6 +118,38 @@ export default function CalendarPage() {
             toast.error(error.response?.data?.error || 'Gagal mengubah pengaturan');
         } finally {
             setIsTogglingSunday(false);
+        }
+    };
+
+    // Load National Holiday sync status
+    const loadNationalStatus = useCallback(async () => {
+        try {
+            const res = await api.get(`/api/holidays/national/status?year=${year}`);
+            setNationalAutoHoliday(res.data.enabled);
+        } catch (error) {
+            console.error('Failed to load National Holiday status:', error);
+        }
+    }, [year]);
+
+    useEffect(() => {
+        loadNationalStatus();
+    }, [loadNationalStatus]);
+
+    // Toggle National Holiday sync
+    const handleToggleNational = async () => {
+        setIsTogglingNational(true);
+        try {
+            const res = await api.post('/api/holidays/national/toggle', { 
+                year, 
+                enabled: !nationalAutoHoliday 
+            });
+            setNationalAutoHoliday(!nationalAutoHoliday);
+            toast.success(res.data.message);
+            loadCalendarData();
+        } catch (error: any) {
+            toast.error(error.response?.data?.error || 'Gagal sinkronisasi libur nasional');
+        } finally {
+            setIsTogglingNational(false);
         }
     };
 
@@ -482,6 +518,26 @@ export default function CalendarPage() {
                         Libur Minggu
                         <span className={`text-xs px-1.5 py-0.5 rounded ${sundayAutoHoliday ? 'bg-orange-500/40' : 'bg-slate-600'}`}>
                             {sundayAutoHoliday ? 'ON' : 'OFF'}
+                        </span>
+                    </button>
+
+                    {/* National Holiday Sync Toggle */}
+                    <button
+                        onClick={handleToggleNational}
+                        disabled={isTogglingNational}
+                        className={`flex items-center gap-2 px-4 py-2 rounded-lg transition-all ${nationalAutoHoliday
+                                ? 'bg-red-500/20 text-red-400 border border-red-500/50 hover:bg-red-500/30'
+                                : 'bg-slate-700/50 text-slate-400 border border-slate-600 hover:border-red-500/50 hover:text-red-400'
+                            }`}
+                    >
+                        {isTogglingNational ? (
+                            <Loader2 className="w-4 h-4 animate-spin" />
+                        ) : (
+                            <Calendar className="w-4 h-4" />
+                        )}
+                        Libur Nasional
+                        <span className={`text-xs px-1.5 py-0.5 rounded ${nationalAutoHoliday ? 'bg-red-500/40 text-red-200' : 'bg-slate-600'}`}>
+                            {nationalAutoHoliday ? 'ON' : 'OFF'}
                         </span>
                     </button>
 
