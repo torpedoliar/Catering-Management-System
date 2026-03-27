@@ -98,6 +98,12 @@ echo "Restarting backend to apply schema changes..."
 docker-compose restart backend
 echo "✓ Backend restarted successfully"
 
+# Restart Nginx Proxy Manager to clear cached Docker internal IPs
+echo ""
+echo "Restarting Nginx Proxy Manager to clear proxy cache..."
+docker restart $(docker ps -q -f name=nginx-proxy-manager) 2>/dev/null || docker restart nginx-proxy-manager 2>/dev/null || true
+echo "✓ Nginx Proxy Manager restarted"
+
 # Cleanup old backups (keep last 5)
 echo ""
 echo "Cleaning up old backups (keeping last 5)..."
