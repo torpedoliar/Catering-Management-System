@@ -31,6 +31,10 @@ export const createUserSchema = z.object({
     departmentId: z.string().uuid().optional().nullable(),
     role: z.enum(['USER', 'ADMIN', 'CANTEEN', 'VENDOR']).optional().default('USER'),
     vendorId: z.string().uuid().optional().nullable(),
+    preferredCanteenId: z.preprocess(
+        (val) => (val === '' || val === undefined ? null : val),
+        z.string().uuid('Canteen ID tidak valid').nullable()
+    ).optional(),
 });
 
 export const updateUserSchema = z.object({

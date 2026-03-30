@@ -1,8 +1,15 @@
 {
-    "version": "2.1.2",
-    "releaseDate": "2026-03-26",
+    "version": "2.2.0",
+    "releaseDate": "2026-03-30",
     "minDatabaseVersion": "1.0.0",
     "changelog": [
+        "Fix: Default canteen not saved when creating new user (Zod schema + backend route fix)",
+        "Fix: Weekly menu deletion now removes all grouped shift entries (not just 1)",
+        "Feature: Android local notification reminders (30min before meal cutoff)",
+        "Feature: Auto-cancel reminders when order created, reschedule when cancelled",
+        "Feature: Notification reschedule on app resume and device boot",
+        "Feature: SSE WebView optimization with androidScheme https",
+        "Feature: Android notification permissions (POST_NOTIFICATIONS, SCHEDULE_EXACT_ALARM, RECEIVE_BOOT_COMPLETED)",
         "Fix: Removed relative positioning from sidebar-dark in CSS to prevent overriding Mobile Sidebar's fixed utility",
         "Fix: Mobile layout squished content and ghost left space eliminated by strict flex sizing on Desktop Sidebar",
         "Feature: Custom login background image via Admin Branding settings",

@@ -1,0 +1,7 @@
+<?xml version='1.0' encoding='utf-8'?>
+<resources>
+    <string name="app_name">HalloFood</string>
+    <string name="title_activity_main">HalloFood</string>
+    <string name="package_name">co.id.santosjayaabadi.hallofood</string>
+    <string name="custom_url_scheme">co.id.santosjayaabadi.hallofood</string>
+</resources>

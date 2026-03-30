@@ -183,10 +183,31 @@ export default function WeeklyMenuPage() {
         }
     };
 
-    const deleteMenu = async (menuId: string) => {
+    const deleteMenu = async (menuId: string, dayOfWeek?: number, menuItemId?: string) => {
         if (!confirm('Hapus menu ini?')) return;
 
         try {
+            // If grouped mode, find ALL menu IDs for the same menuItem on the same day
+            if (weekData && dayOfWeek !== undefined && menuItemId) {
+                const dayData = weekData.dailyMenus.find(d => d.dayOfWeek === dayOfWeek);
+                if (dayData) {
+                    const relatedMenuIds = dayData.menus
+                        .filter(m => m.menuItem.id === menuItemId)
+                        .map(m => m.id);
+
+                    if (relatedMenuIds.length > 1) {
+                        // Delete all related entries (one per shift in the group)
+                        await Promise.all(relatedMenuIds.map(id =>
+                            api.delete(`/api/weekly-menu/${id}`)
+                        ));
+                        toast.success(`${relatedMenuIds.length} entri menu dihapus`);
+                        loadData();
+                        return;
+                    }
+                }
+            }
+
+            // Single delete fallback
             await api.delete(`/api/weekly-menu/${menuId}`);
             toast.success('Menu dihapus');
             loadData();
@@ -397,7 +418,7 @@ export default function WeeklyMenuPage() {
                                                                             {menu.menuItem.vendor.name}
                                                                         </p>
                                                                         <button
-                                                                            onClick={() => deleteMenu(menu.id)}
+                                                                            onClick={() => deleteMenu(menu.id, day.dayOfWeek, menu.menuItem.id)}
                                                                             className="absolute top-1 right-1 p-1 bg-red-500 text-white rounded opacity-0 group-hover:opacity-100 transition-opacity"
                                                                         >
                                                                             <Trash2 className="w-3 h-3" />
@@ -439,7 +460,7 @@ export default function WeeklyMenuPage() {
                                                                         <p className="text-xs font-medium text-slate-800 line-clamp-2">{menu.menuItem.name}</p>
                                                                         <p className="text-[10px] text-slate-400">{menu.menuItem.vendor.name}</p>
                                                                         <button
-                                                                            onClick={() => deleteMenu(menu.id)}
+                                                                            onClick={() => deleteMenu(menu.id, day.dayOfWeek, menu.menuItem.id)}
                                                                             className="absolute top-1 right-1 p-1 bg-red-500 text-white rounded opacity-0 group-hover:opacity-100 transition-opacity"
                                                                         >
                                                                             <Trash2 className="w-3 h-3" />

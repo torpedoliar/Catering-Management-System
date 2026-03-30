@@ -1,8 +1,9 @@
 {
-    "version": "2.0.0",
-    "releaseDate": "2026-03-25",
+    "version": "2.1.0",
+    "releaseDate": "2026-03-30",
     "minDatabaseVersion": "1.0.0",
     "changelog": [
+        "Fix: Default canteen (preferredCanteenId) not saved when creating new user via admin form",
         "Major UI Redesign: Implemented Warm Luxury design system across all 34 pages",
         "Feature: Special Day Break Time allows per-day break overrides for shifts",
         "Fixed critical timezone bug in Weekly Menu (Monday Morning Gap)",

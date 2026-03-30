@@ -1,6 +1,7 @@
 import { createContext, useContext, useEffect, useState, ReactNode, useCallback, useRef } from 'react';
 import { useAuth } from './AuthContext';
 import toast from 'react-hot-toast';
+import { Capacitor } from '@capacitor/core';
 
 const API_URL = import.meta.env.VITE_API_URL || '';
 
@@ -303,6 +304,20 @@ function showEventToast(eventType: string, data: any, currentUserId: string) {
             if (!isOwnAction) {
                 toast.success(`📦 New order: ${data.order?.user?.name || 'User'}`, { icon: '🍽️' });
             }
+            // Cancel reminders on Android when own order is created
+            if (isOwnAction && Capacitor.isNativePlatform()) {
+                import('../services/notification-service').then(({ cancelAllReminders }) => {
+                    cancelAllReminders();
+                }).catch(() => {});
+            }
+            break;
+        case 'order:bulk_created':
+            // Cancel reminders when bulk order includes today
+            if (isOwnAction && Capacitor.isNativePlatform()) {
+                import('../services/notification-service').then(({ cancelAllReminders }) => {
+                    cancelAllReminders();
+                }).catch(() => {});
+            }
             break;
         case 'order:checkin':
             toast.success(`✅ ${data.order?.user?.name || 'User'} checked in!`, { icon: '🎉' });
@@ -310,6 +325,12 @@ function showEventToast(eventType: string, data: any, currentUserId: string) {
         case 'order:cancelled':
             if (!isOwnAction) {
                 toast(`Order cancelled: ${data.order?.user?.name || 'User'}`, { icon: '❌' });
+            }
+            // Reschedule reminders on Android when own order is cancelled
+            if (isOwnAction && Capacitor.isNativePlatform()) {
+                import('../services/notification-service').then(({ rescheduleRemindersFromAPI }) => {
+                    rescheduleRemindersFromAPI();
+                }).catch(() => {});
             }
             break;
         case 'order:noshow':
