@@ -1,8 +1,11 @@
 {
-    "version": "2.2.0",
-    "releaseDate": "2026-03-30",
+    "version": "2.3.0",
+    "releaseDate": "2026-03-31",
     "minDatabaseVersion": "1.0.0",
     "changelog": [
+        "Feature: Persistent Android login using @capacitor/preferences (no more auto-logout)",
+        "Improvement: Proactive 7-day local notification scheduling for order reminders",
+        "Feature: Weekly cutoff time support for Android notifications",
         "Fix: Default canteen not saved when creating new user (Zod schema + backend route fix)",
         "Fix: Weekly menu deletion now removes all grouped shift entries (not just 1)",
         "Feature: Android local notification reminders (30min before meal cutoff)",
@@ -51,4 +54,4 @@
     ],
     "repository": "https://github.com/torpedoliar/Catering-Management-System",
     "branch": "main"
-}
+}

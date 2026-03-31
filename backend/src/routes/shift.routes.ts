@@ -37,6 +37,7 @@ router.get('/', authMiddleware, async (req: AuthRequest, res: Response) => {
 
                 // Get orderable date range for weekly mode
                 let orderableDates: Date[] = [];
+                let weeklyCutoffTime: string | null = null;
                 if (cutoffMode === 'weekly') {
                     const rangeResult = getOrderableDateRange({
                         cutoffMode: 'weekly',
@@ -50,6 +51,7 @@ router.get('/', authMiddleware, async (req: AuthRequest, res: Response) => {
                         maxWeeksAhead: settings?.maxWeeksAhead || 1,
                     });
                     orderableDates = rangeResult.dates;
+                    weeklyCutoffTime = rangeResult.cutoffTime ? rangeResult.cutoffTime.toISOString() : null;
                 }
 
                 const shiftsWithCutoff = shifts.map((shift) => {
@@ -83,7 +85,8 @@ router.get('/', authMiddleware, async (req: AuthRequest, res: Response) => {
                     cutoffHours,
                     orderableDates: orderableDates.map(d => d.toISOString().split('T')[0]),
                     serverTime: now.toISOString(),
-                    timezone
+                    timezone,
+                    weeklyCutoffTime
                 };
             },
             { ttl: CACHE_TTL.SHIFTS }
@@ -127,6 +130,7 @@ router.get('/for-user', authMiddleware, async (req: AuthRequest, res: Response) 
 
         // Get orderable dates for weekly mode
         let orderableDates: string[] = [];
+        let weeklyCutoffTime: string | null = null;
         if (cutoffMode === 'weekly') {
             const rangeResult = getOrderableDateRange({
                 cutoffMode: 'weekly',
@@ -140,6 +144,7 @@ router.get('/for-user', authMiddleware, async (req: AuthRequest, res: Response) 
                 maxWeeksAhead: settings?.maxWeeksAhead || 1,
             });
             orderableDates = rangeResult.dates.map(d => d.toISOString().split('T')[0]);
+            weeklyCutoffTime = rangeResult.cutoffTime ? rangeResult.cutoffTime.toISOString() : null;
         }
 
         let shifts;
@@ -247,7 +252,7 @@ router.get('/for-user', authMiddleware, async (req: AuthRequest, res: Response) 
             };
         });
 
-        res.json({ shifts: shiftsWithCutoff, cutoffMode, cutoffDays, cutoffHours, orderableDates, serverTime: now.toISOString(), timezone });
+        res.json({ shifts: shiftsWithCutoff, cutoffMode, cutoffDays, cutoffHours, orderableDates, serverTime: now.toISOString(), timezone, weeklyCutoffTime });
     } catch (error) {
         console.error('Get user shifts error:', error);
         res.status(500).json({ error: 'Failed to get shifts' });

@@ -1,5 +1,6 @@
 import { createContext, useContext, useState, useEffect, ReactNode, useCallback } from 'react';
 import axios from 'axios';
+import { Preferences } from '@capacitor/preferences';
 
 const API_URL = import.meta.env.VITE_API_URL || '';
 
@@ -8,12 +9,14 @@ const api = axios.create({
     baseURL: API_URL,
 });
 
+// Token in-memory untuk axios interceptor agar tetap berjalan secara synchronous
+let memoryToken: string | null = null;
+
 // Add request interceptor to attach token
 api.interceptors.request.use(
     (config) => {
-        const token = localStorage.getItem('token');
-        if (token) {
-            config.headers.Authorization = `Bearer ${token}`;
+        if (memoryToken) {
+            config.headers.Authorization = `Bearer ${memoryToken}`;
         }
         return config;
     },
@@ -54,7 +57,7 @@ const AuthContext = createContext<AuthContextType | undefined>(undefined);
 
 export function AuthProvider({ children }: { children: ReactNode }) {
     const [user, setUser] = useState<User | null>(null);
-    const [token, setToken] = useState<string | null>(() => localStorage.getItem('token'));
+    const [token, setToken] = useState<string | null>(null);
     const [isLoading, setIsLoading] = useState(true);
 
     // Load user on mount (only once, not on token change)
@@ -62,8 +65,12 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         let isMounted = true;
 
         const loadUser = async () => {
-            const storedToken = localStorage.getItem('token');
+            const { value: storedToken } = await Preferences.get({ key: 'token' });
             if (storedToken) {
+                memoryToken = storedToken;
+                if (isMounted) {
+                    setToken(storedToken);
+                }
                 try {
                     const res = await api.get('/api/auth/me');
                     if (isMounted) {
@@ -71,7 +78,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
                     }
                 } catch (error) {
                     console.error('Failed to load user:', error);
-                    localStorage.removeItem('token');
+                    await Preferences.remove({ key: 'token' });
+                    memoryToken = null;
                     if (isMounted) {
                         setToken(null);
                         setUser(null);
@@ -94,7 +102,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         const res = await api.post('/api/auth/login', { externalId, password });
         const { token: newToken, user: userData } = res.data;
 
-        localStorage.setItem('token', newToken);
+        await Preferences.set({ key: 'token', value: newToken });
+        memoryToken = newToken;
         setToken(newToken);
         setUser(userData);
     }, []);
@@ -105,7 +114,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         } catch (error) {
             console.error('Logout API error:', error);
         } finally {
-            localStorage.removeItem('token');
+            await Preferences.remove({ key: 'token' });
+            memoryToken = null;
             // Clear announcement session tracking so popups show on next login
             sessionStorage.removeItem('announcementsShown');
             sessionStorage.removeItem('dismissedAnnouncements');
@@ -115,9 +125,10 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     }, []);
 
     const refreshUser = useCallback(async () => {
-        const storedToken = localStorage.getItem('token');
+        const { value: storedToken } = await Preferences.get({ key: 'token' });
         if (storedToken) {
             try {
+                memoryToken = storedToken;
                 const res = await api.get('/api/auth/me');
                 setUser(res.data);
             } catch (error) {
