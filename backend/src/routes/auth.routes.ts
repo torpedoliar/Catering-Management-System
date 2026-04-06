@@ -108,11 +108,45 @@ router.post('/login', validate(loginSchema), async (req, res) => {
             return res.status(500).json({ error: 'Server configuration error' });
         }
 
+        // Generate Access Token (1 hour)
         const token = jwt.sign(
             { id: user.id, externalId: user.externalId, role: user.role },
             jwtSecret,
-            { expiresIn: '8h' }
+            { expiresIn: '1h' }
         );
+
+        // Generate Refresh Token (30 days)
+        const refreshSecret = process.env.JWT_REFRESH_SECRET;
+        if (!refreshSecret) {
+            console.error('CRITICAL: JWT_REFRESH_SECRET environment variable is not set!');
+            return res.status(500).json({ error: 'Server configuration error' });
+        }
+
+        const refreshTokenValue = jwt.sign(
+            { id: user.id, type: 'refresh' },
+            refreshSecret,
+            { expiresIn: '30d' }
+        );
+
+        // Hash refresh token for storage
+        const crypto = await import('crypto');
+        const hashedRefreshToken = crypto.createHash('sha256').update(refreshTokenValue).digest('hex');
+
+        // Detect device platform from user-agent
+        const userAgent = req.headers['user-agent'] || '';
+        let deviceInfo = 'Web';
+        if (userAgent.includes('HalloFood-Android')) deviceInfo = 'Android';
+        else if (userAgent.includes('HalloFood-iOS')) deviceInfo = 'iOS';
+
+        // Save refresh token to DB
+        await prisma.refreshToken.create({
+            data: {
+                token: hashedRefreshToken,
+                userId: user.id,
+                deviceInfo,
+                expiresAt: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000), // 30 days
+            }
+        });
 
         // Reset rate limit on successful login
         await rateLimiter.resetAttempts(externalId, clientIp);
@@ -122,6 +156,7 @@ router.post('/login', validate(loginSchema), async (req, res) => {
 
         res.json({
             token,
+            refreshToken: refreshTokenValue,
             user: {
                 id: user.id,
                 externalId: user.externalId,
@@ -252,12 +287,84 @@ router.put('/me', authMiddleware, async (req: AuthRequest, res: Response) => {
     }
 });
 
+// Refresh Access Token
+router.post('/refresh', async (req, res) => {
+    try {
+        const { refreshToken } = req.body;
+        if (!refreshToken) {
+            return res.status(400).json({ error: 'Refresh token is required' });
+        }
+
+        const refreshSecret = process.env.JWT_REFRESH_SECRET;
+        const jwtSecret = process.env.JWT_SECRET;
+        if (!refreshSecret || !jwtSecret) {
+            return res.status(500).json({ error: 'Server configuration error' });
+        }
+
+        // 1. Verifikasi JWT signature & expiry
+        let decoded: { id: string; type: string };
+        try {
+            decoded = jwt.verify(refreshToken, refreshSecret) as any;
+        } catch {
+            return res.status(401).json({ error: 'Invalid or expired refresh token' });
+        }
+
+        if (decoded.type !== 'refresh') {
+            return res.status(401).json({ error: 'Invalid token type' });
+        }
+
+        // 2. Cek apakah token ada di DB dan belum dicabut
+        const crypto = await import('crypto');
+        const hashedToken = crypto.createHash('sha256').update(refreshToken).digest('hex');
+
+        const storedToken = await prisma.refreshToken.findUnique({
+            where: { token: hashedToken }
+        });
+
+        if (!storedToken || storedToken.isRevoked) {
+            return res.status(401).json({ error: 'Token has been revoked' });
+        }
+
+        // 3. Cek apakah user masih aktif
+        const user = await prisma.user.findUnique({
+            where: { id: decoded.id }
+        });
+
+        if (!user || !user.isActive) {
+            // Revoke token jika user sudah tidak aktif
+            await prisma.refreshToken.update({
+                where: { id: storedToken.id },
+                data: { isRevoked: true }
+            });
+            return res.status(401).json({ error: 'User account is inactive' });
+        }
+
+        // 4. Terbitkan Access Token baru (1 hour)
+        const newAccessToken = jwt.sign(
+            { id: user.id, externalId: user.externalId, role: user.role },
+            jwtSecret,
+            { expiresIn: '1h' }
+        );
+
+        res.json({ token: newAccessToken });
+    } catch (error) {
+        console.error('Refresh token error:', error);
+        res.status(500).json({ error: 'Failed to refresh token' });
+    }
+});
+
 // Logout
 router.post('/logout', authMiddleware, async (req: AuthRequest, res: Response) => {
     const context = getRequestContext(req);
 
     try {
         if (req.user) {
+            // Cabut SEMUA refresh token milik user ini
+            await prisma.refreshToken.updateMany({
+                where: { userId: req.user.id, isRevoked: false },
+                data: { isRevoked: true }
+            });
+
             const user = await prisma.user.findUnique({
                 where: { id: req.user.id },
                 select: { id: true, name: true, role: true, externalId: true }

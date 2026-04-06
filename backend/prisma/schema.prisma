@@ -131,7 +131,8 @@ model User {
   @@index([isActive, role])  // Active users by role query
 
   // Relation for backups
-  backups Backup[]
+  backups       Backup[]
+  refreshTokens RefreshToken[]
 }
 
 // Backup status enum
@@ -583,4 +584,21 @@ model ServerUptimeLog {
   
   @@index([timestamp])
   @@index([eventType])
+}
+
+// Refresh Token for persistent sessions
+model RefreshToken {
+  id          String   @id @default(uuid())
+  token       String   @unique          // Hash of refresh token (SHA-256)
+  userId      String
+  deviceInfo  String?                   // "Android", "iOS", "Web"
+  expiresAt   DateTime                  // When it expires
+  isRevoked   Boolean  @default(false)  // Revoked on logout or admin intervention
+  createdAt   DateTime @default(now())
+
+  user        User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([token])
+  @@index([userId])
+  @@index([expiresAt])
 }

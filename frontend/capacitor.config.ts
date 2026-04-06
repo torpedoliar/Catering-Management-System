@@ -18,6 +18,11 @@ const config: CapacitorConfig = {
     // Enable WebView debugging (remove for production release)
     webContentsDebuggingEnabled: true,
   },
+  ios: {
+    appendUserAgent: 'HalloFood-iOS',
+    contentInset: 'automatic',
+    scheme: 'HalloFood',
+  },
   plugins: {
     SplashScreen: {
       launchShowDuration: 2000,

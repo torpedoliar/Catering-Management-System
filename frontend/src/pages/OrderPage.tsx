@@ -157,10 +157,15 @@ export default function OrderPage() {
             };
 
             // First get shifts API to check cutoffMode and orderableDates
-            const shiftsRes = await api.get(`/api/shifts/for-user?date=${formatLocalDate(today)}`);
+            const [shiftsRes, settingsRes] = await Promise.all([
+                api.get(`/api/shifts/for-user?date=${formatLocalDate(today)}`),
+                api.get('/api/settings')
+            ]);
             const cutoffMode = shiftsRes.data.cutoffMode || 'per-shift';
             const apiOrderableDates = shiftsRes.data.orderableDates || [];
-            const currentMaxDays = maxOrderDaysAheadRef.current;
+            
+            // Use API settings directly to prevent race condition with state
+            const currentMaxDays = settingsRes.data.maxOrderDaysAhead ?? maxOrderDaysAheadRef.current;
 
             // Determine which dates to show
             let datesToProcess: string[] = [];

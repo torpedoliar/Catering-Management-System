@@ -25,6 +25,72 @@ api.interceptors.request.use(
     }
 );
 
+let isRefreshing = false;
+let failedQueue: Array<{ resolve: Function; reject: Function }> = [];
+
+const processQueue = (error: any, token: string | null) => {
+    failedQueue.forEach(({ resolve, reject }) => {
+        error ? reject(error) : resolve(token);
+    });
+    failedQueue = [];
+};
+
+api.interceptors.response.use(
+    (response) => response,
+    async (error) => {
+        const originalRequest = error.config;
+
+        if (error.response?.status === 401
+            && !originalRequest._retry
+            && !originalRequest.url?.includes('/auth/refresh')
+            && !originalRequest.url?.includes('/auth/login')) {
+
+            if (isRefreshing) {
+                return new Promise((resolve, reject) => {
+                    failedQueue.push({ resolve, reject });
+                }).then(token => {
+                    originalRequest.headers.Authorization = `Bearer ${token}`;
+                    return api(originalRequest);
+                });
+            }
+
+            originalRequest._retry = true;
+            isRefreshing = true;
+
+            try {
+                const { value: storedRefreshToken } = await Preferences.get({ key: 'refreshToken' });
+
+                if (!storedRefreshToken) throw new Error('No refresh token');
+
+                const res = await api.post('/api/auth/refresh', {
+                    refreshToken: storedRefreshToken
+                });
+
+                const newAccessToken = res.data.token;
+                await Preferences.set({ key: 'token', value: newAccessToken });
+                memoryToken = newAccessToken;
+
+                processQueue(null, newAccessToken);
+
+                originalRequest.headers.Authorization = `Bearer ${newAccessToken}`;
+                return api(originalRequest);
+            } catch (refreshError) {
+                processQueue(refreshError, null);
+                
+                await Preferences.remove({ key: 'token' });
+                await Preferences.remove({ key: 'refreshToken' });
+                memoryToken = null;
+                window.dispatchEvent(new Event('force-logout'));
+                
+                return Promise.reject(refreshError);
+            } finally {
+                isRefreshing = false;
+            }
+        }
+        return Promise.reject(error);
+    }
+);
+
 // Export for use in other components
 export { api };
 
@@ -79,6 +145,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
                 } catch (error) {
                     console.error('Failed to load user:', error);
                     await Preferences.remove({ key: 'token' });
+                    await Preferences.remove({ key: 'refreshToken' });
                     memoryToken = null;
                     if (isMounted) {
                         setToken(null);
@@ -93,16 +160,28 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
         loadUser();
 
+        const handleForceLogout = () => {
+            setToken(null);
+            setUser(null);
+            sessionStorage.removeItem('announcementsShown');
+            sessionStorage.removeItem('dismissedAnnouncements');
+        };
+        window.addEventListener('force-logout', handleForceLogout);
+
         return () => {
             isMounted = false;
+            window.removeEventListener('force-logout', handleForceLogout);
         };
     }, []); // Empty dependency - only run once on mount
 
     const login = useCallback(async (externalId: string, password: string) => {
         const res = await api.post('/api/auth/login', { externalId, password });
-        const { token: newToken, user: userData } = res.data;
+        const { token: newToken, refreshToken: newRefreshToken, user: userData } = res.data;
 
         await Preferences.set({ key: 'token', value: newToken });
+        if (newRefreshToken) {
+            await Preferences.set({ key: 'refreshToken', value: newRefreshToken });
+        }
         memoryToken = newToken;
         setToken(newToken);
         setUser(userData);
@@ -115,6 +194,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
             console.error('Logout API error:', error);
         } finally {
             await Preferences.remove({ key: 'token' });
+            await Preferences.remove({ key: 'refreshToken' });
             memoryToken = null;
             // Clear announcement session tracking so popups show on next login
             sessionStorage.removeItem('announcementsShown');

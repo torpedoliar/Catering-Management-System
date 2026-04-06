@@ -146,6 +146,13 @@ app.listen(PORT, async () => {
     if (isUpdateRestart) {
         console.log('🔄 [Uptime] Logged restart as application update');
     }
+
+    // Start refresh token cleanup interval (runs daily)
+    const { cleanupExpiredTokens } = await import('./services/token-cleanup.service');
+    // Run once on startup
+    cleanupExpiredTokens();
+    // Then every 24 hours
+    setInterval(cleanupExpiredTokens, 24 * 60 * 60 * 1000);
 });
 
 export { prisma, sseManager };
