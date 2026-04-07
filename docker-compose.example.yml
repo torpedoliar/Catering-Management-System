@@ -37,6 +37,7 @@ services:
       DATABASE_URL: postgresql://postgres:${DB_PASSWORD:-your_secure_password_here}@db:5432/catering_db?schema=public
       DB_POOL_SIZE: "50"
       JWT_SECRET: ${JWT_SECRET:-your_jwt_secret_here_change_in_production}
+      JWT_REFRESH_SECRET: ${JWT_REFRESH_SECRET:-your_jwt_refresh_secret_here_change_in_production}
       CORS_ORIGIN: "*"
     volumes:
       - ./backend/src:/app/src
