@@ -169,21 +169,11 @@ export default function UserManagementPage() {
 
     const downloadTemplate = async () => {
         try {
-            const token = localStorage.getItem('token');
-            const apiUrl = import.meta.env.VITE_API_URL || '';
-
-            const response = await fetch(`${apiUrl}/api/users/export/template`, {
-                method: 'GET',
-                headers: {
-                    'Authorization': `Bearer ${token}`,
-                },
+            const response = await api.get('/api/users/export/template', {
+                responseType: 'blob'
             });
 
-            if (!response.ok) {
-                throw new Error('Download failed');
-            }
-
-            const blob = await response.blob();
+            const blob = response.data;
             const url = URL.createObjectURL(blob);
 
             const a = document.createElement('a');

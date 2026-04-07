@@ -3,10 +3,8 @@ import { Settings, Lock, Eye, EyeOff, Check, AlertCircle, Clock, Shield, Server,
 import { format } from 'date-fns';
 import { formatDateTimeShortWIB } from '../utils/timezone';
 import toast from 'react-hot-toast';
-import { useAuth } from '../contexts/AuthContext';
+import { useAuth, api } from '../contexts/AuthContext';
 import { useSSERefresh, SETTINGS_EVENTS } from '../contexts/SSEContext';
-
-const API_URL = import.meta.env.VITE_API_URL || '';
 
 interface SystemSettings {
     id: string;
@@ -101,22 +99,12 @@ export default function SettingsPage() {
         // Fetch user preferences (for everyone)
         try {
             // Fetch active canteens
-            const canteensRes = await fetch(`${API_URL}/api/canteens?active=true`, {
-                headers: { Authorization: `Bearer ${getToken()}` }
-            });
-            if (canteensRes.ok) {
-                const data = await canteensRes.json();
-                setCanteens(data.canteens || []);
-            }
+            const canteensRes = await api.get('/api/canteens?active=true');
+            setCanteens(canteensRes.data.canteens || []);
 
             // Fetch current user profile to get preference
-            const meRes = await fetch(`${API_URL}/api/auth/me`, {
-                headers: { Authorization: `Bearer ${getToken()}` }
-            });
-            if (meRes.ok) {
-                const me = await meRes.json();
-                setPreferredCanteenId(me.preferredCanteenId || '');
-            }
+            const meRes = await api.get('/api/auth/me');
+            setPreferredCanteenId(meRes.data.preferredCanteenId || '');
         } catch (error) {
             console.error('Error fetching preferences:', error);
         }
@@ -127,21 +115,18 @@ export default function SettingsPage() {
         }
 
         try {
-            const token = getToken();
-            const headers = { Authorization: `Bearer ${token}` };
-
             const [settingsRes, ntpRes, timeRes, tzRes, serversRes] = await Promise.all([
-                fetch(`${API_URL}/api/settings`, { headers }),
-                fetch(`${API_URL}/api/time/ntp`, { headers }),
-                fetch(`${API_URL}/api/time/info`, { headers }),
-                fetch(`${API_URL}/api/time/timezones`, { headers }),
-                fetch(`${API_URL}/api/time/ntp-servers`, { headers }),
+                api.get('/api/settings'),
+                api.get('/api/time/ntp'),
+                api.get('/api/time/info'),
+                api.get('/api/time/timezones'),
+                api.get('/api/time/ntp-servers'),
             ]);
 
             let combinedSettings: SystemSettings | null = null;
 
-            if (settingsRes.ok) {
-                const data = await settingsRes.json();
+            if (settingsRes.data) {
+                const data = settingsRes.data;
                 combinedSettings = data;
                 setCutoffMode(data.cutoffMode || 'per-shift');
                 setCutoffDays(data.cutoffDays || 0);
@@ -156,8 +141,8 @@ export default function SettingsPage() {
                 setBlacklistDuration(data.blacklistDuration || 7);
             }
 
-            if (ntpRes.ok) {
-                const ntpData = await ntpRes.json();
+            if (ntpRes.data) {
+                const ntpData = ntpRes.data;
                 if (combinedSettings) {
                     combinedSettings = {
                         ...combinedSettings,
@@ -173,18 +158,16 @@ export default function SettingsPage() {
 
             setSettings(combinedSettings);
 
-            if (timeRes.ok) {
-                const info = await timeRes.json();
+            if (timeRes.data) {
+                const info = timeRes.data;
                 setTimeInfo(info);
                 setCurrentTime(new Date(info.serverTime));
             }
-            if (tzRes.ok) {
-                const tzData = await tzRes.json();
-                setTimezones(tzData);
+            if (tzRes.data) {
+                setTimezones(tzRes.data);
             }
-            if (serversRes.ok) {
-                const serverData = await serversRes.json();
-                setNtpServers(serverData);
+            if (serversRes.data) {
+                setNtpServers(serversRes.data);
             }
         } catch (error) {
             console.error('Error fetching admin data:', error);
@@ -211,23 +194,10 @@ export default function SettingsPage() {
     const handleSaveProfile = async () => {
         setSavingProfile(true);
         try {
-            const token = getToken();
-            const response = await fetch(`${API_URL}/api/auth/me`, {
-                method: 'PUT',
-                headers: {
-                    'Content-Type': 'application/json',
-                    Authorization: `Bearer ${token}`,
-                },
-                body: JSON.stringify({
-                    preferredCanteenId: preferredCanteenId || null
-                }),
+            await api.put('/api/auth/me', {
+                preferredCanteenId: preferredCanteenId || null
             });
-
-            if (response.ok) {
-                toast.success('Preferensi berhasil disimpan');
-            } else {
-                throw new Error('Gagal menyimpan preferensi');
-            }
+            toast.success('Preferensi berhasil disimpan');
         } catch (error) {
             toast.error('Gagal menyimpan preferensi');
         } finally {
@@ -255,28 +225,13 @@ export default function SettingsPage() {
 
         setIsLoading(true);
         try {
-            const token = getToken();
-            const response = await fetch(`${API_URL}/api/auth/change-password`, {
-                method: 'POST',
-                headers: {
-                    'Content-Type': 'application/json',
-                    'Authorization': `Bearer ${token}`,
-                },
-                body: JSON.stringify({ currentPassword, newPassword }),
-            });
-
-            const data = await response.json();
-
-            if (!response.ok) {
-                throw new Error(data.error || 'Gagal mengubah password');
-            }
-
+            await api.post('/api/auth/change-password', { currentPassword, newPassword });
             toast.success('Password berhasil diubah');
             setCurrentPassword('');
             setNewPassword('');
             setConfirmPassword('');
-        } catch (error) {
-            toast.error(error instanceof Error ? error.message : 'Gagal mengubah password');
+        } catch (error: any) {
+            toast.error(error.response?.data?.error || 'Gagal mengubah password');
         } finally {
             setIsLoading(false);
         }
@@ -285,38 +240,24 @@ export default function SettingsPage() {
     const handleSaveSystemSettings = async () => {
         setSavingSystem(true);
         try {
-            const token = getToken();
-            const response = await fetch(`${API_URL}/api/settings`, {
-                method: 'PUT',
-                headers: {
-                    'Content-Type': 'application/json',
-                    Authorization: `Bearer ${token}`,
-                },
-                body: JSON.stringify({
-                    cutoffMode,
-                    cutoffDays,
-                    cutoffHours,
-                    maxOrderDaysAhead,
-                    weeklyCutoffDay,
-                    weeklyCutoffHour,
-                    weeklyCutoffMinute,
-                    orderableDays: orderableDays.join(','),
-                    maxWeeksAhead,
-                    blacklistStrikes,
-                    blacklistDuration,
-                }),
+            const response = await api.put('/api/settings', {
+                cutoffMode,
+                cutoffDays,
+                cutoffHours,
+                maxOrderDaysAhead,
+                weeklyCutoffDay,
+                weeklyCutoffHour,
+                weeklyCutoffMinute,
+                orderableDays: orderableDays.join(','),
+                maxWeeksAhead,
+                blacklistStrikes,
+                blacklistDuration,
             });
 
-            if (response.ok) {
-                const updated = await response.json();
-                setSettings(updated);
-                toast.success('Pengaturan sistem berhasil disimpan');
-            } else {
-                const error = await response.json();
-                toast.error(error.error || 'Gagal menyimpan pengaturan');
-            }
-        } catch (error) {
-            toast.error('Gagal menyimpan pengaturan sistem');
+            setSettings(response.data);
+            toast.success('Pengaturan sistem berhasil disimpan');
+        } catch (error: any) {
+            toast.error(error.response?.data?.error || 'Gagal menyimpan pengaturan sistem');
         } finally {
             setSavingSystem(false);
         }
@@ -325,25 +266,11 @@ export default function SettingsPage() {
     const updateNTPSettings = async (updates: Partial<SystemSettings>) => {
         setSavingNTP(true);
         try {
-            const token = getToken();
-            const response = await fetch(`${API_URL}/api/time/ntp`, {
-                method: 'PUT',
-                headers: {
-                    'Content-Type': 'application/json',
-                    Authorization: `Bearer ${token}`,
-                },
-                body: JSON.stringify(updates),
-            });
-
-            if (response.ok) {
-                toast.success('Pengaturan NTP berhasil disimpan');
-                fetchAdminData();
-            } else {
-                const error = await response.json();
-                toast.error(error.error || 'Gagal menyimpan pengaturan NTP');
-            }
-        } catch (error) {
-            toast.error('Gagal menyimpan pengaturan NTP');
+            await api.put('/api/time/ntp', updates);
+            toast.success('Pengaturan NTP berhasil disimpan');
+            fetchAdminData();
+        } catch (error: any) {
+            toast.error(error.response?.data?.error || 'Gagal menyimpan pengaturan NTP');
         } finally {
             setSavingNTP(false);
         }
@@ -352,20 +279,15 @@ export default function SettingsPage() {
     const syncNow = async () => {
         setSyncing(true);
         try {
-            const token = getToken();
-            const response = await fetch(`${API_URL}/api/time/ntp/sync`, {
-                method: 'POST',
-                headers: { Authorization: `Bearer ${token}` },
-            });
-
-            const result = await response.json();
+            const response = await api.post('/api/time/ntp/sync');
+            const result = response.data;
             if (result.success) {
                 toast.success(`Sinkronisasi berhasil! Offset: ${result.offset}ms`);
                 fetchAdminData();
             } else {
                 toast.error(result.error || 'Sinkronisasi gagal');
             }
-        } catch (error) {
+        } catch (error: any) {
             toast.error('Gagal melakukan sinkronisasi');
         } finally {
             setSyncing(false);

@@ -223,6 +223,26 @@ export default function CompanyManagementPage() {
         }
     };
 
+    const downloadTemplate = async () => {
+        try {
+            const response = await api.get('/api/companies/export/template', {
+                responseType: 'blob'
+            });
+            const blob = response.data;
+            const url = window.URL.createObjectURL(blob);
+            const a = document.createElement('a');
+            a.href = url;
+            a.download = 'company_migration_template.xlsx';
+            document.body.appendChild(a);
+            a.click();
+            document.body.removeChild(a);
+            window.URL.revokeObjectURL(url);
+            toast.success('Template downloaded');
+        } catch (error) {
+            toast.error('Gagal download template');
+        }
+    };
+
     if (isLoading) {
         return (
             <div className="flex items-center justify-center h-[60vh]">
@@ -249,15 +269,13 @@ export default function CompanyManagementPage() {
                     </button>
 
                     {/* Template & Import */}
-                    <a
-                        href={`${import.meta.env.VITE_API_URL || ''}/api/companies/export/template?token=${localStorage.getItem('token')}`}
-                        target="_blank"
-                        rel="noopener noreferrer"
+                    <button
+                        onClick={downloadTemplate}
                         className="btn-secondary flex items-center gap-2"
                     >
                         <FileSpreadsheet className="w-4 h-4" />
                         <span className="hidden sm:inline">Template</span>
-                    </a>
+                    </button>
 
                     <label className="btn-secondary flex items-center gap-2 cursor-pointer">
                         <Upload className="w-4 h-4" />

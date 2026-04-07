@@ -1,8 +1,7 @@
 import { useState, useEffect } from 'react';
 import { DatabaseBackup, Download, Trash2, RotateCcw, Plus, AlertTriangle, Clock, FileText, Upload, Save } from 'lucide-react';
 import toast from 'react-hot-toast';
-
-const API_URL = import.meta.env.VITE_API_URL || '';
+import { api } from '../../contexts/AuthContext';
 
 interface BackupInfo {
     id: string;
@@ -50,22 +49,15 @@ export default function BackupRestorePage() {
     const [autoBackupInterval, setAutoBackupInterval] = useState(7);
     const [fileToUpload, setFileToUpload] = useState<File | null>(null);
 
-    const getToken = () => localStorage.getItem('token');
-
     const fetchBackups = async () => {
         try {
-            const response = await fetch(`${API_URL}/api/server/backup`, {
-                headers: { Authorization: `Bearer ${getToken()}` }
-            });
-
-            if (response.ok) {
-                const data = await response.json();
-                setBackups(data.backups);
-                setRetentionDays(data.retentionDays);
-                if (data.settings) {
-                    setAutoBackupEnabled(data.settings.autoBackupEnabled);
-                    setAutoBackupInterval(data.settings.autoBackupInterval);
-                }
+            const response = await api.get('/api/server/backup');
+            const data = response.data;
+            setBackups(data.backups);
+            setRetentionDays(data.retentionDays);
+            if (data.settings) {
+                setAutoBackupEnabled(data.settings.autoBackupEnabled);
+                setAutoBackupInterval(data.settings.autoBackupInterval);
             }
         } catch (error) {
             console.error('Error fetching backups:', error);
@@ -77,24 +69,12 @@ export default function BackupRestorePage() {
 
     const handleSaveSettings = async () => {
         try {
-            const response = await fetch(`${API_URL}/api/server/backup/settings`, {
-                method: 'PUT',
-                headers: {
-                    'Content-Type': 'application/json',
-                    Authorization: `Bearer ${getToken()}`
-                },
-                body: JSON.stringify({
-                    autoBackupEnabled,
-                    autoBackupInterval: parseInt(autoBackupInterval.toString())
-                })
+            await api.put('/api/server/backup/settings', {
+                autoBackupEnabled,
+                autoBackupInterval: parseInt(autoBackupInterval.toString())
             });
-
-            if (response.ok) {
-                toast.success('Pengaturan backup disimpan');
-                fetchBackups();
-            } else {
-                toast.error('Gagal menyimpan pengaturan');
-            }
+            toast.success('Pengaturan backup disimpan');
+            fetchBackups();
         } catch (error) {
             toast.error('Gagal menyimpan pengaturan');
         }
@@ -109,28 +89,16 @@ export default function BackupRestorePage() {
         formData.append('backup', fileToUpload);
 
         try {
-            const response = await fetch(`${API_URL}/api/server/restore/upload`, {
-                method: 'POST',
-                headers: {
-                    Authorization: `Bearer ${getToken()}`
-                },
-                body: formData
+            await api.post('/api/server/restore/upload', formData, {
+                headers: { 'Content-Type': 'multipart/form-data' }
             });
-
-            if (response.ok) {
-                toast.success('Backup berhasil diunggah');
-                setFileToUpload(null);
-                // Reset file input
-                const fileInput = document.getElementById('backup-upload') as HTMLInputElement;
-                if (fileInput) fileInput.value = '';
-
-                fetchBackups();
-            } else {
-                const error = await response.json();
-                toast.error(error.error || 'Gagal mengunggah backup');
-            }
-        } catch (error) {
-            toast.error('Gagal mengunggah backup');
+            toast.success('Backup berhasil diunggah');
+            setFileToUpload(null);
+            const fileInput = document.getElementById('backup-upload') as HTMLInputElement;
+            if (fileInput) fileInput.value = '';
+            fetchBackups();
+        } catch (error: any) {
+            toast.error(error.response?.data?.error || 'Gagal mengunggah backup');
         } finally {
             setUploading(false);
         }
@@ -143,26 +111,13 @@ export default function BackupRestorePage() {
     const handleCreateBackup = async () => {
         setCreating(true);
         try {
-            const response = await fetch(`${API_URL}/api/server/backup`, {
-                method: 'POST',
-                headers: {
-                    'Content-Type': 'application/json',
-                    Authorization: `Bearer ${getToken()}`
-                },
-                body: JSON.stringify({ notes: notes || null })
-            });
-
-            if (response.ok) {
-                toast.success('Backup berhasil dibuat');
-                setCreateModal(false);
-                setNotes('');
-                fetchBackups();
-            } else {
-                const error = await response.json();
-                toast.error(error.error || 'Gagal membuat backup');
-            }
-        } catch (error) {
-            toast.error('Gagal membuat backup');
+            await api.post('/api/server/backup', { notes: notes || null });
+            toast.success('Backup berhasil dibuat');
+            setCreateModal(false);
+            setNotes('');
+            fetchBackups();
+        } catch (error: any) {
+            toast.error(error.response?.data?.error || 'Gagal membuat backup');
         } finally {
             setCreating(false);
         }
@@ -170,13 +125,10 @@ export default function BackupRestorePage() {
 
     const handleDownload = async (backup: BackupInfo) => {
         try {
-            const response = await fetch(`${API_URL}/api/server/backup/${backup.id}/download`, {
-                headers: { Authorization: `Bearer ${getToken()}` }
+            const response = await api.get(`/api/server/backup/${backup.id}/download`, {
+                responseType: 'blob'
             });
-
-            if (!response.ok) throw new Error('Download failed');
-
-            const blob = await response.blob();
+            const blob = response.data;
             const url = window.URL.createObjectURL(blob);
             const a = document.createElement('a');
             a.href = url;
@@ -195,26 +147,15 @@ export default function BackupRestorePage() {
         if (!deleteModal.backup) return;
 
         try {
-            const response = await fetch(`${API_URL}/api/server/backup/${deleteModal.backup.id}`, {
-                method: 'DELETE',
-                headers: {
-                    'Content-Type': 'application/json',
-                    Authorization: `Bearer ${getToken()}`
-                },
-                body: JSON.stringify({ adminPassword })
+            await api.delete(`/api/server/backup/${deleteModal.backup.id}`, {
+                data: { adminPassword }
             });
-
-            if (response.ok) {
-                toast.success('Backup berhasil dihapus');
-                setDeleteModal({ open: false, backup: null });
-                setAdminPassword('');
-                fetchBackups();
-            } else {
-                const error = await response.json();
-                toast.error(error.error || 'Gagal menghapus backup');
-            }
-        } catch (error) {
-            toast.error('Gagal menghapus backup');
+            toast.success('Backup berhasil dihapus');
+            setDeleteModal({ open: false, backup: null });
+            setAdminPassword('');
+            fetchBackups();
+        } catch (error: any) {
+            toast.error(error.response?.data?.error || 'Gagal menghapus backup');
         }
     };
 
@@ -227,26 +168,16 @@ export default function BackupRestorePage() {
         }
 
         try {
-            const response = await fetch(`${API_URL}/api/server/restore/${restoreModal.backup.id}`, {
-                method: 'POST',
-                headers: {
-                    'Content-Type': 'application/json',
-                    Authorization: `Bearer ${getToken()}`
-                },
-                body: JSON.stringify({ adminPassword, confirmationText })
+            await api.post(`/api/server/restore/${restoreModal.backup.id}`, {
+                adminPassword,
+                confirmationText
             });
-
-            if (response.ok) {
-                toast.success('Database berhasil direstore');
-                setRestoreModal({ open: false, backup: null });
-                setAdminPassword('');
-                setConfirmationText('');
-            } else {
-                const error = await response.json();
-                toast.error(error.error || 'Gagal restore database');
-            }
-        } catch (error) {
-            toast.error('Gagal restore database');
+            toast.success('Database berhasil direstore');
+            setRestoreModal({ open: false, backup: null });
+            setAdminPassword('');
+            setConfirmationText('');
+        } catch (error: any) {
+            toast.error(error.response?.data?.error || 'Gagal restore database');
         }
     };
 

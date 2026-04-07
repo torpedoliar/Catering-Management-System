@@ -2,6 +2,7 @@ import { useState } from 'react';
 import { format, subDays } from 'date-fns';
 import { FileDown, Calendar, Filter, Loader2 } from 'lucide-react';
 import toast from 'react-hot-toast';
+import { api } from '../../contexts/AuthContext';
 
 
 export default function ExportPage() {
@@ -19,21 +20,11 @@ export default function ExportPage() {
             if (endDate) params.append('endDate', endDate);
             if (status) params.append('status', status);
 
-            const token = localStorage.getItem('token');
-            const apiUrl = import.meta.env.VITE_API_URL || '';
-
-            const response = await fetch(`${apiUrl}/api/orders/export?${params}`, {
-                method: 'GET',
-                headers: {
-                    'Authorization': `Bearer ${token}`,
-                },
+            const response = await api.get(`/api/orders/export?${params}`, {
+                responseType: 'blob'
             });
 
-            if (!response.ok) {
-                throw new Error('Export failed');
-            }
-
-            const blob = await response.blob();
+            const blob = response.data;
             const filename = `transactions_${startDate}_to_${endDate}.xlsx`;
 
             const url = URL.createObjectURL(blob);

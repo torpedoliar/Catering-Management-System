@@ -193,20 +193,14 @@ export default function CostAnalysisPage() {
     const handleExportExcel = async () => { // Renamed from handleExport
         setIsExporting(true);
         try {
-            const token = localStorage.getItem('token');
-            const apiUrl = import.meta.env.VITE_API_URL || '';
-
-            const response = await fetch(
-                `${apiUrl}/api/orders/export?startDate=${startDate}&endDate=${endDate}`,
+            const response = await api.get(
+                `/api/orders/export?startDate=${startDate}&endDate=${endDate}`,
                 {
-                    method: 'GET',
-                    headers: { 'Authorization': `Bearer ${token}` },
+                    responseType: 'blob'
                 }
             );
 
-            if (!response.ok) throw new Error('Export failed');
-
-            const blob = await response.blob();
+            const blob = response.data;
             const url = URL.createObjectURL(blob);
             const a = document.createElement('a');
             a.href = url;

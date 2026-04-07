@@ -1,8 +1,7 @@
 import { useState, useEffect, useCallback } from 'react';
 import { RefreshCw, Download, CheckCircle, ArrowUpCircle, GitBranch } from 'lucide-react';
 import toast from 'react-hot-toast';
-
-const API_URL = import.meta.env.VITE_API_URL || '';
+import { api } from '../../contexts/AuthContext';
 
 interface VersionInfo {
     version: string;
@@ -20,17 +19,10 @@ export default function UpdatePage() {
     const [isChecking, setIsChecking] = useState(false);
     const [isLoading, setIsLoading] = useState(true);
 
-    const getToken = () => localStorage.getItem('token');
-
     const fetchCurrentVersion = useCallback(async () => {
         try {
-            const res = await fetch(`${API_URL}/api/version`, {
-                headers: { 'Authorization': `Bearer ${getToken()}` }
-            });
-            if (res.ok) {
-                const data = await res.json();
-                setCurrentVersion(data.current);
-            }
+            const res = await api.get('/api/version');
+            setCurrentVersion(res.data.current);
         } catch (error) {
             console.error('Failed to fetch version:', error);
         } finally {
@@ -41,13 +33,8 @@ export default function UpdatePage() {
     const checkForUpdates = async () => {
         setIsChecking(true);
         try {
-            const res = await fetch(`${API_URL}/api/version/check`, {
-                headers: { 'Authorization': `Bearer ${getToken()}` }
-            });
-
-            if (!res.ok) throw new Error('Failed to check for updates');
-
-            const data = await res.json();
+            const res = await api.get('/api/version/check');
+            const data = res.data;
             setCurrentVersion(data.current);
             setLatestVersion(data.latest);
             setUpdateAvailable(data.updateAvailable);

@@ -33,8 +33,7 @@ import {
     ArrowRight,
     Loader2
 } from 'lucide-react';
-
-const API_URL = import.meta.env.VITE_API_URL || '';
+import { api } from '../../contexts/AuthContext';
 
 // Helper to format timestamp - timestamps are stored in WIB already
 const formatWIBDate = (timestamp: string): string => {
@@ -116,12 +115,9 @@ export default function AuditLogPage() {
     const [filterStartDate, setFilterStartDate] = useState('');
     const [filterEndDate, setFilterEndDate] = useState('');
 
-    const getToken = () => localStorage.getItem('token');
-
     const fetchLogs = useCallback(async (page = 1) => {
         try {
             setLoading(true);
-            const token = getToken();
             const params = new URLSearchParams({
                 page: page.toString(),
                 limit: '50',
@@ -134,15 +130,9 @@ export default function AuditLogPage() {
             if (filterStartDate) params.append('startDate', filterStartDate);
             if (filterEndDate) params.append('endDate', filterEndDate);
 
-            const response = await fetch(`${API_URL}/api/audit?${params}`, {
-                headers: { Authorization: `Bearer ${token}` },
-            });
-
-            if (response.ok) {
-                const data = await response.json();
-                setLogs(data.logs);
-                setPagination(data.pagination);
-            }
+            const response = await api.get(`/api/audit?${params}`);
+            setLogs(response.data.logs);
+            setPagination(response.data.pagination);
         } catch (error) {
             console.error('Error fetching logs:', error);
             toast.error('Gagal memuat audit log');
@@ -153,14 +143,8 @@ export default function AuditLogPage() {
 
     const fetchStats = async () => {
         try {
-            const token = getToken();
-            const response = await fetch(`${API_URL}/api/audit/stats?days=7`, {
-                headers: { Authorization: `Bearer ${token}` },
-            });
-
-            if (response.ok) {
-                setStats(await response.json());
-            }
+            const response = await api.get('/api/audit/stats?days=7');
+            setStats(response.data);
         } catch (error) {
             console.error('Error fetching stats:', error);
         }
@@ -168,14 +152,13 @@ export default function AuditLogPage() {
 
     const fetchFilters = async () => {
         try {
-            const token = getToken();
             const [actionsRes, entitiesRes] = await Promise.all([
-                fetch(`${API_URL}/api/audit/actions`, { headers: { Authorization: `Bearer ${token}` } }),
-                fetch(`${API_URL}/api/audit/entities`, { headers: { Authorization: `Bearer ${token}` } }),
+                api.get('/api/audit/actions'),
+                api.get('/api/audit/entities'),
             ]);
 
-            if (actionsRes.ok) setActions(await actionsRes.json());
-            if (entitiesRes.ok) setEntities(await entitiesRes.json());
+            setActions(actionsRes.data);
+            setEntities(entitiesRes.data);
         } catch (error) {
             console.error('Error fetching filters:', error);
         }

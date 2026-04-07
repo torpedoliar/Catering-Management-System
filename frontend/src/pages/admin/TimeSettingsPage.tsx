@@ -2,8 +2,7 @@ import { useState, useEffect } from 'react';
 
 import { formatDateTimeShortWIB } from '../../utils/timezone';
 import toast from 'react-hot-toast';
-
-const API_URL = import.meta.env.VITE_API_URL || '';
+import { api } from '../../contexts/AuthContext';
 
 interface NTPSettings {
     ntpEnabled: boolean;
@@ -43,35 +42,24 @@ export default function TimeSettingsPage() {
     const [currentTime, setCurrentTime] = useState<string>('');
     const [currentDate, setCurrentDate] = useState<string>('');
 
-    const getToken = () => localStorage.getItem('token');
-
     const fetchData = async () => {
         try {
-            const token = getToken();
-            const headers = { Authorization: `Bearer ${token}` };
-
             const [settingsRes, timeRes, tzRes, serversRes] = await Promise.all([
-                fetch(`${API_URL}/api/time/ntp`, { headers }),
-                fetch(`${API_URL}/api/time/info`, { headers }),
-                fetch(`${API_URL}/api/time/timezones`, { headers }),
-                fetch(`${API_URL}/api/time/ntp-servers`, { headers }),
+                api.get('/api/time/ntp'),
+                api.get('/api/time/info'),
+                api.get('/api/time/timezones'),
+                api.get('/api/time/ntp-servers'),
             ]);
 
-            if (settingsRes.ok) {
-                setSettings(await settingsRes.json());
-            }
-            if (timeRes.ok) {
-                const info = await timeRes.json();
-                setTimeInfo(info);
-                setCurrentTime(info.formattedTime || '');
-                setCurrentDate(info.formattedDate || '');
-            }
-            if (tzRes.ok) {
-                setTimezones(await tzRes.json());
-            }
-            if (serversRes.ok) {
-                setNtpServers(await serversRes.json());
-            }
+            setSettings(settingsRes.data);
+            
+            const info = timeRes.data;
+            setTimeInfo(info);
+            setCurrentTime(info.formattedTime || '');
+            setCurrentDate(info.formattedDate || '');
+            
+            setTimezones(tzRes.data);
+            setNtpServers(serversRes.data);
         } catch (error) {
             console.error('Error fetching NTP data:', error);
             toast.error('Gagal memuat pengaturan NTP');
@@ -119,27 +107,12 @@ export default function TimeSettingsPage() {
     const updateSettings = async (updates: Partial<NTPSettings>) => {
         setSaving(true);
         try {
-            const token = getToken();
-            const response = await fetch(`${API_URL}/api/time/ntp`, {
-                method: 'PUT',
-                headers: {
-                    'Content-Type': 'application/json',
-                    Authorization: `Bearer ${token}`,
-                },
-                body: JSON.stringify(updates),
-            });
-
-            if (response.ok) {
-                const updated = await response.json();
-                setSettings(updated);
-                toast.success('Pengaturan NTP berhasil disimpan');
-                fetchData();
-            } else {
-                const error = await response.json();
-                toast.error(error.error || 'Gagal menyimpan pengaturan');
-            }
-        } catch (error) {
-            toast.error('Gagal menyimpan pengaturan');
+            const response = await api.put('/api/time/ntp', updates);
+            setSettings(response.data);
+            toast.success('Pengaturan NTP berhasil disimpan');
+            fetchData();
+        } catch (error: any) {
+            toast.error(error.response?.data?.error || 'Gagal menyimpan pengaturan');
         } finally {
             setSaving(false);
         }
@@ -148,20 +121,15 @@ export default function TimeSettingsPage() {
     const syncNow = async () => {
         setSyncing(true);
         try {
-            const token = getToken();
-            const response = await fetch(`${API_URL}/api/time/ntp/sync`, {
-                method: 'POST',
-                headers: { Authorization: `Bearer ${token}` },
-            });
-
-            const result = await response.json();
+            const response = await api.post('/api/time/ntp/sync');
+            const result = response.data;
             if (result.success) {
                 toast.success(`Sinkronisasi berhasil! Offset: ${result.offset}ms`);
                 fetchData();
             } else {
                 toast.error(result.error || 'Sinkronisasi gagal');
             }
-        } catch (error) {
+        } catch (error: any) {
             toast.error('Gagal melakukan sinkronisasi');
         } finally {
             setSyncing(false);
