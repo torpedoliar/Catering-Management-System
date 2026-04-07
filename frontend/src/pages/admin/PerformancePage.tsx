@@ -1,8 +1,7 @@
 import { useState, useEffect } from 'react';
 import { Activity, Database, HardDrive, Clock, Cpu, MemoryStick, RefreshCw } from 'lucide-react';
 import toast from 'react-hot-toast';
-
-const API_URL = import.meta.env.VITE_API_URL || '';
+import { api } from '../../contexts/AuthContext';
 
 interface SystemMetrics {
     cpu: { usage: number; cores: number; model: string };
@@ -38,24 +37,14 @@ export default function PerformancePage() {
     const [refreshing, setRefreshing] = useState(false);
     const [autoRefresh, setAutoRefresh] = useState(true);
 
-    const getToken = () => localStorage.getItem('token');
-
     const fetchMetrics = async (showLoading = true) => {
         if (showLoading) setRefreshing(true);
         try {
-            const response = await fetch(`${API_URL}/api/server/performance`, {
-                headers: { Authorization: `Bearer ${getToken()}` }
-            });
-
-            if (response.ok) {
-                const data = await response.json();
-                setMetrics(data);
-            } else {
-                toast.error('Gagal mengambil data performa');
-            }
+            const response = await api.get('/api/server/performance');
+            setMetrics(response.data);
         } catch (error) {
             console.error('Error fetching metrics:', error);
-            toast.error('Gagal terhubung ke server');
+            toast.error('Gagal mengambil data performa');
         } finally {
             setLoading(false);
             setRefreshing(false);

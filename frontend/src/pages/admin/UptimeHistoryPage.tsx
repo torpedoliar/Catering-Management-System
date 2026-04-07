@@ -1,8 +1,7 @@
 import { useState, useEffect, useCallback } from 'react';
 import { Clock, RefreshCw, ArrowUpCircle, ArrowDownCircle, Activity, Calendar, Timer, AlertTriangle, Download, RotateCcw } from 'lucide-react';
 import toast from 'react-hot-toast';
-
-const API_URL = import.meta.env.VITE_API_URL || '';
+import { api } from '../../contexts/AuthContext';
 
 interface DailyStat {
     date: string;
@@ -105,54 +104,34 @@ export default function UptimeHistoryPage() {
     const [endDate, setEndDate] = useState(today.toISOString().split('T')[0]);
     const [autoRefresh, setAutoRefresh] = useState(true);
 
-    const getToken = () => localStorage.getItem('token');
-
     const fetchData = useCallback(async (showLoading = true) => {
         if (showLoading) setIsLoading(true);
         setIsRefreshing(!showLoading);
 
         try {
-            const token = getToken();
             const params = new URLSearchParams({ startDate, endDate });
 
             // Fetch daily stats
-            const statsRes = await fetch(`${API_URL}/api/server/uptime/daily-stats?${params}`, {
-                headers: { 'Authorization': `Bearer ${token}` }
-            });
-
-            if (!statsRes.ok) throw new Error('Failed to fetch stats');
-            const statsData = await statsRes.json();
-            setDailyStats(statsData.dailyStats || []);
+            const statsRes = await api.get(`/api/server/uptime/daily-stats?${params}`);
+            setDailyStats(statsRes.data.dailyStats || []);
 
             // Fetch summary
-            const summaryRes = await fetch(`${API_URL}/api/server/uptime/summary?${params}`, {
-                headers: { 'Authorization': `Bearer ${token}` }
-            });
-
-            if (!summaryRes.ok) throw new Error('Failed to fetch summary');
-            const summaryData = await summaryRes.json();
-            setSummary(summaryData.summary || null);
-            setDowntimePeriods(summaryData.downtimePeriods || []);
+            const summaryRes = await api.get(`/api/server/uptime/summary?${params}`);
+            setSummary(summaryRes.data.summary || null);
+            setDowntimePeriods(summaryRes.data.downtimePeriods || []);
 
             // Fetch restart events with notes
-            const restartsRes = await fetch(`${API_URL}/api/server/uptime/restarts?${params}`, {
-                headers: { 'Authorization': `Bearer ${token}` }
-            });
-
-            if (restartsRes.ok) {
-                const restartsData = await restartsRes.json();
-                setRestartEvents(restartsData.restarts || []);
+            try {
+                const restartsRes = await api.get(`/api/server/uptime/restarts?${params}`);
+                setRestartEvents(restartsRes.data.restarts || []);
+            } catch (err) {
+                console.error('Error fetching restarts', err);
             }
 
             // Fetch PM2 status
             try {
-                const pm2Res = await fetch(`${API_URL}/api/server/pm2-status`, {
-                    headers: { 'Authorization': `Bearer ${token}` }
-                });
-                if (pm2Res.ok) {
-                    const pm2Data = await pm2Res.json();
-                    setPm2Status(pm2Data);
-                }
+                const pm2Res = await api.get('/api/server/pm2-status');
+                setPm2Status(pm2Res.data);
             } catch (pm2Error) {
                 console.log('PM2 status not available');
             }
@@ -185,16 +164,13 @@ export default function UptimeHistoryPage() {
 
     const handleExport = async () => {
         try {
-            const token = getToken();
             const params = new URLSearchParams({ startDate, endDate });
 
-            const response = await fetch(`${API_URL}/api/server/uptime/export?${params}`, {
-                headers: { 'Authorization': `Bearer ${token}` }
+            const response = await api.get(`/api/server/uptime/export?${params}`, {
+                responseType: 'blob'
             });
 
-            if (!response.ok) throw new Error('Export failed');
-
-            const blob = await response.blob();
+            const blob = new Blob([response.data]);
             const url = URL.createObjectURL(blob);
             const a = document.createElement('a');
             a.href = url;
