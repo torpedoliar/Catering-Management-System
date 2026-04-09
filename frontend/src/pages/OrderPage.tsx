@@ -401,6 +401,22 @@ export default function OrderPage() {
         return Array.from(allShifts.values());
     }, [isBulkMode, selectedDates, availableDates, shifts]);
 
+    const isCancelLocked = useCallback((order: Order) => {
+        const orderDateObj = new Date(order.orderDate);
+        orderDateObj.setHours(0, 0, 0, 0);
+        const now = new Date();
+        const todayNormalized = new Date(now);
+        todayNormalized.setHours(0, 0, 0, 0);
+
+        if (orderDateObj.getTime() === todayNormalized.getTime()) {
+            const [startHour, startMin] = order.shift.startTime.split(':').map(Number);
+            const shiftStartObj = new Date(now);
+            shiftStartObj.setHours(startHour, startMin, 0, 0);
+            return now.getTime() >= shiftStartObj.getTime();
+        }
+        return false;
+    }, []);
+
     if (isLoading) {
         return (
             <div className="flex items-center justify-center h-[60vh]">
@@ -499,22 +515,6 @@ export default function OrderPage() {
             </div>
         );
     }
-
-    const isCancelLocked = useCallback((order: Order) => {
-        const orderDateObj = new Date(order.orderDate);
-        orderDateObj.setHours(0, 0, 0, 0);
-        const now = new Date();
-        const todayNormalized = new Date(now);
-        todayNormalized.setHours(0, 0, 0, 0);
-
-        if (orderDateObj.getTime() === todayNormalized.getTime()) {
-            const [startHour, startMin] = order.shift.startTime.split(':').map(Number);
-            const shiftStartObj = new Date(now);
-            shiftStartObj.setHours(startHour, startMin, 0, 0);
-            return now.getTime() >= shiftStartObj.getTime();
-        }
-        return false;
-    }, []);
 
     // Order form
     return (
