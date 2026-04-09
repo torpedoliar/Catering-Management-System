@@ -454,18 +454,43 @@ export default function HistoryPage() {
                             )}
 
                             {/* Cancel Button - only for ORDERED status */}
-                            {selectedOrder.status === 'ORDERED' && (
-                                <button
-                                    onClick={() => {
-                                        setOrderToCancel(selectedOrder);
-                                        setCancelReason('');
-                                        setShowCancelModal(true);
-                                    }}
-                                    className="btn-danger w-full"
-                                >
-                                    Batalkan Pesanan
-                                </button>
-                            )}
+                            {selectedOrder.status === 'ORDERED' && (() => {
+                                const orderDateObj = new Date(selectedOrder.orderDate);
+                                orderDateObj.setHours(0, 0, 0, 0);
+                                const now = new Date();
+                                const todayNormalized = new Date(now);
+                                todayNormalized.setHours(0, 0, 0, 0);
+
+                                let isLocked = false;
+                                if (orderDateObj.getTime() === todayNormalized.getTime()) {
+                                    const [startHour, startMin] = selectedOrder.shift.startTime.split(':').map(Number);
+                                    const shiftStartObj = new Date(now);
+                                    shiftStartObj.setHours(startHour, startMin, 0, 0);
+                                    isLocked = now.getTime() >= shiftStartObj.getTime();
+                                }
+
+                                if (isLocked) {
+                                    return (
+                                        <div className="flex items-center justify-center gap-2 px-4 py-3 rounded-xl bg-slate-100 border border-slate-200 text-slate-500 font-medium text-sm w-full">
+                                            <Clock className="w-4 h-4" />
+                                            Tidak bisa dibatalkan (Shift berjalan)
+                                        </div>
+                                    );
+                                }
+
+                                return (
+                                    <button
+                                        onClick={() => {
+                                            setOrderToCancel(selectedOrder);
+                                            setCancelReason('');
+                                            setShowCancelModal(true);
+                                        }}
+                                        className="btn-danger w-full"
+                                    >
+                                        Batalkan Pesanan
+                                    </button>
+                                );
+                            })()}
                         </div>
                     </div>
                 </div>

@@ -500,6 +500,22 @@ export default function OrderPage() {
         );
     }
 
+    const isCancelLocked = useCallback((order: Order) => {
+        const orderDateObj = new Date(order.orderDate);
+        orderDateObj.setHours(0, 0, 0, 0);
+        const now = new Date();
+        const todayNormalized = new Date(now);
+        todayNormalized.setHours(0, 0, 0, 0);
+
+        if (orderDateObj.getTime() === todayNormalized.getTime()) {
+            const [startHour, startMin] = order.shift.startTime.split(':').map(Number);
+            const shiftStartObj = new Date(now);
+            shiftStartObj.setHours(startHour, startMin, 0, 0);
+            return now.getTime() >= shiftStartObj.getTime();
+        }
+        return false;
+    }, []);
+
     // Order form
     return (
         <div className="w-full max-w-7xl mx-auto animate-fade-in space-y-6">
@@ -514,6 +530,21 @@ export default function OrderPage() {
                 </div>
                 {isConnected ? 'Terhubung' : 'Menghubungkan...'}
             </div>
+
+            {/* Warning - dipindah ke paling atas agar sangat dibaca user */}
+            {user && user.noShowCount > 0 && (
+                <div className="p-4 rounded-2xl bg-warning/10 border border-warning/30 animate-fade-in shadow-md shadow-warning/5">
+                    <div className="flex items-start gap-3">
+                        <AlertTriangle className="w-6 h-6 text-warning flex-shrink-0" />
+                        <div>
+                            <p className="font-bold text-warning text-lg leading-none mb-1.5 uppercase">Peringatan: {user.noShowCount} Strike</p>
+                            <p className="text-sm font-medium text-slate-700">
+                                Segera ambil makanan pesanan Anda hari ini saat jam shift. Setelah 3 pelanggaran tak ambil makan, akun Anda akan diblokir dari sistem.
+                            </p>
+                        </div>
+                    </div>
+                </div>
+            )}
 
             {/* Existing Order / QR Code Card */}
             {todayOrder && (
@@ -565,10 +596,17 @@ export default function OrderPage() {
                                             <Download className="w-4 h-4" />
                                             Simpan QR
                                         </button>
-                                        <button onClick={openCancelModal} className="px-3 py-1.5 bg-red-50 border border-red-100 rounded-lg text-sm text-red-600 hover:bg-red-100 flex items-center gap-2 transition-colors">
-                                            <XCircle className="w-4 h-4" />
-                                            Batalkan
-                                        </button>
+                                        {!isCancelLocked(todayOrder) ? (
+                                            <button onClick={openCancelModal} className="px-3 py-1.5 bg-red-50 border border-red-100 rounded-lg text-sm text-red-600 hover:bg-red-100 flex items-center gap-2 transition-colors">
+                                                <XCircle className="w-4 h-4" />
+                                                Batalkan
+                                            </button>
+                                        ) : (
+                                            <div className="px-3 py-1.5 bg-slate-50 border border-slate-200 rounded-lg text-xs text-slate-500 flex items-center gap-2">
+                                                <Clock className="w-3.5 h-3.5" />
+                                                Tidak bisa dibatalkan (Shift berjalan)
+                                            </div>
+                                        )}
                                     </div>
                                 )}
                             </div>
@@ -802,21 +840,6 @@ export default function OrderPage() {
                         </>
                     )}
                 </button>
-
-                {/* Warning */}
-                {user && user.noShowCount > 0 && (
-                    <div className="mt-6 p-4 rounded-2xl bg-warning/10 border border-warning/30">
-                        <div className="flex items-start gap-3">
-                            <AlertTriangle className="w-5 h-5 text-warning flex-shrink-0 mt-0.5" />
-                            <div>
-                                <p className="font-semibold text-warning">Peringatan</p>
-                                <p className="text-sm text-white/60 mt-1">
-                                    Anda memiliki {user.noShowCount} pelanggaran. Setelah 3 pelanggaran, akun akan dibatasi.
-                                </p>
-                            </div>
-                        </div>
-                    </div>
-                )}
 
                 {/* Complaint Form Removed per user request */}
 

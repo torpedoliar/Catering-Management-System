@@ -67,6 +67,25 @@ router.post('/:id/cancel', authMiddleware, async (req: AuthRequest, res: Respons
             cancelBlockReason = `Cutoff untuk shift ${order.shift.name} sudah lewat`;
         }
 
+        // Strict enforce: cannot cancel if it's today and the shift has already started
+        const now = getNow();
+        const orderDateObj = new Date(order.orderDate);
+        orderDateObj.setHours(0, 0, 0, 0);
+        
+        const todayNormalized = new Date(now);
+        todayNormalized.setHours(0, 0, 0, 0);
+
+        if (orderDateObj.getTime() === todayNormalized.getTime()) {
+            const [startHour, startMin] = order.shift.startTime.split(':').map(Number);
+            const shiftStartObj = new Date(now);
+            shiftStartObj.setHours(startHour, startMin, 0, 0);
+            
+            if (now.getTime() >= shiftStartObj.getTime()) {
+                canCancel = false;
+                cancelBlockReason = `Jam shift ${order.shift.name} sudah berjalan. Anda tidak bisa lagi membatalkan pesanan.`;
+            }
+        }
+
         if (!canCancel) {
             return res.status(400).json({
                 error: ErrorMessages.CANNOT_CANCEL_PAST_CUTOFF,
