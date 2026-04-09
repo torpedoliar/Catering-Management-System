@@ -38,7 +38,7 @@ export default function NotificationBell() {
     }, []);
 
     // Refresh automatically on SSE event
-    useSSERefresh('notification:new', loadNotifications);
+    useSSERefresh(['notification:new'], loadNotifications);
 
     // Close when clicking outside
     useEffect(() => {

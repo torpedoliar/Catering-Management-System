@@ -337,7 +337,6 @@ export default function MessagesPage() {
                         </div>
                     </div>
                 </div>
-                </div>
                 <div className="stat-card">
                     <div className="flex items-center justify-between">
                         <div>
@@ -513,7 +512,6 @@ export default function MessagesPage() {
                     </>
                 )}
             </div>
-        </div>
 
             {/* Photo Preview Modal */}
             {previewPhoto && (
@@ -537,6 +535,6 @@ export default function MessagesPage() {
                     </div>
                 </div>
             )}
-    </div>
+        </div>
     );
 }
