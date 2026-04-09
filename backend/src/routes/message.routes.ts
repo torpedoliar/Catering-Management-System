@@ -1,5 +1,9 @@
 import { Router, Response } from 'express';
 import ExcelJS from 'exceljs';
+import multer from 'multer';
+import sharp from 'sharp';
+import fs from 'fs';
+import path from 'path';
 import { authMiddleware, AuthRequest, adminMiddleware } from '../middleware/auth.middleware';
 import { getNow, getToday, getTomorrow } from '../services/time.service';
 import { sendComplaintNotification } from '../services/email.service';
@@ -8,6 +12,16 @@ import { id as idLocale } from 'date-fns/locale';
 import { prisma } from '../lib/prisma';
 
 const router = Router();
+
+// Multer config for appeal photo
+const storage = multer.memoryStorage();
+const upload = multer({ storage });
+
+// Ensure appeals upload directory exists
+const appealUploadDir = path.join(__dirname, '../../uploads/appeals');
+if (!fs.existsSync(appealUploadDir)) {
+    fs.mkdirSync(appealUploadDir, { recursive: true });
+}
 
 // Get all messages with filters (Admin only)
 router.get('/', authMiddleware, adminMiddleware, async (req: AuthRequest, res: Response) => {
@@ -130,6 +144,170 @@ router.post('/', authMiddleware, async (req: AuthRequest, res: Response) => {
     } catch (error) {
         console.error('Create message error:', error);
         res.status(500).json({ error: 'Gagal mengirim keluhan' });
+    }
+});
+
+// Submit Appeal / Sanggahan for NO_SHOW order (User)
+router.post('/appeal', authMiddleware, upload.single('photo'), async (req: AuthRequest, res: Response) => {
+    try {
+        const { orderId, shiftId, content, orderDate } = req.body;
+        const userId = req.user?.id;
+
+        if (!userId || !orderId || !shiftId || !content || !orderDate) {
+            return res.status(400).json({ error: 'Data tidak lengkap. Order, shift, alasan, dan tanggal wajib diisi.' });
+        }
+
+        // Validate the order exists and belongs to the user
+        const order = await prisma.order.findUnique({ where: { id: orderId } });
+        if (!order) {
+            return res.status(404).json({ error: 'Order tidak ditemukan' });
+        }
+        if (order.userId !== userId) {
+            return res.status(403).json({ error: 'Anda tidak memiliki akses ke order ini' });
+        }
+        if (order.status !== 'NO_SHOW') {
+            return res.status(400).json({ error: 'Sanggahan hanya bisa diajukan untuk pesanan yang tidak diambil (NO_SHOW)' });
+        }
+
+        // Check if an appeal already exists for this order
+        const existingAppeal = await prisma.message.findFirst({
+            where: { orderId, userId, type: 'APPEAL' }
+        });
+        if (existingAppeal) {
+            return res.status(400).json({ error: 'Anda sudah mengajukan sanggahan untuk pesanan ini' });
+        }
+
+        // Process photo if uploaded
+        let photoUrl: string | undefined = undefined;
+        if (req.file) {
+            const filename = `appeal-${orderId}-${Date.now()}.webp`;
+            const filepath = path.join(appealUploadDir, filename);
+
+            await sharp(req.file.buffer)
+                .resize(800, 800, { fit: 'inside', withoutEnlargement: true })
+                .webp({ quality: 80 })
+                .toFile(filepath);
+
+            photoUrl = `/uploads/appeals/${filename}`;
+        }
+
+        const message = await prisma.message.create({
+            data: {
+                orderId,
+                shiftId,
+                userId,
+                type: 'APPEAL',
+                content,
+                photoUrl,
+                status: 'PENDING',
+                orderDate: new Date(orderDate),
+            },
+            include: {
+                user: { select: { id: true, name: true, externalId: true } },
+                shift: { select: { id: true, name: true } },
+            },
+        });
+
+        res.status(201).json({
+            message: 'Sanggahan berhasil diajukan',
+            data: message,
+        });
+    } catch (error) {
+        console.error('Create appeal error:', error);
+        res.status(500).json({ error: 'Gagal mengajukan sanggahan' });
+    }
+});
+
+// Admin: Resolve (Approve / Reject) an Appeal
+router.put('/:id/resolve', authMiddleware, adminMiddleware, async (req: AuthRequest, res: Response) => {
+    try {
+        const { status } = req.body;
+
+        if (!status || !['APPROVED', 'REJECTED'].includes(status)) {
+            return res.status(400).json({ error: 'Status harus APPROVED atau REJECTED' });
+        }
+
+        const message = await prisma.message.findUnique({
+            where: { id: req.params.id },
+            include: { user: true, order: true }
+        });
+
+        if (!message || message.type !== 'APPEAL') {
+            return res.status(404).json({ error: 'Sanggahan tidak ditemukan' });
+        }
+
+        if (message.status !== 'PENDING') {
+            return res.status(400).json({ error: `Sanggahan sudah di-${message.status.toLowerCase()}` });
+        }
+
+        const adminName = req.user?.name || 'Admin';
+
+        const resolvedMessage = await prisma.$transaction(async (tx) => {
+            // Update the appeal status
+            const updatedMsg = await tx.message.update({
+                where: { id: message.id },
+                data: {
+                    status: status as any,
+                    resolvedBy: adminName,
+                    resolvedAt: getNow(),
+                },
+                include: {
+                    user: { select: { id: true, name: true, externalId: true, noShowCount: true } },
+                    order: { select: { id: true, orderDate: true, status: true } },
+                    shift: { select: { id: true, name: true } },
+                },
+            });
+
+            // If approved, decrement noShowCount and check blacklist
+            if (status === 'APPROVED' && message.userId) {
+                const updatedUser = await tx.user.update({
+                    where: { id: message.userId },
+                    data: {
+                        noShowCount: Math.max(0, message.user.noShowCount - 1),
+                    },
+                });
+
+                // Check if user has an active blacklist and should be unblocked
+                const activeBlacklist = await tx.blacklist.findFirst({
+                    where: {
+                        userId: message.userId,
+                        isActive: true,
+                        OR: [
+                            { endDate: null },
+                            { endDate: { gt: getNow() } },
+                        ],
+                    },
+                });
+
+                if (activeBlacklist) {
+                    // Get settings to check blacklist threshold
+                    const settings = await tx.settings.findFirst();
+                    const blacklistStrikes = settings?.blacklistStrikes || 3;
+
+                    // If user's noShowCount is now below the threshold, lift the blacklist
+                    if (updatedUser.noShowCount < blacklistStrikes) {
+                        await tx.blacklist.update({
+                            where: { id: activeBlacklist.id },
+                            data: {
+                                isActive: false,
+                                endDate: getNow(),
+                                reason: activeBlacklist.reason + ` [Blokir dibuka oleh ${adminName} - sanggahan disetujui]`,
+                            },
+                        });
+                    }
+                }
+            }
+
+            return updatedMsg;
+        });
+
+        res.json({
+            message: `Sanggahan berhasil di-${status.toLowerCase()}`,
+            data: resolvedMessage,
+        });
+    } catch (error) {
+        console.error('Resolve appeal error:', error);
+        res.status(500).json({ error: 'Gagal memproses sanggahan' });
     }
 });
 

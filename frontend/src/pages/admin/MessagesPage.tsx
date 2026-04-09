@@ -14,8 +14,15 @@ import {
     Filter,
     Calendar,
     Building2,
-    Clock
+    Clock,
+    ShieldAlert,
+    ShieldCheck,
+    ShieldX,
+    Eye,
+    CheckCircle,
+    X
 } from 'lucide-react';
+import toast from 'react-hot-toast';
 
 interface Shift {
     id: string;
@@ -34,10 +41,14 @@ interface User {
 
 interface Message {
     id: string;
-    type: 'COMPLAINT' | 'CANCELLATION';
+    type: 'COMPLAINT' | 'CANCELLATION' | 'APPEAL';
     content: string;
     orderDate: string;
     createdAt: string;
+    status?: string;
+    photoUrl?: string | null;
+    resolvedBy?: string | null;
+    resolvedAt?: string | null;
     user: User;
     shift: Shift;
     order?: {
@@ -62,6 +73,12 @@ export default function MessagesPage() {
     const [page, setPage] = useState(1);
     const [totalPages, setTotalPages] = useState(1);
     const [total, setTotal] = useState(0);
+
+    // Appeal resolve states
+    const [resolvingId, setResolvingId] = useState<string | null>(null);
+
+    // Photo preview modal
+    const [previewPhoto, setPreviewPhoto] = useState<string | null>(null);
 
     const loadMessages = useCallback(async () => {
         try {
@@ -143,10 +160,24 @@ export default function MessagesPage() {
         setPage(1);
     };
 
+    const handleResolve = async (messageId: string, status: 'APPROVED' | 'REJECTED') => {
+        try {
+            setResolvingId(messageId);
+            await api.put(`/api/messages/${messageId}/resolve`, { status });
+            toast.success(`Sanggahan berhasil di-${status.toLowerCase()}`);
+            loadMessages();
+        } catch (error: any) {
+            toast.error(error.response?.data?.error || 'Gagal memproses sanggahan');
+        } finally {
+            setResolvingId(null);
+        }
+    };
+
     const getTypeBadge = (type: string) => {
         switch (type) {
             case 'COMPLAINT': return 'badge-danger';
             case 'CANCELLATION': return 'badge-warning';
+            case 'APPEAL': return 'badge-info';
             default: return 'badge-neutral';
         }
     };
@@ -155,6 +186,7 @@ export default function MessagesPage() {
         switch (type) {
             case 'COMPLAINT': return 'Keluhan';
             case 'CANCELLATION': return 'Pembatalan';
+            case 'APPEAL': return 'Sanggahan';
             default: return type;
         }
     };
@@ -163,7 +195,18 @@ export default function MessagesPage() {
         switch (type) {
             case 'COMPLAINT': return <AlertTriangle className="w-4 h-4" />;
             case 'CANCELLATION': return <XCircle className="w-4 h-4" />;
+            case 'APPEAL': return <ShieldAlert className="w-4 h-4" />;
             default: return <MessageSquare className="w-4 h-4" />;
+        }
+    };
+
+    const getStatusBadge = (msg: Message) => {
+        if (msg.type !== 'APPEAL') return null;
+        switch (msg.status) {
+            case 'APPROVED': return <span className="badge badge-success flex items-center gap-1"><ShieldCheck className="w-3 h-3" /> Disetujui</span>;
+            case 'REJECTED': return <span className="badge badge-danger flex items-center gap-1"><ShieldX className="w-3 h-3" /> Ditolak</span>;
+            case 'PENDING': return <span className="badge badge-warning flex items-center gap-1"><Clock className="w-3 h-3" /> Menunggu</span>;
+            default: return null;
         }
     };
 
@@ -213,6 +256,7 @@ export default function MessagesPage() {
                             <option value="">Semua Tipe</option>
                             <option value="COMPLAINT">Keluhan</option>
                             <option value="CANCELLATION">Pembatalan</option>
+                            <option value="APPEAL">Sanggahan</option>
                         </select>
                     </div>
                     <div>
@@ -293,6 +337,20 @@ export default function MessagesPage() {
                         </div>
                     </div>
                 </div>
+                </div>
+                <div className="stat-card">
+                    <div className="flex items-center justify-between">
+                        <div>
+                            <p className="text-xs text-white/40 uppercase tracking-wider">Sanggahan</p>
+                            <p className="text-2xl font-bold mt-1 text-info">
+                                {messages.filter(m => m.type === 'APPEAL').length}
+                            </p>
+                        </div>
+                        <div className="stat-icon bg-gradient-to-br from-info to-blue-500">
+                            <ShieldAlert className="w-5 h-5 text-white" />
+                        </div>
+                    </div>
+                </div>
                 <div className="stat-card">
                     <div className="flex items-center justify-between">
                         <div>
@@ -330,7 +388,9 @@ export default function MessagesPage() {
                                         <th className="text-left py-3 px-4 text-white/50 font-medium">Tanggal Order</th>
                                         <th className="text-left py-3 px-4 text-white/50 font-medium">Shift</th>
                                         <th className="text-left py-3 px-4 text-white/50 font-medium">Pesan</th>
+                                        <th className="text-left py-3 px-4 text-white/50 font-medium">Status</th>
                                         <th className="text-left py-3 px-4 text-white/50 font-medium">Waktu Kirim</th>
+                                        <th className="text-left py-3 px-4 text-white/50 font-medium">Aksi</th>
                                     </tr>
                                 </thead>
                                 <tbody>
@@ -370,6 +430,20 @@ export default function MessagesPage() {
                                             </td>
                                             <td className="py-4 px-4 max-w-xs">
                                                 <p className="text-white/80 line-clamp-2">{msg.content}</p>
+                                                {msg.type === 'APPEAL' && msg.photoUrl && (
+                                                    <button
+                                                        onClick={() => setPreviewPhoto(msg.photoUrl!)}
+                                                        className="mt-1 text-xs text-blue-400 hover:text-blue-300 flex items-center gap-1"
+                                                    >
+                                                        <Eye className="w-3 h-3" /> Lihat Bukti Foto
+                                                    </button>
+                                                )}
+                                            </td>
+                                            <td className="py-4 px-4">
+                                                {getStatusBadge(msg) || <span className="text-white/30">-</span>}
+                                                {msg.resolvedBy && (
+                                                    <p className="text-xs text-white/40 mt-1">oleh {msg.resolvedBy}</p>
+                                                )}
                                             </td>
                                             <td className="py-4 px-4">
                                                 <div className="flex items-center gap-2 text-white/50">
@@ -378,6 +452,30 @@ export default function MessagesPage() {
                                                         {formatDateTimeShortWIB(msg.createdAt)}
                                                     </span>
                                                 </div>
+                                            </td>
+                                            <td className="py-4 px-4">
+                                                {msg.type === 'APPEAL' && msg.status === 'PENDING' ? (
+                                                    <div className="flex items-center gap-2">
+                                                        <button
+                                                            onClick={() => handleResolve(msg.id, 'APPROVED')}
+                                                            disabled={resolvingId === msg.id}
+                                                            className="p-1.5 rounded-lg bg-emerald-500/20 text-emerald-400 hover:bg-emerald-500/30 transition-colors disabled:opacity-50"
+                                                            title="Setujui"
+                                                        >
+                                                            {resolvingId === msg.id ? <Loader2 className="w-4 h-4 animate-spin" /> : <CheckCircle className="w-4 h-4" />}
+                                                        </button>
+                                                        <button
+                                                            onClick={() => handleResolve(msg.id, 'REJECTED')}
+                                                            disabled={resolvingId === msg.id}
+                                                            className="p-1.5 rounded-lg bg-red-500/20 text-red-400 hover:bg-red-500/30 transition-colors disabled:opacity-50"
+                                                            title="Tolak"
+                                                        >
+                                                            <XCircle className="w-4 h-4" />
+                                                        </button>
+                                                    </div>
+                                                ) : (
+                                                    <span className="text-white/20">-</span>
+                                                )}
                                             </td>
                                         </tr>
                                     ))}
@@ -416,5 +514,29 @@ export default function MessagesPage() {
                 )}
             </div>
         </div>
+
+            {/* Photo Preview Modal */}
+            {previewPhoto && (
+                <div className="fixed inset-0 z-[60] flex items-center justify-center p-4">
+                    <div
+                        className="absolute inset-0 bg-black/60 backdrop-blur-sm"
+                        onClick={() => setPreviewPhoto(null)}
+                    />
+                    <div className="relative max-w-2xl max-h-[80vh] animate-fade-in">
+                        <button
+                            onClick={() => setPreviewPhoto(null)}
+                            className="absolute -top-3 -right-3 w-8 h-8 bg-white rounded-full flex items-center justify-center shadow-lg hover:bg-slate-100 z-10"
+                        >
+                            <X className="w-4 h-4 text-slate-600" />
+                        </button>
+                        <img
+                            src={previewPhoto}
+                            alt="Bukti Sanggahan"
+                            className="rounded-xl shadow-2xl max-h-[75vh] object-contain"
+                        />
+                    </div>
+                </div>
+            )}
+    </div>
     );
 }

@@ -3,7 +3,7 @@ import { api } from '../contexts/AuthContext';
 import { useSSERefresh, ORDER_EVENTS } from '../contexts/SSEContext';
 import { format } from 'date-fns';
 import { formatDateTimeShortWIB } from '../utils/timezone';
-import { Calendar, ChevronLeft, ChevronRight, Loader2, X, CheckCircle, XCircle, Clock, Ban, History, MessageSquare, Send, MapPin } from 'lucide-react';
+import { Calendar, ChevronLeft, ChevronRight, Loader2, X, CheckCircle, XCircle, Clock, Ban, History, MessageSquare, Send, MapPin, Upload, ShieldAlert, ShieldCheck, ShieldX } from 'lucide-react';
 import { QRCodeSVG } from 'qrcode.react';
 import toast from 'react-hot-toast';
 
@@ -25,6 +25,15 @@ interface Order {
         name: string;
         location: string | null;
     };
+    messages?: {
+        id: string;
+        status: string;
+        content: string;
+        photoUrl: string | null;
+        resolvedBy: string | null;
+        resolvedAt: string | null;
+        createdAt: string;
+    }[];
 }
 
 export default function HistoryPage() {
@@ -46,6 +55,13 @@ export default function HistoryPage() {
     const [complaintContent, setComplaintContent] = useState('');
     const [isSubmittingComplaint, setIsSubmittingComplaint] = useState(false);
     const [orderToComplain, setOrderToComplain] = useState<Order | null>(null);
+
+    // Appeal modal states
+    const [showAppealModal, setShowAppealModal] = useState(false);
+    const [appealContent, setAppealContent] = useState('');
+    const [appealPhoto, setAppealPhoto] = useState<File | null>(null);
+    const [isSubmittingAppeal, setIsSubmittingAppeal] = useState(false);
+    const [orderToAppeal, setOrderToAppeal] = useState<Order | null>(null);
 
     const loadOrders = useCallback(async () => {
         setIsLoading(true);
@@ -338,6 +354,59 @@ export default function HistoryPage() {
 
                         {/* Footer */}
                         <div className="p-6 border-t border-slate-100 space-y-3">
+                            {/* Appeal Status for NO_SHOW orders */}
+                            {selectedOrder.status === 'NO_SHOW' && (() => {
+                                const appeal = selectedOrder.messages?.[0];
+                                if (appeal?.status === 'APPROVED') {
+                                    return (
+                                        <div className="flex items-center gap-3 p-3 rounded-xl bg-emerald-50 border border-emerald-200">
+                                            <ShieldCheck className="w-5 h-5 text-emerald-600 flex-shrink-0" />
+                                            <div className="text-sm">
+                                                <p className="font-semibold text-emerald-700">Sanggahan Disetujui</p>
+                                                <p className="text-emerald-600">Disetujui oleh <span className="font-medium">{appeal.resolvedBy}</span></p>
+                                            </div>
+                                        </div>
+                                    );
+                                }
+                                if (appeal?.status === 'REJECTED') {
+                                    return (
+                                        <div className="flex items-center gap-3 p-3 rounded-xl bg-red-50 border border-red-200">
+                                            <ShieldX className="w-5 h-5 text-red-600 flex-shrink-0" />
+                                            <div className="text-sm">
+                                                <p className="font-semibold text-red-700">Sanggahan Ditolak</p>
+                                                <p className="text-red-600">Ditolak oleh <span className="font-medium">{appeal.resolvedBy}</span></p>
+                                            </div>
+                                        </div>
+                                    );
+                                }
+                                if (appeal?.status === 'PENDING') {
+                                    return (
+                                        <div className="flex items-center gap-3 p-3 rounded-xl bg-amber-50 border border-amber-200">
+                                            <ShieldAlert className="w-5 h-5 text-amber-600 flex-shrink-0" />
+                                            <div className="text-sm">
+                                                <p className="font-semibold text-amber-700">Sanggahan Sedang Diproses</p>
+                                                <p className="text-amber-600">Menunggu persetujuan admin</p>
+                                            </div>
+                                        </div>
+                                    );
+                                }
+                                // No appeal yet — show button
+                                return (
+                                    <button
+                                        onClick={() => {
+                                            setOrderToAppeal(selectedOrder);
+                                            setAppealContent('');
+                                            setAppealPhoto(null);
+                                            setShowAppealModal(true);
+                                        }}
+                                        className="w-full flex items-center justify-center gap-2 px-4 py-3 rounded-xl bg-gradient-to-r from-blue-500 to-indigo-500 text-white font-medium hover:from-blue-600 hover:to-indigo-600 transition-all shadow-lg shadow-blue-500/20"
+                                    >
+                                        <ShieldAlert className="w-4 h-4" />
+                                        Ajukan Sanggahan
+                                    </button>
+                                );
+                            })()}
+
                             {/* Complaint Button - only for PICKED_UP orders */}
                             {selectedOrder.status === 'PICKED_UP' && (
                                 <button
@@ -536,6 +605,143 @@ export default function HistoryPage() {
                                     <>
                                         <Send className="w-4 h-4" />
                                         Kirim Komplain
+                                    </>
+                                )}
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            )}
+
+            {/* Appeal Modal */}
+            {showAppealModal && orderToAppeal && (
+                <div className="fixed inset-0 z-[60] flex items-center justify-center p-4">
+                    <div
+                        className="absolute inset-0 bg-black/40 backdrop-blur-sm"
+                        onClick={() => setShowAppealModal(false)}
+                    />
+                    <div className="relative bg-white rounded-2xl p-6 w-full max-w-md shadow-2xl animate-fade-in">
+                        <div className="flex items-center gap-3 mb-6">
+                            <div className="w-12 h-12 rounded-xl bg-gradient-to-br from-blue-500 to-indigo-500 flex items-center justify-center">
+                                <ShieldAlert className="w-6 h-6 text-white" />
+                            </div>
+                            <div>
+                                <h3 className="text-xl font-bold text-[#1a1f37]">Ajukan Sanggahan</h3>
+                                <p className="text-sm text-slate-500">
+                                    {format(new Date(orderToAppeal.orderDate), 'dd MMM yyyy')} • {orderToAppeal.shift.name}
+                                </p>
+                            </div>
+                        </div>
+
+                        <div className="space-y-4 mb-6">
+                            <div>
+                                <label className="block text-sm font-medium text-slate-600 mb-2">
+                                    Alasan Sanggahan <span className="text-red-600">*</span>
+                                </label>
+                                <textarea
+                                    value={appealContent}
+                                    onChange={(e) => setAppealContent(e.target.value)}
+                                    placeholder="Jelaskan alasan Anda tidak dapat mengambil pesanan (contoh: keperluan darurat, dinas luar kota, sakit mendadak, dll)..."
+                                    className="input-field h-32 resize-none"
+                                    rows={4}
+                                />
+                            </div>
+
+                            <div>
+                                <label className="block text-sm font-medium text-slate-600 mb-2">
+                                    Bukti Foto (opsional)
+                                </label>
+                                <div className="relative">
+                                    <input
+                                        type="file"
+                                        accept="image/*"
+                                        onChange={(e) => setAppealPhoto(e.target.files?.[0] || null)}
+                                        className="hidden"
+                                        id="appeal-photo-input"
+                                    />
+                                    <label
+                                        htmlFor="appeal-photo-input"
+                                        className="flex items-center gap-3 p-4 border-2 border-dashed border-slate-200 rounded-xl cursor-pointer hover:border-blue-400 hover:bg-blue-50/50 transition-all"
+                                    >
+                                        <Upload className="w-5 h-5 text-slate-400" />
+                                        <span className="text-sm text-slate-500">
+                                            {appealPhoto ? appealPhoto.name : 'Pilih foto bukti...'}
+                                        </span>
+                                    </label>
+                                    {appealPhoto && (
+                                        <div className="mt-2 relative inline-block">
+                                            <img
+                                                src={URL.createObjectURL(appealPhoto)}
+                                                alt="Preview"
+                                                className="w-24 h-24 object-cover rounded-lg border border-slate-200"
+                                            />
+                                            <button
+                                                onClick={() => setAppealPhoto(null)}
+                                                className="absolute -top-2 -right-2 w-5 h-5 bg-red-500 text-white rounded-full flex items-center justify-center text-xs hover:bg-red-600"
+                                            >
+                                                <X className="w-3 h-3" />
+                                            </button>
+                                        </div>
+                                    )}
+                                </div>
+                                <p className="text-xs text-slate-400 mt-2">
+                                    Upload foto bukti pendukung (surat keterangan, tiket, dll) untuk memperkuat sanggahan Anda.
+                                </p>
+                            </div>
+                        </div>
+
+                        <div className="flex gap-3">
+                            <button
+                                onClick={() => setShowAppealModal(false)}
+                                className="btn-secondary flex-1"
+                                disabled={isSubmittingAppeal}
+                            >
+                                Batal
+                            </button>
+                            <button
+                                onClick={async () => {
+                                    if (!appealContent.trim()) {
+                                        toast.error('Alasan sanggahan harus diisi');
+                                        return;
+                                    }
+                                    setIsSubmittingAppeal(true);
+                                    try {
+                                        const formData = new FormData();
+                                        formData.append('orderId', orderToAppeal.id);
+                                        formData.append('shiftId', orderToAppeal.shift.id);
+                                        formData.append('content', appealContent.trim());
+                                        formData.append('orderDate', orderToAppeal.orderDate);
+                                        if (appealPhoto) {
+                                            formData.append('photo', appealPhoto);
+                                        }
+                                        await api.post('/api/messages/appeal', formData, {
+                                            headers: { 'Content-Type': 'multipart/form-data' },
+                                        });
+                                        toast.success('Sanggahan berhasil diajukan');
+                                        setShowAppealModal(false);
+                                        setSelectedOrder(null);
+                                        setOrderToAppeal(null);
+                                        setAppealContent('');
+                                        setAppealPhoto(null);
+                                        loadOrders();
+                                    } catch (error: any) {
+                                        toast.error(error.response?.data?.error || 'Gagal mengajukan sanggahan');
+                                    } finally {
+                                        setIsSubmittingAppeal(false);
+                                    }
+                                }}
+                                disabled={!appealContent.trim() || isSubmittingAppeal}
+                                className="flex-1 flex items-center justify-center gap-2 px-4 py-2.5 rounded-xl bg-gradient-to-r from-blue-500 to-indigo-500 text-white font-medium hover:from-blue-600 hover:to-indigo-600 transition-all disabled:opacity-50 disabled:cursor-not-allowed"
+                            >
+                                {isSubmittingAppeal ? (
+                                    <>
+                                        <Loader2 className="w-4 h-4 animate-spin" />
+                                        Mengirim...
+                                    </>
+                                ) : (
+                                    <>
+                                        <Send className="w-4 h-4" />
+                                        Kirim Sanggahan
                                     </>
                                 )}
                             </button>

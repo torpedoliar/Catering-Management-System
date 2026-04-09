@@ -27,6 +27,13 @@ enum OrderStatus {
 enum MessageType {
   COMPLAINT     // Customer complaint about food quality
   CANCELLATION  // Cancellation reason before cutoff
+  APPEAL        // Customer appeal for NO_SHOW order
+}
+
+enum MessageStatus {
+  PENDING
+  APPROVED
+  REJECTED
 }
 
 // Organizational Structure Models
@@ -464,6 +471,10 @@ model Message {
   type        MessageType
   content     String      // The actual complaint/reason text
   orderDate   DateTime    // Date the order was for
+  status      MessageStatus @default(PENDING)
+  photoUrl    String?     // Photo evidence for APPEAL
+  resolvedBy  String?     // Name of admin who approved/rejected
+  resolvedAt  DateTime?   // Sanggahan review timestamp
   createdAt   DateTime    @default(now())
 
   order       Order?      @relation(fields: [orderId], references: [id], onDelete: SetNull)
