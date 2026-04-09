@@ -6,6 +6,7 @@ export interface AuthRequest extends Request {
         id: string;
         externalId: string;
         role: string;
+        name?: string;
     };
 }
 
