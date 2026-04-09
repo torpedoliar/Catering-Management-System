@@ -163,6 +163,17 @@ router.post('/appeal', authMiddleware, upload.single('photo'), async (req: AuthR
         if (!order) {
             return res.status(404).json({ error: 'Order tidak ditemukan' });
         }
+        
+        // Validate 7 days limit
+        const appealDate = new Date(orderDate);
+        // We use system date. Note: getNow() is assumed to return current Date. Let's make sure it's available. To be safe, just new Date()
+        const now = new Date();
+        const diffTime = now.getTime() - appealDate.getTime();
+        const diffDays = diffTime / (1000 * 60 * 60 * 24);
+        
+        if (diffDays > 7.5) { // give a lit bit of timezone leeway
+            return res.status(400).json({ error: 'Melewati batas pengajuan sanggahan (Maksimal 7 hari dari tanggal pesanan)' });
+        }
         if (order.userId !== userId) {
             return res.status(403).json({ error: 'Anda tidak memiliki akses ke order ini' });
         }
@@ -208,6 +219,13 @@ router.post('/appeal', authMiddleware, upload.single('photo'), async (req: AuthR
                 shift: { select: { id: true, name: true } },
             },
         });
+
+        // 🔔 Send push/in-app notification to all Admins about this new appeal
+        const notifTitle = 'Pengajuan Sanggahan Baru';
+        // Note: Using a basic date string formatter to avoid importing date-fns if not already imported
+        const dateStr = new Date(message.orderDate).toLocaleDateString('id-ID', { day: 'numeric', month: 'short', year: 'numeric' });
+        const notifMessage = `Sanggahan baru dari ${message.user.name} untuk pesanan tanggal ${dateStr}`;
+        await NotificationService.notifyAdmins(notifTitle, notifMessage, 'WARNING', message.id);
 
         res.status(201).json({
             message: 'Sanggahan berhasil diajukan',

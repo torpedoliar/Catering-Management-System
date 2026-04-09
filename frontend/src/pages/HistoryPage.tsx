@@ -226,11 +226,24 @@ export default function HistoryPage() {
                                                     </p>
                                                 </div>
                                             </div>
-                                            <div className="flex items-center gap-4">
-                                                <span className={`px-3 py-1.5 rounded-full text-xs font-medium ${statusConfig.class}`}>
-                                                    {statusConfig.label}
-                                                </span>
-                                                <ChevronRight className="w-5 h-5 text-slate-300 group-hover:text-slate-500 group-hover:translate-x-1 transition-all" />
+                                            <div className="flex flex-col sm:flex-row items-end sm:items-center gap-2 sm:gap-4">
+                                                {order.messages && order.messages.length > 0 && order.status === 'NO_SHOW' && (
+                                                    <span className={`px-2.5 py-1 rounded-full text-[10px] font-bold tracking-wide uppercase ${
+                                                        order.messages[0].status === 'APPROVED' ? 'bg-emerald-100 text-emerald-700' :
+                                                        order.messages[0].status === 'REJECTED' ? 'bg-red-100 text-red-700' :
+                                                        'bg-amber-100 text-amber-700'
+                                                    }`}>
+                                                        {order.messages[0].status === 'APPROVED' ? 'Sanggah Diterima' :
+                                                         order.messages[0].status === 'REJECTED' ? 'Sanggah Ditolak' :
+                                                         'Sanggah Proses'}
+                                                    </span>
+                                                )}
+                                                <div className="flex items-center gap-2 sm:gap-4">
+                                                    <span className={`px-3 py-1.5 rounded-full text-xs font-medium ${statusConfig.class}`}>
+                                                        {statusConfig.label}
+                                                    </span>
+                                                    <ChevronRight className="w-5 h-5 text-slate-300 group-hover:text-slate-500 group-hover:translate-x-1 transition-all flex-shrink-0" />
+                                                </div>
                                             </div>
                                         </div>
                                     </div>
@@ -390,6 +403,24 @@ export default function HistoryPage() {
                                         </div>
                                     );
                                 }
+                                
+                                // Check 7 day limit
+                                const orderDateObj = new Date(selectedOrder.orderDate);
+                                const diffTime = new Date().getTime() - orderDateObj.getTime();
+                                const diffDays = diffTime / (1000 * 60 * 60 * 24);
+                                
+                                if (diffDays > 7.5) {
+                                    return (
+                                        <div className="flex items-center gap-3 p-3 rounded-xl bg-slate-100 border border-slate-200">
+                                            <Clock className="w-5 h-5 text-slate-500 flex-shrink-0" />
+                                            <div className="text-sm">
+                                                <p className="font-semibold text-slate-700">Melewati Batas Pengajuan</p>
+                                                <p className="text-slate-500">Waktu sanggah 7 hari telah habis</p>
+                                            </div>
+                                        </div>
+                                    );
+                                }
+
                                 // No appeal yet — show button
                                 return (
                                     <button

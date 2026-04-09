@@ -38,7 +38,11 @@ router.get('/my-orders', authMiddleware, async (req: AuthRequest, res: Response)
                 where,
                 include: {
                     shift: true,
-                    canteen: { select: { id: true, name: true, location: true } }
+                    canteen: { select: { id: true, name: true, location: true } },
+                    messages: {
+                        where: { type: 'APPEAL' },
+                        select: { id: true, status: true, content: true, createdAt: true, resolvedAt: true, resolvedBy: true }
+                    }
                 },
                 orderBy: { orderDate: 'desc' },
                 skip,

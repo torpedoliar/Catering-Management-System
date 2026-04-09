@@ -83,4 +83,24 @@ export class NotificationService {
             console.error('[NotificationService] Error notifying user:', error);
         }
     }
+
+    /**
+     * Broadcasts a notification to all Admin users.
+     */
+    static async notifyAdmins(title: string, message: string, type: NotificationType = 'INFO', relatedId?: string) {
+        try {
+            const admins = await prisma.user.findMany({
+                where: { role: 'ADMIN' },
+                select: { id: true }
+            });
+
+            const sendPromises = admins.map(admin => 
+                this.notifyUser(admin.id, title, message, type, relatedId)
+            );
+
+            await Promise.allSettled(sendPromises);
+        } catch (error) {
+            console.error('[NotificationService] Error notifying admins:', error);
+        }
+    }
 }
