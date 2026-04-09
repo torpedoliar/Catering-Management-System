@@ -4,6 +4,7 @@ import { getNow, getToday, getTomorrow } from './time.service';
 import { createAuditLog } from './audit.service';
 import { prisma } from '../lib/prisma';
 import { isOvernightShift, hasDaytimeShiftEndedToday, isTimeAfter } from '../utils/shift-utils';
+import { NotificationService } from './notification.service';
 
 interface NoShowResult {
     processedOrders: number;
@@ -160,6 +161,15 @@ export async function processNoShows(): Promise<NoShowResult> {
 
             console.log(`[NoShow Service] User ${updatedUser.name} now has ${updatedUser.noShowCount} no-shows`);
 
+            // 🔔 Push notification to user about their strike
+            await NotificationService.notifyUser(
+                updatedUser.id,
+                '⚠️ Pelanggaran: Tidak Ambil Makan',
+                `Pesanan ${order.shift.name} Anda hari ini tidak diambil. Strike ke-${updatedUser.noShowCount}. Setelah ${blacklistStrikes} strike, akun akan diblokir.`,
+                'WARNING',
+                order.id
+            );
+
             // Check if user should be blacklisted
             if (updatedUser.noShowCount >= blacklistStrikes && !usersBlacklistedThisBatch.has(updatedUser.id)) {
 
@@ -215,6 +225,24 @@ export async function processNoShows(): Promise<NoShowResult> {
 
                     console.log(`[NoShow Service] User ${updatedUser.name} has been blacklisted until ${endDate.toLocaleDateString()}`);
 
+                    // 🔔 Push notification to user about being blocked
+                    const endDateStr = endDate.toLocaleDateString('id-ID', { day: 'numeric', month: 'long', year: 'numeric' });
+                    await NotificationService.notifyUser(
+                        updatedUser.id,
+                        '🚫 Akun Diblokir',
+                        `Akun Anda telah diblokir hingga ${endDateStr} karena ${updatedUser.noShowCount} kali tidak ambil makan. Semua pesanan aktif dibatalkan otomatis.`,
+                        'DANGER',
+                        blacklist.id
+                    );
+
+                    // 🔔 Push notification to all Admins
+                    await NotificationService.notifyAdmins(
+                        '🚫 User Auto-Blacklist',
+                        `${updatedUser.name} (${updatedUser.noShowCount} strike) diblokir otomatis hingga ${endDateStr}.`,
+                        'DANGER',
+                        blacklist.id
+                    );
+
                     // Broadcast blacklist event
                     sseManager.broadcast('user:blacklisted', {
                         blacklist,
@@ -239,6 +267,19 @@ export async function processNoShows(): Promise<NoShowResult> {
         }
 
         console.log(`[NoShow Service] Completed: ${result.processedOrders} orders marked as no-show, ${result.newBlacklists} new blacklists`);
+
+        // 🔔 Summary notification to all Admins if any no-shows were processed
+        if (result.processedOrders > 0) {
+            const summary = result.newBlacklists > 0
+                ? `${result.processedOrders} pesanan tidak diambil hari ini. ${result.newBlacklists} user diblokir otomatis. User: ${result.affectedUsers.join(', ')}`
+                : `${result.processedOrders} pesanan tidak diambil hari ini. User: ${result.affectedUsers.join(', ')}`;
+
+            await NotificationService.notifyAdmins(
+                '📊 Laporan No-Show Harian',
+                summary,
+                result.newBlacklists > 0 ? 'DANGER' : 'WARNING'
+            );
+        }
 
         return result;
     } catch (error) {
@@ -386,6 +427,16 @@ export async function cancelOrdersForBlacklistedUser(
                 orderDate: order.orderDate,
                 shiftName: order.shift.name,
             });
+
+            // 🔔 Push notification to user about auto-cancelled order
+            const orderDateStr = order.orderDate.toLocaleDateString('id-ID', { day: 'numeric', month: 'long' });
+            await NotificationService.notifyUser(
+                userId,
+                '❌ Pesanan Dibatalkan Otomatis',
+                `Pesanan ${order.shift.name} tanggal ${orderDateStr} dibatalkan karena akun diblokir.`,
+                'DANGER',
+                order.id
+            );
 
             // Broadcast order cancelled event
             sseManager.broadcast('order:cancelled', {

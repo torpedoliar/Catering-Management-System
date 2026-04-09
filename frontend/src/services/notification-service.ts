@@ -3,13 +3,15 @@
  * 
  * Manages scheduled local notifications for meal order reminders.
  * Notifications are scheduled by the OS and will fire even if the app is closed.
+ * 
+ * Timing: 1 hour BEFORE the shift start time (not before cutoff).
  */
 import { Capacitor } from '@capacitor/core';
 import { Preferences } from '@capacitor/preferences';
 
 // Notification channel ID for Android
 const CHANNEL_ID = 'hallofood-reminders';
-const REMINDER_MINUTES_BEFORE_CUTOFF = 30;
+const REMINDER_MINUTES_BEFORE_SHIFT = 60; // 1 hour before shift starts
 
 // Base notification ID range
 const REMINDER_ID_BASE = 1000;
@@ -20,6 +22,7 @@ interface ShiftInfo {
     cutoffTime: string | null;
     startTime: string;
     endTime: string;
+    canOrder?: boolean;
 }
 
 export async function initNotifications(): Promise<void> {
@@ -38,7 +41,7 @@ export async function initNotifications(): Promise<void> {
         await LocalNotifications.createChannel({
             id: CHANNEL_ID,
             name: 'Pengingat Pemesanan Makan',
-            description: 'Notifikasi pengingat sebelum waktu pemesanan habis',
+            description: 'Notifikasi pengingat sebelum waktu shift dimulai',
             importance: 4, 
             visibility: 1, 
             vibration: true,
@@ -56,6 +59,16 @@ export async function initNotifications(): Promise<void> {
     } catch (error) {
         console.warn('[Notifications] Init failed:', error);
     }
+}
+
+/**
+ * Parses a time string "HH:mm" and returns a Date object for the given target date.
+ */
+function parseShiftTime(timeStr: string, targetDate: Date): Date {
+    const [hours, minutes] = timeStr.split(':').map(Number);
+    const date = new Date(targetDate);
+    date.setHours(hours, minutes, 0, 0);
+    return date;
 }
 
 export async function rescheduleRemindersFromAPI(): Promise<void> {
@@ -80,7 +93,7 @@ export async function rescheduleRemindersFromAPI(): Promise<void> {
         const notificationsToSchedule: any[] = [];
         let notificationCount = 0;
 
-        // Cek mode cutoff apa yang digunakan dengan cara fetch target hari ini
+        // Cek mode cutoff
         const todayStr = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}`;
         
         let initialRes;
@@ -96,23 +109,46 @@ export async function rescheduleRemindersFromAPI(): Promise<void> {
         const data = initialRes.data;
 
         if (data.cutoffMode === 'weekly') {
-            // Mode Mingguan
-            const weeklyCutoffTimeStr = data.weeklyCutoffTime;
-            if (weeklyCutoffTimeStr) {
-                const cutoffDate = new Date(weeklyCutoffTimeStr);
-                const reminderDate = new Date(cutoffDate.getTime() - REMINDER_MINUTES_BEFORE_CUTOFF * 60 * 1000);
-                
-                if (reminderDate.getTime() > now.getTime()) {
-                    notificationsToSchedule.push({
-                        id: REMINDER_ID_BASE + notificationCount++,
-                        title: '🕒 Waktu Pemesanan Mingguan Akan Berakhir',
-                        body: `Pemesanan makan untuk minggu depan akan ditutup dalam ${REMINDER_MINUTES_BEFORE_CUTOFF} menit. Segera pastikan jadwal makan Anda!`,
-                        schedule: { at: reminderDate },
-                        channelId: CHANNEL_ID,
-                        smallIcon: 'ic_stat_notify',
-                        largeIcon: 'ic_launcher',
-                        autoCancel: true,
-                    });
+            // Mode Mingguan — jadwalkan berdasarkan shift start time untuk setiap hari yang bisa dipesan
+            // Fetch data 7 hari ke depan
+            for (let i = 0; i < 7; i++) {
+                const targetDate = new Date(now);
+                targetDate.setDate(targetDate.getDate() + i);
+                const dateStr = `${targetDate.getFullYear()}-${String(targetDate.getMonth() + 1).padStart(2, '0')}-${String(targetDate.getDate()).padStart(2, '0')}`;
+
+                try {
+                    const [shiftsRes, orderRes] = await Promise.all([
+                        axios.get(`${API_URL}/api/shifts/for-user?date=${dateStr}`, { headers: { Authorization: `Bearer ${token}` } }),
+                        axios.get(`${API_URL}/api/orders/today?date=${dateStr}`, { headers: { Authorization: `Bearer ${token}` } })
+                    ]);
+
+                    const hasOrder = !!orderRes.data.order;
+                    if (hasOrder) continue; // Jangan beri notif jika pesanan sudah ada hari itu
+
+                    const shifts: ShiftInfo[] = shiftsRes.data.shifts || [];
+                    for (const shift of shifts) {
+                        if (notificationsToSchedule.length >= 50) break;
+
+                        // Jadwalkan 1 jam sebelum shift START
+                        const shiftStartDate = parseShiftTime(shift.startTime, targetDate);
+                        const reminderDate = new Date(shiftStartDate.getTime() - REMINDER_MINUTES_BEFORE_SHIFT * 60 * 1000);
+
+                        if (reminderDate.getTime() > now.getTime()) {
+                            const dayName = targetDate.toLocaleDateString('id-ID', { weekday: 'long' });
+                            notificationsToSchedule.push({
+                                id: REMINDER_ID_BASE + notificationCount++,
+                                title: '🍽️ Jangan Lupa Pesan Makan',
+                                body: `Shift ${shift.name} untuk hari ${dayName} dimulai 1 jam lagi. Segera pesan makan Anda!`,
+                                schedule: { at: reminderDate },
+                                channelId: CHANNEL_ID,
+                                smallIcon: 'ic_stat_notify',
+                                largeIcon: 'ic_launcher',
+                                autoCancel: true,
+                            });
+                        }
+                    }
+                } catch (e) {
+                    console.warn(`[Notifications] Failed fetching for ${dateStr}`, e);
                 }
             }
         } else {
@@ -133,20 +169,18 @@ export async function rescheduleRemindersFromAPI(): Promise<void> {
 
                     const shifts: ShiftInfo[] = shiftsRes.data.shifts || [];
                     for (const shift of shifts) {
-                        if (!shift.cutoffTime) continue;
+                        if (notificationsToSchedule.length >= 50) break;
 
-                        const cutoffDate = new Date(shift.cutoffTime);
-                        if (isNaN(cutoffDate.getTime())) continue;
+                        // Jadwalkan 1 jam sebelum shift START (bukan sebelum cutoff)
+                        const shiftStartDate = parseShiftTime(shift.startTime, targetDate);
+                        const reminderDate = new Date(shiftStartDate.getTime() - REMINDER_MINUTES_BEFORE_SHIFT * 60 * 1000);
 
-                        const reminderDate = new Date(cutoffDate.getTime() - REMINDER_MINUTES_BEFORE_CUTOFF * 60 * 1000);
                         if (reminderDate.getTime() > now.getTime()) {
-                            // Batasi agar tidak membuat terlalu banyak notifikasi 
-                            if (notificationsToSchedule.length >= 50) break;
-
+                            const dayName = targetDate.toLocaleDateString('id-ID', { weekday: 'long' });
                             notificationsToSchedule.push({
                                 id: REMINDER_ID_BASE + notificationCount++,
                                 title: '🍽️ Jangan Lupa Pesan Makan',
-                                body: `Waktu pemesanan ${shift.name} Anda untuk hari ${targetDate.toLocaleDateString('id-ID', {weekday: 'long'})} akan ditutup dalam ${REMINDER_MINUTES_BEFORE_CUTOFF} menit!`,
+                                body: `Shift ${shift.name} untuk hari ${dayName} dimulai 1 jam lagi. Segera pesan makan Anda!`,
                                 schedule: { at: reminderDate },
                                 channelId: CHANNEL_ID,
                                 smallIcon: 'ic_stat_notify',
@@ -163,7 +197,10 @@ export async function rescheduleRemindersFromAPI(): Promise<void> {
 
         if (notificationsToSchedule.length > 0) {
             await LocalNotifications.schedule({ notifications: notificationsToSchedule });
-            console.log(`[Notifications] Scheduled ${notificationsToSchedule.length} reminders`);
+            console.log(`[Notifications] Scheduled ${notificationsToSchedule.length} reminders (1h before shift start)`);
+            notificationsToSchedule.forEach(n => {
+                console.log(`  → [${n.id}] "${n.title}" at ${n.schedule.at.toLocaleString()}`);
+            });
         } else {
             console.log('[Notifications] No reminders to schedule within 7 days');
         }
