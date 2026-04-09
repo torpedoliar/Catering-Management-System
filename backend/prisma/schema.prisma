@@ -126,6 +126,8 @@ model User {
   blacklists         Blacklist[]
   messages           Message[]
   announcements      Announcement[]
+  notifications      Notification[]
+  pushSubscriptions  PushSubscription[]
 
   @@index([externalId])
   @@index([nik])
@@ -613,3 +615,42 @@ model RefreshToken {
   @@index([userId])
   @@index([expiresAt])
 }
+
+
+enum NotificationType {
+  INFO
+  SUCCESS
+  WARNING
+  DANGER
+}
+
+model Notification {
+  id        String           @id @default(uuid())
+  userId    String
+  title     String
+  message   String
+  type      NotificationType @default(INFO)
+  isRead    Boolean          @default(false)
+  relatedId String?          // For linking to Order, Appeal, etc.
+  createdAt DateTime         @default(now())
+
+  user      User             @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@index([isRead])
+  @@index([createdAt])
+}
+
+model PushSubscription {
+  id        String   @id @default(uuid())
+  userId    String
+  endpoint  String   @unique
+  p256dh    String
+  auth      String
+  createdAt DateTime @default(now())
+
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+}
+

@@ -10,6 +10,7 @@ import { sendComplaintNotification } from '../services/email.service';
 import { format } from 'date-fns';
 import { id as idLocale } from 'date-fns/locale';
 import { prisma } from '../lib/prisma';
+import { NotificationService } from '../services/notification.service';
 
 const router = Router();
 
@@ -300,6 +301,17 @@ router.put('/:id/resolve', authMiddleware, adminMiddleware, async (req: AuthRequ
 
             return updatedMsg;
         });
+
+        // 🔔 Send push/in-app notification to the user about their appeal
+        if (resolvedMessage.userId) {
+            const notifTitle = `Sanggahan ${status === 'APPROVED' ? 'Disetujui' : 'Ditolak'}`;
+            const notifMessage = status === 'APPROVED' 
+                ? `Admin ${adminName} menyetujui sanggahan Anda. Strike Anda otomatis berkurang.` 
+                : `Admin ${adminName} menolak sanggahan Anda.`;
+            const notifType = status === 'APPROVED' ? 'SUCCESS' : 'DANGER';
+
+            await NotificationService.notifyUser(resolvedMessage.userId, notifTitle, notifMessage, notifType, resolvedMessage.orderId || undefined);
+        }
 
         res.json({
             message: `Sanggahan berhasil di-${status.toLowerCase()}`,

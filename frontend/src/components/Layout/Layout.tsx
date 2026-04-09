@@ -37,10 +37,10 @@ import {
     ArrowUpCircle,
     TrendingUp,
     Palette,
-    PanelLeftClose,
     PanelLeftOpen,
     Search,
 } from 'lucide-react';
+import NotificationBell from './NotificationBell';
 
 interface LayoutProps {
     children: ReactNode;
@@ -379,6 +379,9 @@ export default function Layout({ children }: LayoutProps) {
 
                         {/* Right — status + user */}
                         <div className="flex items-center gap-3 shrink-0">
+                            <NotificationBell />
+                            <div className="w-px h-6 bg-stone-200 hidden sm:block"></div>
+                            
                             {/* Connection status */}
                             <div className={`flex items-center gap-1.5 px-2.5 py-1.5 rounded-full text-xs font-semibold transition-colors ${isConnected
                                 ? 'bg-emerald-50 text-emerald-600 border border-emerald-100'

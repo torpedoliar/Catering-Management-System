@@ -54,6 +54,7 @@ const ALL_EVENTS = [
     'menu:deleted',
     'weekly-menu:updated',
     'data:refresh',
+    'notification:new',
 ];
 
 export function SSEProvider({ children }: { children: ReactNode }) {
@@ -341,6 +342,12 @@ function showEventToast(eventType: string, data: any, currentUserId: string) {
             break;
         case 'user:unblocked':
             toast.success(`${data.userName || 'User'} unblocked`, { icon: '✅' });
+            break;
+        case 'notification:new':
+            toast.success(data.notification?.title || 'Notification', { 
+                icon: '🔔',
+                style: { background: '#f8fafc', color: '#334155' }
+            });
             break;
     }
 }

@@ -29,6 +29,7 @@ import vendorManagementRoutes from './routes/vendor-management.routes';
 import menuItemRoutes from './routes/menu-item.routes';
 import weeklyMenuRoutes from './routes/weekly-menu.routes';
 import versionRoutes from './routes/version.routes';
+import notificationRoutes from './routes/notification.routes';
 
 import { sseManager } from './controllers/sse.controller';
 import { startScheduler } from './services/scheduler';
@@ -83,6 +84,7 @@ app.use('/api/vendors', vendorManagementRoutes);
 app.use('/api/menu-items', menuItemRoutes);
 app.use('/api/weekly-menu', weeklyMenuRoutes);
 app.use('/api/version', versionRoutes);
+app.use('/api/notifications', notificationRoutes);
 
 
 
