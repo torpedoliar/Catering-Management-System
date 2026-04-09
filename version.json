@@ -1,8 +1,12 @@
 {
-    "version": "2.4.0",
-    "releaseDate": "2026-04-06",
+    "version": "2.4.1",
+    "releaseDate": "2026-04-09",
     "minDatabaseVersion": "1.0.0",
     "changelog": [
+        "Feature: Hardened security with strict order cancellation and appeal time-gating",
+        "Improvement: Notification timing fixed to 1 hour before shift start",
+        "Feature: Expanded push notifications for strikes, blacklist, and auto-cancellation",
+        "Fix: Resolved 401 Unauthorized in Notification Bell component",
         "Feature: Implemented Refresh Tokens & Two-Tier Security for persistent logins",
         "Feature: Persistent Android login using @capacitor/preferences (no more auto-logout)",
         "Improvement: Proactive 7-day local notification scheduling for order reminders",
