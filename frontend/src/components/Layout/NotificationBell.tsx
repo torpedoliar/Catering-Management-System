@@ -1,6 +1,6 @@
-import { useState, useEffect, useRef } from 'react';
+import { useState, useEffect, useRef, useCallback } from 'react';
 import { Bell, Check, Info, AlertTriangle, CheckCircle, XCircle, CheckSquare } from 'lucide-react';
-import { api } from '../../contexts/AuthContext';
+import { api, useAuth } from '../../contexts/AuthContext';
 import { useSSERefresh } from '../../contexts/SSEContext';
 import { PushService } from '../../services/push.service';
 import { formatDistanceToNow } from 'date-fns';
@@ -17,13 +17,15 @@ interface Notification {
 }
 
 export default function NotificationBell() {
+    const { user } = useAuth();
     const [notifications, setNotifications] = useState<Notification[]>([]);
     const [unreadCount, setUnreadCount] = useState(0);
     const [isOpen, setIsOpen] = useState(false);
     const [pushPermission, setPushPermission] = useState(PushService.getPermissionState());
     const dropdownRef = useRef<HTMLDivElement>(null);
 
-    const loadNotifications = async () => {
+    const loadNotifications = useCallback(async () => {
+        if (!user) return; // Don't fetch if not authenticated yet
         try {
             const res = await api.get('/api/notifications');
             setNotifications(res.data.notifications || []);
@@ -31,11 +33,11 @@ export default function NotificationBell() {
         } catch (error) {
             console.error('Failed to load notifications', error);
         }
-    };
+    }, [user]);
 
     useEffect(() => {
         loadNotifications();
-    }, []);
+    }, [loadNotifications]);
 
     // Refresh automatically on SSE event
     useSSERefresh(['notification:new'], loadNotifications);
