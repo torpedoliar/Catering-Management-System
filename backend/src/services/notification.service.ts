@@ -10,8 +10,8 @@ try {
         credential: admin.credential.cert(serviceAccountPath)
     });
     console.log('[PushService] Initialized Firebase Admin for Native FCM Push');
-} catch (e) {
-    console.warn('[PushService] Firebase Admin not initialized. (Missing or invalid json)', e.message);
+} catch (error) {
+    console.warn('[PushService] Firebase Admin not initialized. (Missing or invalid json)', error instanceof Error ? error.message : 'Unknown error');
 }
 
 // ---------------------------------------------------------
@@ -122,8 +122,8 @@ export class NotificationService {
                                 }
                             }
                         });
-                    } catch (e) {
-                         console.error('[PushService] FCM Multicast error:', e);
+                    } catch (error) {
+                         console.error('[PushService] FCM Multicast error:', error instanceof Error ? error.message : error);
                     }
                 }
             }
