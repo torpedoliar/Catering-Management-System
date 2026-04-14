@@ -644,9 +644,13 @@ model Notification {
 model PushSubscription {
   id        String   @id @default(uuid())
   userId    String
-  endpoint  String   @unique
-  p256dh    String
-  auth      String
+  // For Web Push API (optional if using FCM native)
+  endpoint  String?   @unique
+  p256dh    String?
+  auth      String?
+
+  // For Firebase Cloud Messaging (FCM)
+  fcmToken  String?   @unique
   createdAt DateTime @default(now())
 
   user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)

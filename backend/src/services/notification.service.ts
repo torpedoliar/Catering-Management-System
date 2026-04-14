@@ -1,6 +1,18 @@
 import webpush from 'web-push';
 import { prisma } from '../lib/prisma';
 import { sseManager } from '../controllers/sse.controller';
+import * as admin from 'firebase-admin';
+import path from 'path';
+
+try {
+    const serviceAccountPath = path.join(process.cwd(), 'firebase-service-account.json');
+    admin.initializeApp({
+        credential: admin.credential.cert(serviceAccountPath)
+    });
+    console.log('[PushService] Initialized Firebase Admin for Native FCM Push');
+} catch (e) {
+    console.warn('[PushService] Firebase Admin not initialized. (Missing or invalid json)', e.message);
+}
 
 // ---------------------------------------------------------
 // PUSH CONFIGURATION
@@ -38,13 +50,17 @@ export class NotificationService {
             // 2. Broadcast via SSE (so the Bell icon updates immediately if they are online)
             sseManager.broadcastToUser(userId, 'notification:new', { notification });
 
-            // 3. Dispatch Web Push if configured
-            if (publicVapidKey && privateVapidKey) {
-                const subs = await prisma.pushSubscription.findMany({
-                    where: { userId }
-                });
+            // 3. Dispatch Web Push and FCM if configured
+            const subs = await prisma.pushSubscription.findMany({
+                where: { userId }
+            });
 
-                if (subs.length > 0) {
+            if (subs.length > 0) {
+                const webSubs = subs.filter(s => s.endpoint && s.p256dh && s.auth);
+                const fcmSubs = subs.filter(s => s.fcmToken);
+
+                // 3a. Dispatch Web Push
+                if (publicVapidKey && privateVapidKey && webSubs.length > 0) {
                     const payload = JSON.stringify({
                         title,
                         body: message,
@@ -55,12 +71,12 @@ export class NotificationService {
                         }
                     });
 
-                    const sendPromises = subs.map(sub => {
+                    const sendPromises = webSubs.map(sub => {
                         const pushSub = {
-                            endpoint: sub.endpoint,
+                            endpoint: sub.endpoint!,
                             keys: {
-                                p256dh: sub.p256dh,
-                                auth: sub.auth
+                                p256dh: sub.p256dh!,
+                                auth: sub.auth!
                             }
                         };
                         return webpush.sendNotification(pushSub, payload).catch(async (err) => {
@@ -75,6 +91,40 @@ export class NotificationService {
                     });
 
                     await Promise.allSettled(sendPromises);
+                }
+
+                // 3b. Dispatch FCM Native Push
+                if (admin.apps.length > 0 && fcmSubs.length > 0) {
+                    const tokens = fcmSubs.map(s => s.fcmToken!);
+                    
+                    const fcmPayload = {
+                        notification: {
+                            title,
+                            body: message,
+                        },
+                        data: {
+                            url: '/',
+                            relatedId: relatedId || '',
+                        },
+                        tokens: tokens
+                    };
+
+                    try {
+                        const response = await admin.messaging().sendEachForMulticast(fcmPayload);
+                        response.responses.forEach((res, idx) => {
+                            if (!res.success) {
+                                if (res.error?.code === 'messaging/invalid-registration-token' ||
+                                    res.error?.code === 'messaging/registration-token-not-registered') {
+                                    console.log('[PushService] Removing expired FCM token:', tokens[idx]);
+                                    prisma.pushSubscription.deleteMany({ where: { fcmToken: tokens[idx] } }).catch(() => {});
+                                } else {
+                                    console.error('[PushService] FCM send error:', res.error);
+                                }
+                            }
+                        });
+                    } catch (e) {
+                         console.error('[PushService] FCM Multicast error:', e);
+                    }
                 }
             }
 

@@ -1,8 +1,13 @@
 {
-    "version": "2.4.1",
-    "releaseDate": "2026-04-09",
-    "minDatabaseVersion": "1.0.0",
+    "version": "2.5.0",
+    "releaseDate": "2026-04-14",
+    "minDatabaseVersion": "1.1.0",
     "changelog": [
+        "Feature: Native Push Notifications via Firebase Cloud Messaging (FCM) for Android & iOS",
+        "Improvement: Notification reminders rescheduled to 25 hours before shift start",
+        "Improvement: Updated reminder message to 'Tolong pesan makanan untuk esok hari'",
+        "Backend: Transitioned from pure Web Push to Hybrid (Web Push + FCM) architecture",
+        "Backend: Updated database schema to support native FCM token registration",
         "Feature: Hardened security with strict order cancellation and appeal time-gating",
         "Improvement: Notification timing fixed to 1 hour before shift start",
         "Feature: Expanded push notifications for strikes, blacklist, and auto-cancellation",

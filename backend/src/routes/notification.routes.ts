@@ -103,4 +103,48 @@ router.post('/unsubscribe', async (req: AuthRequest, res: Response) => {
     }
 });
 
+// Subscribe to FCM Push (Native Android/iOS)
+router.post('/fcm-subscribe', async (req: AuthRequest, res: Response) => {
+    try {
+        const { fcmToken } = req.body;
+        
+        if (!fcmToken) {
+            return res.status(400).json({ error: 'Missing fcmToken' });
+        }
+
+        await prisma.pushSubscription.upsert({
+            where: { fcmToken },
+            create: {
+                userId: req.user!.id,
+                fcmToken,
+            },
+            update: {
+                userId: req.user!.id,
+            }
+        });
+
+        res.status(201).json({ success: true });
+    } catch (error) {
+        console.error('Failed subscribing to FCM push:', error);
+        res.status(500).json({ error: 'Failed to subscribe to FCM' });
+    }
+});
+
+// Unsubscribe from FCM
+router.post('/fcm-unsubscribe', async (req: AuthRequest, res: Response) => {
+    try {
+        const { fcmToken } = req.body;
+        if (!fcmToken) return res.status(400).json({ error: 'Missing fcmToken' });
+
+        await prisma.pushSubscription.deleteMany({
+            where: { fcmToken, userId: req.user!.id }
+        });
+
+        res.json({ success: true });
+    } catch (error) {
+        console.error('Failed unsubscribing from FCM push:', error);
+        res.status(500).json({ error: 'Failed to unsubscribe from FCM' });
+    }
+});
+
 export default router;

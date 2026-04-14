@@ -1,4 +1,6 @@
 import { api } from '../contexts/AuthContext';
+import { Capacitor } from '@capacitor/core';
+
 
 // Helper to convert base64 VAPID to Uint8Array
 const urlBase64ToUint8Array = (base64String: string) => {
@@ -18,6 +20,58 @@ const urlBase64ToUint8Array = (base64String: string) => {
 
 export const PushService = {
     async register() {
+        if (Capacitor.isNativePlatform()) {
+            return this.registerNativePush();
+        }
+        return this.registerWebPush();
+    },
+
+    async registerNativePush() {
+        try {
+            const { PushNotifications } = await import('@capacitor/push-notifications');
+            
+            let permStatus = await PushNotifications.checkPermissions();
+            if (permStatus.receive === 'prompt') {
+                permStatus = await PushNotifications.requestPermissions();
+            }
+            if (permStatus.receive !== 'granted') {
+                console.warn('[PushService] Native push permission denied');
+                return false;
+            }
+
+            await PushNotifications.removeAllListeners();
+
+            return new Promise<boolean>((resolve) => {
+                PushNotifications.addListener('registration', async (token) => {
+                    console.log('[PushService] Native FCM Token received:', token.value);
+                    try {
+                        await api.post('/api/notifications/fcm-subscribe', { fcmToken: token.value });
+                        resolve(true);
+                    } catch (e) {
+                         console.error('[PushService] Failed sending FCM token to backend', e);
+                         resolve(false);
+                    }
+                });
+                
+                PushNotifications.addListener('registrationError', (error) => {
+                    console.error('[PushService] Error on FCM registration:', error.error);
+                    resolve(false);
+                });
+
+                // Finally, trigger registration
+                PushNotifications.register().catch(e => {
+                    console.error('[PushService] PushNotifications.register failed', e);
+                    resolve(false);
+                });
+            });
+
+        } catch (e) {
+            console.error('[PushService] Error during native push registration', e);
+            return false;
+        }
+    },
+
+    async registerWebPush() {
         if (!('serviceWorker' in navigator) || !('PushManager' in window)) {
             console.warn('Push notifications not supported by this browser.');
             return false;
@@ -59,15 +113,19 @@ export const PushService = {
             // Send to backend
             await api.post('/api/notifications/subscribe', subscription.toJSON());
             
-            console.log('Successfully subscribed to push notifications.');
+            console.log('Successfully subscribed to web push notifications.');
             return true;
         } catch (error) {
-            console.error('Error during push registration:', error);
+            console.error('Error during web push registration:', error);
             return false;
         }
     },
 
     getPermissionState() {
+        if (Capacitor.isNativePlatform()) {
+             // Capacitor PushNotifications check
+             return 'prompt'; // simplified
+        }
         if (!('Notification' in window)) return 'unsupported';
         return Notification.permission;
     }

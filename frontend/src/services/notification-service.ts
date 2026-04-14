@@ -11,7 +11,7 @@ import { Preferences } from '@capacitor/preferences';
 
 // Notification channel ID for Android
 const CHANNEL_ID = 'hallofood-reminders';
-const REMINDER_MINUTES_BEFORE_SHIFT = 60; // 1 hour before shift starts
+const REMINDER_MINUTES_BEFORE_SHIFT = 1500; // 25 hours before shift starts
 
 // Base notification ID range
 const REMINDER_ID_BASE = 1000;
@@ -138,7 +138,7 @@ export async function rescheduleRemindersFromAPI(): Promise<void> {
                             notificationsToSchedule.push({
                                 id: REMINDER_ID_BASE + notificationCount++,
                                 title: '🍽️ Jangan Lupa Pesan Makan',
-                                body: `Shift ${shift.name} untuk hari ${dayName} dimulai 1 jam lagi. Segera pesan makan Anda!`,
+                                body: `Tolong pesan untuk esok hari pada shift ${shift.name}. Waktu order akan segera ditutup!`,
                                 schedule: { at: reminderDate },
                                 channelId: CHANNEL_ID,
                                 smallIcon: 'ic_stat_notify',
@@ -180,7 +180,7 @@ export async function rescheduleRemindersFromAPI(): Promise<void> {
                             notificationsToSchedule.push({
                                 id: REMINDER_ID_BASE + notificationCount++,
                                 title: '🍽️ Jangan Lupa Pesan Makan',
-                                body: `Shift ${shift.name} untuk hari ${dayName} dimulai 1 jam lagi. Segera pesan makan Anda!`,
+                                body: `Tolong pesan untuk esok hari pada shift ${shift.name}. Waktu order akan segera ditutup!`,
                                 schedule: { at: reminderDate },
                                 channelId: CHANNEL_ID,
                                 smallIcon: 'ic_stat_notify',
