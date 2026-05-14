@@ -108,11 +108,11 @@ router.post('/login', validate(loginSchema), async (req, res) => {
             return res.status(500).json({ error: 'Server configuration error' });
         }
 
-        // Generate Access Token (1 hour)
+        // Generate Access Token (R-003: shortened to 15 minutes to reduce localStorage exposure window)
         const token = jwt.sign(
             { id: user.id, externalId: user.externalId, role: user.role },
             jwtSecret,
-            { expiresIn: '1h' }
+            { expiresIn: '15m' }
         );
 
         // Generate Refresh Token (30 days)
@@ -359,11 +359,11 @@ router.post('/refresh', async (req, res) => {
             return res.status(401).json({ error: 'User account is inactive' });
         }
 
-        // 4. Terbitkan Access Token baru (1 hour)
+        // 4. Terbitkan Access Token baru (R-003: 15 minutes to match login)
         const newAccessToken = jwt.sign(
             { id: user.id, externalId: user.externalId, role: user.role },
             jwtSecret,
-            { expiresIn: '1h' }
+            { expiresIn: '15m' }
         );
 
         res.json({ token: newAccessToken });

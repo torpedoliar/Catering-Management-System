@@ -90,11 +90,32 @@ CORS_RESP=$(curl -sI -H "Origin: https://hallofood.santosjayaabadi.co.id" "$BASE
 check "CORS allows canonical origin" "access-control-allow-origin" "$CORS_RESP"
 echo ""
 
+# ─── F-004: Header duplication check ───
+echo "📋 F-004: No duplicate security headers on API"
+CSP_COUNT=$(echo "$API_HEADERS" | grep -ci "content-security-policy")
+if [ "$CSP_COUNT" -le 1 ]; then
+    echo "  ✅ PASS: CSP appears at most once on API ($CSP_COUNT)"
+    PASS=$((PASS + 1))
+else
+    echo "  ❌ FAIL: CSP appears $CSP_COUNT times on API (expected ≤1)"
+    FAIL=$((FAIL + 1))
+fi
+XCTO_COUNT=$(echo "$API_HEADERS" | grep -ci "x-content-type-options")
+if [ "$XCTO_COUNT" -le 1 ]; then
+    echo "  ✅ PASS: X-Content-Type-Options appears at most once on API ($XCTO_COUNT)"
+    PASS=$((PASS + 1))
+else
+    echo "  ❌ FAIL: X-Content-Type-Options appears $XCTO_COUNT times on API (expected ≤1)"
+    FAIL=$((FAIL + 1))
+fi
+echo ""
+
 # ─── F-005: Technology disclosure ───
 echo "📋 F-005: Technology disclosure suppression"
 check_absent "No X-Powered-By on /" "x-powered-by" "$SPA_HEADERS"
 check_absent "No X-Powered-By on API" "x-powered-by" "$API_HEADERS"
 check_absent "No X-Served-By on /" "x-served-by" "$SPA_HEADERS"
+check_absent "No X-Served-By on API" "x-served-by" "$API_HEADERS"
 echo ""
 
 # ─── R-006a: mustChangePassword enforcement ───
