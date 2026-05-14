@@ -122,7 +122,7 @@ export function SSEProvider({ children }: { children: ReactNode }) {
             return;
         }
 
-        const connect = () => {
+        const connect = async () => {
             // Prevent multiple connect calls
             if (isConnectingRef.current) {
                 return;
@@ -130,11 +130,47 @@ export function SSEProvider({ children }: { children: ReactNode }) {
 
             isConnectingRef.current = true;
 
-            const url = `${API_URL}/api/sse?userId=${user.id}&role=${user.role}&tabId=${TAB_ID}`;
-            console.log(`📡 SSE Connecting... (Tab: ${TAB_ID})`);
+            try {
+                // R-002: Obtain SSE ticket via authenticated endpoint
+                const ticketRes = await fetch(`${API_URL}/api/sse/ticket`, {
+                    method: 'POST',
+                    headers: {
+                        'Authorization': `Bearer ${token}`,
+                        'Content-Type': 'application/json',
+                    },
+                    credentials: 'include',
+                });
 
-            const eventSource = new EventSource(url);
-            eventSourceRef.current = eventSource;
+                if (!ticketRes.ok) {
+                    throw new Error(`SSE ticket request failed: ${ticketRes.status}`);
+                }
+
+                const { ticket } = await ticketRes.json();
+
+                // R-002: Connect with server-validated ticket instead of raw userId/role
+                const url = `${API_URL}/api/sse?ticket=${encodeURIComponent(ticket)}&tabId=${TAB_ID}`;
+                console.log(`📡 SSE Connecting... (Tab: ${TAB_ID})`);
+
+                const eventSource = new EventSource(url);
+                eventSourceRef.current = eventSource;
+            } catch (error) {
+                console.error('📡 SSE ticket/connect error:', error);
+                isConnectingRef.current = false;
+
+                // Retry after delay
+                if (reconnectAttemptsRef.current < maxReconnectAttempts) {
+                    reconnectAttemptsRef.current++;
+                    const delay = baseReconnectDelayMs * reconnectAttemptsRef.current;
+                    reconnectTimeoutRef.current = setTimeout(() => {
+                        if (token && user) {
+                            connect();
+                        }
+                    }, delay);
+                }
+                return;
+            }
+
+            const eventSource = eventSourceRef.current!;
 
             eventSource.onopen = () => {
                 setIsConnected(true);

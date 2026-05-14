@@ -154,9 +154,19 @@ router.post('/login', validate(loginSchema), async (req, res) => {
         // Log successful login
         await logAuth('LOGIN', { id: user.id, name: user.name, role: user.role, externalId: user.externalId }, context);
 
+        // R-005: Set refresh token as HttpOnly Secure cookie for web clients
+        const isProduction = process.env.NODE_ENV === 'production';
+        res.cookie('refreshToken', refreshTokenValue, {
+            httpOnly: true,
+            secure: isProduction,
+            sameSite: isProduction ? 'strict' : 'lax',
+            path: '/api/auth',
+            maxAge: 30 * 24 * 60 * 60 * 1000, // 30 days
+        });
+
         res.json({
             token,
-            refreshToken: refreshTokenValue,
+            refreshToken: refreshTokenValue, // Keep in body for Capacitor native fallback
             user: {
                 id: user.id,
                 externalId: user.externalId,
@@ -290,7 +300,8 @@ router.put('/me', authMiddleware, async (req: AuthRequest, res: Response) => {
 // Refresh Access Token
 router.post('/refresh', async (req, res) => {
     try {
-        const { refreshToken } = req.body;
+        // R-005: Read refresh token from HttpOnly cookie first, fallback to body (for Capacitor native)
+        const refreshToken = req.cookies?.refreshToken || req.body.refreshToken;
         if (!refreshToken) {
             return res.status(400).json({ error: 'Refresh token is required' });
         }
@@ -373,6 +384,15 @@ router.post('/logout', authMiddleware, async (req: AuthRequest, res: Response) =
                 await logAuth('LOGOUT', { id: user.id, name: user.name, role: user.role, externalId: user.externalId }, context);
             }
         }
+
+        // R-005: Clear refresh token cookie
+        res.clearCookie('refreshToken', {
+            httpOnly: true,
+            secure: process.env.NODE_ENV === 'production',
+            sameSite: process.env.NODE_ENV === 'production' ? 'strict' : 'lax',
+            path: '/api/auth',
+        });
+
         res.json({ message: 'Logged out successfully' });
     } catch (error) {
         console.error('Logout error:', error);
@@ -415,6 +435,15 @@ router.post('/change-password', authMiddleware, validate(changePasswordSchema), 
                 password: hashedPassword,
                 mustChangePassword: false,
             },
+        });
+
+        // R-001: Invalidate mustChangePassword cache immediately
+        await cacheService.delete(`mustChangePassword:${user.id}`);
+
+        // R-005: Revoke all refresh tokens after password change (force re-login on all devices)
+        await prisma.refreshToken.updateMany({
+            where: { userId: user.id, isRevoked: false },
+            data: { isRevoked: true },
         });
 
         // Log successful password change

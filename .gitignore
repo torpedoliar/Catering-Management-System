@@ -58,7 +58,8 @@ docker-compose.production.yml
 
 Project/
 
-# Firebase & Native Secrets (Internal - do not commit)
+
+# Firebase & Native Secrets (Internal - do not commit) untuk aplikasi android ios dan domain akses ke hallofood
 backend/firebase-service-account.json
 frontend/android/app/google-services.json
 frontend/ios/App/App/GoogleService-Info.plist

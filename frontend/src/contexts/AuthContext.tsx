@@ -1,12 +1,15 @@
 import { createContext, useContext, useState, useEffect, ReactNode, useCallback } from 'react';
 import axios from 'axios';
 import { Preferences } from '@capacitor/preferences';
+import { Capacitor } from '@capacitor/core';
 
 const API_URL = import.meta.env.VITE_API_URL || '';
+const isNativePlatform = Capacitor.isNativePlatform();
 
 // Create axios instance with interceptor
 const api = axios.create({
     baseURL: API_URL,
+    withCredentials: true, // R-005: Send cookies for HttpOnly refresh token
 });
 
 // Token in-memory untuk axios interceptor agar tetap berjalan secara synchronous
@@ -58,13 +61,15 @@ api.interceptors.response.use(
             isRefreshing = true;
 
             try {
-                const { value: storedRefreshToken } = await Preferences.get({ key: 'refreshToken' });
+                // R-005: On web, cookie is sent automatically. On native, send body.
+                let refreshPayload = {};
+                if (isNativePlatform) {
+                    const { value: storedRefreshToken } = await Preferences.get({ key: 'refreshToken' });
+                    if (!storedRefreshToken) throw new Error('No refresh token');
+                    refreshPayload = { refreshToken: storedRefreshToken };
+                }
 
-                if (!storedRefreshToken) throw new Error('No refresh token');
-
-                const res = await api.post('/api/auth/refresh', {
-                    refreshToken: storedRefreshToken
-                });
+                const res = await api.post('/api/auth/refresh', refreshPayload);
 
                 const newAccessToken = res.data.token;
                 await Preferences.set({ key: 'token', value: newAccessToken });
@@ -78,7 +83,9 @@ api.interceptors.response.use(
                 processQueue(refreshError, null);
                 
                 await Preferences.remove({ key: 'token' });
-                await Preferences.remove({ key: 'refreshToken' });
+                if (isNativePlatform) {
+                    await Preferences.remove({ key: 'refreshToken' });
+                }
                 memoryToken = null;
                 window.dispatchEvent(new Event('force-logout'));
                 
@@ -179,7 +186,9 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         const { token: newToken, refreshToken: newRefreshToken, user: userData } = res.data;
 
         await Preferences.set({ key: 'token', value: newToken });
-        if (newRefreshToken) {
+        // R-005: Only store refresh token in Preferences on native (mobile) platform
+        // On web, HttpOnly cookie handles refresh token automatically
+        if (isNativePlatform && newRefreshToken) {
             await Preferences.set({ key: 'refreshToken', value: newRefreshToken });
         }
         memoryToken = newToken;
@@ -194,7 +203,10 @@ export function AuthProvider({ children }: { children: ReactNode }) {
             console.error('Logout API error:', error);
         } finally {
             await Preferences.remove({ key: 'token' });
-            await Preferences.remove({ key: 'refreshToken' });
+            // R-005: Only remove refresh token from Preferences on native platform
+            if (isNativePlatform) {
+                await Preferences.remove({ key: 'refreshToken' });
+            }
             memoryToken = null;
             // Clear announcement session tracking so popups show on next login
             sessionStorage.removeItem('announcementsShown');

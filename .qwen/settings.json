@@ -1,0 +1,15 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(powershell *)",
+      "Bash(.\\gradlew.bat *)",
+      "Bash(java *)",
+      "Bash(dir)",
+      "Bash(git add *)",
+      "Bash(git commit *)",
+      "Bash(git push *)",
+      "Bash(explorer *)"
+    ]
+  },
+  "$version": 3
+}

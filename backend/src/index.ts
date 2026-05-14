@@ -6,6 +6,7 @@ process.env.TZ = 'UTC';
 import express from 'express';
 import cors from 'cors';
 import compression from 'compression';
+import cookieParser from 'cookie-parser'; // R-005: For HttpOnly refresh token cookies
 import path from 'path';
 import authRoutes from './routes/auth.routes';
 import userRoutes from './routes/user.routes';
@@ -42,6 +43,9 @@ import { logServerStart, logServerStop } from './services/uptime.service';
 const app = express();
 const PORT = process.env.PORT || 3012;
 
+// R-006: Suppress X-Powered-By header to prevent technology disclosure
+app.disable('x-powered-by');
+
 // Middleware
 app.use(cors({
     origin: process.env.CORS_ORIGIN || 'http://localhost:3011',
@@ -49,12 +53,38 @@ app.use(cors({
     exposedHeaders: ['Content-Disposition', 'Content-Length', 'Content-Type'],
 }));
 app.use(compression()); // Enable gzip compression
+app.use(cookieParser()); // R-005: Parse cookies for HttpOnly refresh token
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
 app.use('/uploads', express.static(path.join(__dirname, '../uploads')));
 
 // Trust proxy for proper IP detection (behind reverse proxy/load balancer)
 app.set('trust proxy', true);
+
+// R-004: Security headers middleware (defense-in-depth alongside Nginx)
+app.use((req, res, next) => {
+    // HSTS - enforce HTTPS (1 year)
+    res.setHeader('Strict-Transport-Security', 'max-age=31536000; includeSubDomains');
+    // CSP - restrict resource loading
+    res.setHeader('Content-Security-Policy', [
+        "default-src 'self'",
+        "script-src 'self'",
+        "style-src 'self' 'unsafe-inline' https://fonts.googleapis.com",
+        "font-src 'self' https://fonts.gstatic.com",
+        "img-src 'self' data: blob:",
+        "connect-src 'self'",
+        "frame-ancestors 'none'",
+    ].join('; '));
+    // Prevent clickjacking
+    res.setHeader('X-Frame-Options', 'DENY');
+    // Prevent MIME-type sniffing
+    res.setHeader('X-Content-Type-Options', 'nosniff');
+    // Control referrer information
+    res.setHeader('Referrer-Policy', 'strict-origin-when-cross-origin');
+    // Restrict browser features (camera allowed for check-in photo)
+    res.setHeader('Permissions-Policy', 'camera=(self), microphone=(), geolocation=()');
+    next();
+});
 
 // Health check
 app.get('/api/health', (req, res) => {
@@ -85,7 +115,6 @@ app.use('/api/menu-items', menuItemRoutes);
 app.use('/api/weekly-menu', weeklyMenuRoutes);
 app.use('/api/version', versionRoutes);
 app.use('/api/notifications', notificationRoutes);
-
 
 
 // Error handling middleware (centralized)

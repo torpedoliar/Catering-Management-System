@@ -27,7 +27,7 @@ class SSEManager {
         response.setHeader('Cache-Control', 'no-cache, no-transform');
         response.setHeader('Connection', 'keep-alive');
         response.setHeader('X-Accel-Buffering', 'no');
-        response.setHeader('Access-Control-Allow-Origin', '*');
+        // R-002: Removed hardcoded Access-Control-Allow-Origin: * — CORS is handled by Express middleware
         response.flushHeaders();
 
         // Send 4KB padding to flush proxy buffers (Nginx, CloudFlare, etc.)
