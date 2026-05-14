@@ -164,9 +164,12 @@ router.post('/login', validate(loginSchema), async (req, res) => {
             maxAge: 30 * 24 * 60 * 60 * 1000, // 30 days
         });
 
-        res.json({
+        // R-003: Only include refreshToken in JSON body for native mobile clients
+        // Web clients use the HttpOnly cookie above — never expose refreshToken to JavaScript
+        const isNativeClient = deviceInfo === 'Android' || deviceInfo === 'iOS';
+
+        const responsePayload: Record<string, any> = {
             token,
-            refreshToken: refreshTokenValue, // Keep in body for Capacitor native fallback
             user: {
                 id: user.id,
                 externalId: user.externalId,
@@ -178,7 +181,13 @@ router.post('/login', validate(loginSchema), async (req, res) => {
                 role: user.role,
                 mustChangePassword: user.mustChangePassword,
             },
-        });
+        };
+
+        if (isNativeClient) {
+            responsePayload.refreshToken = refreshTokenValue;
+        }
+
+        res.json(responsePayload);
     } catch (error) {
         console.error('Login error:', error);
         res.status(500).json({ error: 'Login failed' });
