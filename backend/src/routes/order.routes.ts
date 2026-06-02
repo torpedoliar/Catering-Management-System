@@ -126,6 +126,10 @@ router.get('/today', authMiddleware, async (req: AuthRequest, res: Response) => 
 router.post('/', authMiddleware, validate(createOrderSchema), async (req: AuthRequest, res: Response) => {
     const context = getRequestContext(req);
 
+    if (req.user?.role === 'VENDOR') {
+        return res.status(403).json({ error: 'Vendor tidak diizinkan membuat order' });
+    }
+
     try {
         const { shiftId, orderDate: orderDateParam, canteenId } = req.body;
         const userId = req.user?.id;
