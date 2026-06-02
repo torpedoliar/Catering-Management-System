@@ -37,6 +37,7 @@ export default function Sidebar({ onClose }: SidebarProps) {
     const [userExpanded, setUserExpanded] = useState(true);
     const [adminExpanded, setAdminExpanded] = useState(false);
     const [canteenExpanded, setCanteenExpanded] = useState(true);
+    const [vendorExpanded, setVendorExpanded] = useState(true);
 
     const isActive = (path: string) => location.pathname === path;
 
@@ -86,6 +87,11 @@ export default function Sidebar({ onClose }: SidebarProps) {
         { path: '/canteen/checkin', icon: ScanLine, label: 'Check-in' },
     ];
 
+    const vendorLinks = [
+        { path: '/vendor', icon: LayoutDashboard, label: 'Dashboard' },
+        { path: '/vendor/pickup-stats', icon: Activity, label: 'Statistik Pickup' },
+    ];
+
     const NavLink = ({ path, icon: Icon, label, colorIndex }: { path: string; icon: any; label: string; colorIndex: number }) => (
         <Link
             to={path}
@@ -128,24 +134,48 @@ export default function Sidebar({ onClose }: SidebarProps) {
             {/* Navigation */}
             <nav className="flex-1 p-3 space-y-1 overflow-y-auto">
                 {/* User section */}
-                <div className="mb-3">
-                    <div
-                        onClick={() => setUserExpanded(!userExpanded)}
-                        className="flex items-center justify-between px-3 py-2.5 cursor-pointer rounded-xl transition-all duration-200 mb-2 bg-white/[0.03] border border-white/[0.05] backdrop-blur-sm hover:bg-white/[0.08] hover:border-white/[0.1]"
-                    >
-                        <p className="text-[10px] font-semibold text-orange-400 uppercase tracking-wider">
-                            Menu
-                        </p>
-                        {userExpanded ? <ChevronDown className="w-3.5 h-3.5 text-slate-400" /> : <ChevronRight className="w-3.5 h-3.5 text-slate-400" />}
-                    </div>
-                    {userExpanded && (
-                        <div className="space-y-2">
-                            {userLinks.map((link, index) => (
-                                <NavLink key={link.path} {...link} colorIndex={index} />
-                            ))}
+                {user?.role !== 'VENDOR' && (
+                    <div className="mb-3">
+                        <div
+                            onClick={() => setUserExpanded(!userExpanded)}
+                            className="flex items-center justify-between px-3 py-2.5 cursor-pointer rounded-xl transition-all duration-200 mb-2 bg-white/[0.03] border border-white/[0.05] backdrop-blur-sm hover:bg-white/[0.08] hover:border-white/[0.1]"
+                        >
+                            <p className="text-[10px] font-semibold text-orange-400 uppercase tracking-wider">
+                                Menu
+                            </p>
+                            {userExpanded ? <ChevronDown className="w-3.5 h-3.5 text-slate-400" /> : <ChevronRight className="w-3.5 h-3.5 text-slate-400" />}
                         </div>
-                    )}
-                </div>
+                        {userExpanded && (
+                            <div className="space-y-2">
+                                {userLinks.map((link, index) => (
+                                    <NavLink key={link.path} {...link} colorIndex={index} />
+                                ))}
+                            </div>
+                        )}
+                    </div>
+                )}
+
+                {/* Vendor section */}
+                {user?.role === 'VENDOR' && (
+                    <div className="mb-3">
+                        <div
+                            onClick={() => setVendorExpanded(!vendorExpanded)}
+                            className="flex items-center justify-between px-3 py-2.5 cursor-pointer rounded-xl transition-all duration-200 mb-2 bg-white/[0.03] border border-white/[0.05] backdrop-blur-sm hover:bg-white/[0.08] hover:border-white/[0.1]"
+                        >
+                            <p className="text-[10px] font-semibold text-teal-400 uppercase tracking-wider">
+                                Vendor Menu
+                            </p>
+                            {vendorExpanded ? <ChevronDown className="w-3.5 h-3.5 text-slate-400" /> : <ChevronRight className="w-3.5 h-3.5 text-slate-400" />}
+                        </div>
+                        {vendorExpanded && (
+                            <div className="space-y-2">
+                                {vendorLinks.map((link, index) => (
+                                    <NavLink key={link.path} {...link} colorIndex={index + 5} />
+                                ))}
+                            </div>
+                        )}
+                    </div>
+                )}
 
                 {/* Canteen section */}
                 {(user?.role === 'CANTEEN' || user?.role === 'ADMIN') && (
