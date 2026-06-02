@@ -68,6 +68,10 @@ const ProtectedRoute = ({ children, roles }: { children: React.ReactNode; roles?
     }
 
     if (roles && !roles.includes(user.role)) {
+        // If vendor tries to access user/admin pages, redirect to vendor dashboard
+        if (user.role === 'VENDOR') {
+            return <Navigate to="/vendor" replace />;
+        }
         return <Navigate to="/" replace />;
     }
 
@@ -75,6 +79,7 @@ const ProtectedRoute = ({ children, roles }: { children: React.ReactNode; roles?
 };
 
 function AppRoutes() {
+    const { user } = useAuth();
     return (
         <Routes>
             <Route path="/login" element={<LoginPage />} />
@@ -85,11 +90,15 @@ function AppRoutes() {
                     <Outlet />
                 </Layout>
             }>
-                {/* User Routes */}
-                <Route element={<ProtectedRoute><Outlet /></ProtectedRoute>}>
-                    <Route path="/" element={<OrderPage />} />
+                {/* User Routes (Restricted from VENDOR) */}
+                <Route element={<ProtectedRoute roles={['USER', 'ADMIN', 'CANTEEN']}><Outlet /></ProtectedRoute>}>
+                    <Route path="/" element={user?.role === 'VENDOR' ? <Navigate to="/vendor" replace /> : <OrderPage />} />
                     <Route path="/menu" element={<FoodMenuPage />} />
                     <Route path="/history" element={<HistoryPage />} />
+                </Route>
+
+                {/* Shared Routes (Including VENDOR) */}
+                <Route element={<ProtectedRoute roles={['USER', 'ADMIN', 'CANTEEN', 'VENDOR']}><Outlet /></ProtectedRoute>}>
                     <Route path="/settings" element={<SettingsPage />} />
                     <Route path="/about" element={<AboutPage />} />
                     <Route path="/terms" element={<TermsPage />} />
