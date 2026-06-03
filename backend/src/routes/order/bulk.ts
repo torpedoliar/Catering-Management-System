@@ -31,6 +31,10 @@ const router = Router();
 
 // Bulk create orders (with blacklist validation)
 router.post('/bulk', authMiddleware, blacklistMiddleware, apiRateLimitMiddleware('bulk-order'), validate(bulkOrderSchema), async (req: AuthRequest, res: Response) => {
+    if (req.user?.role === 'VENDOR') {
+        return res.status(403).json({ error: 'Vendor tidak diizinkan membuat order' });
+    }
+
     const context = getRequestContext(req);
 
     try {
