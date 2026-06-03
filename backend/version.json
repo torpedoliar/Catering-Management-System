@@ -1,8 +1,9 @@
 {
-    "version": "2.2.1",
-    "releaseDate": "2026-04-09",
+    "version": "2.2.2",
+    "releaseDate": "2026-06-02",
     "minDatabaseVersion": "1.0.0",
     "changelog": [
+        "Security: Blocked VENDOR role from creating orders via API (single and bulk)",
         "Feature: Hardened security with strict order cancellation and appeal time-gating",
         "Feature: Expanded push notifications for strikes, blacklist, and auto-cancellation",
         "Fix: Reinforced backend cancellation logic with shift-start time checks",

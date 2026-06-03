@@ -1,8 +1,12 @@
 {
-    "version": "2.5.0",
-    "releaseDate": "2026-04-14",
+    "version": "2.5.1",
+    "releaseDate": "2026-06-02",
     "minDatabaseVersion": "1.1.0",
     "changelog": [
+        "Feature: Role-based access control for VENDOR role",
+        "Feature: Restricted VENDOR to vendor-specific dashboard and pickup stats",
+        "Security: Blocked VENDOR role from creating orders via API (single and bulk)",
+        "UI: Hidden user-specific menus for VENDOR in sidebar",
         "Feature: Native Push Notifications via Firebase Cloud Messaging (FCM) for Android & iOS",
         "Improvement: Notification reminders rescheduled to 25 hours before shift start",
         "Improvement: Updated reminder message to 'Tolong pesan makanan untuk esok hari'",
