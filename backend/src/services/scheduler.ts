@@ -2,6 +2,7 @@ import cron from 'node-cron';
 import { processNoShows } from './noshow.service';
 import { prisma } from '../lib/prisma';
 import { createBackup } from './server.service';
+import { NotificationService } from './notification.service';
 
 let isSchedulerRunning = false;
 
@@ -80,6 +81,12 @@ async function runAutoBackupCheck() {
         }
     } catch (error) {
         console.error('[Scheduler] Auto Backup failed:', error);
+        // Alert all admins so they can investigate immediately
+        await NotificationService.notifyAdmins(
+            'Auto Backup Gagal',
+            `Backup otomatis gagal pada ${new Date().toLocaleString('id-ID')}. Cek log server untuk detail.`,
+            'DANGER'
+        );
     }
 }
 

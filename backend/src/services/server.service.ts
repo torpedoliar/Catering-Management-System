@@ -205,16 +205,13 @@ export async function createBackup(userId: string | null, notes?: string): Promi
     try {
         // Get database connection details
         const dbUrl = process.env.DATABASE_URL;
-        let user, password, host, port, database;
+        let user: string | undefined, password: string | undefined, host: string | undefined, port: string | undefined, database: string | undefined;
 
         if (dbUrl) {
-            const match = dbUrl.match(/postgresql:\/\/([^:]+):([^@]+)@([^:]+):(\d+)\/(.+)/);
-            if (match) {
-                [, user, password, host, port, database] = match;
-                // Remove query parameters from database name if present
-                if (database.includes('?')) {
-                    database = database.split('?')[0];
-                }
+            // Proper URL parsing: handle passwords with special chars including @ and /
+            const urlMatch = dbUrl.match(/^postgresql:\/\/([^:@]+):([^@]+)@([^:]+):(\d+)\/([^?]+)/);
+            if (urlMatch) {
+                [, user, password, host, port, database] = urlMatch;
             }
         }
 
@@ -225,8 +222,12 @@ export async function createBackup(userId: string | null, notes?: string): Promi
         if (!port) port = process.env.DB_PORT || '5432';
         if (!database) database = process.env.DB_NAME || 'catering_db';
 
-        // Execute pg_dump
-        const dumpCommand = `PGPASSWORD="${password}" pg_dump -h ${host} -p ${port} -U ${user} -d ${database} -F p -f "${filepath}"`;
+        // Quote values for safety (handles special chars in password)
+        const q = (v: string) => `'${v.replace(/'/g, "'\"'\"'")}'`;
+        const pgEnv = `PGPASSWORD=${q(password)}`;
+
+        // Execute pg_dump with --clean (DROP IF EXISTS) to prevent "table already exists" on restore
+        const dumpCommand = `${pgEnv} pg_dump -h ${host} -p ${port} -U ${user} -d ${database} -F p --clean -f "${filepath}"`;
 
         await execAsync(dumpCommand);
 
@@ -298,12 +299,12 @@ export async function restoreBackup(backupId: string, userId: string): Promise<{
     try {
         // Get database connection details
         const dbUrl = process.env.DATABASE_URL;
-        let user, password, host, port, database;
+        let user: string | undefined, password: string | undefined, host: string | undefined, port: string | undefined, database: string | undefined;
 
         if (dbUrl) {
-            const match = dbUrl.match(/postgresql:\/\/([^:]+):([^@]+)@([^:]+):(\d+)\/(.+)/);
-            if (match) {
-                [, user, password, host, port, database] = match;
+            const urlMatch = dbUrl.match(/^postgresql:\/\/([^:@]+):([^@]+)@([^:]+):(\d+)\/([^?]+)/);
+            if (urlMatch) {
+                [, user, password, host, port, database] = urlMatch;
             }
         }
 
@@ -314,8 +315,21 @@ export async function restoreBackup(backupId: string, userId: string): Promise<{
         if (!port) port = process.env.DB_PORT || '5432';
         if (!database) database = process.env.DB_NAME || 'catering_db';
 
-        // Execute restore
-        const restoreCommand = `PGPASSWORD="${password}" psql -h ${host} -p ${port} -U ${user} -d ${database} -f "${filepath}"`;
+        // Quote values for safety (handles special chars in password)
+        const q = (v: string) => `'${v.replace(/'/g, "'\"'\"'")}'`;
+        const pgEnv = `PGPASSWORD=${q(password)}`;
+
+        // Terminate all active connections to the database before restore
+        // This prevents "database is being used by other sessions" errors
+        const terminateCmd = `${pgEnv} psql -h ${host} -p ${port} -U ${user} -d postgres -c "SELECT pg_terminate_backend(pid) FROM pg_stat_activity WHERE datname = '${database}' AND pid <> pg_backend_pid();"`;
+        try {
+            await execAsync(terminateCmd);
+        } catch (termErr) {
+            console.warn('[Restore] Could not terminate connections (non-fatal):', termErr);
+        }
+
+        // Restore with --single-transaction (atomic rollback on error) and ON_ERROR_STOP
+        const restoreCommand = `${pgEnv} psql -h ${host} -p ${port} -U ${user} -d ${database} --single-transaction --set ON_ERROR_STOP=1 -f "${filepath}"`;
 
         await execAsync(restoreCommand);
 
