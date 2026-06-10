@@ -458,8 +458,9 @@ export async function importBackupFile(userId: string, tempFilePath: string, ori
     const filename = `imported_${timestamp}${ext}`;
     const destinationPath = path.join(BACKUP_DIR, filename);
 
-    // Move file
-    await fs.promises.rename(tempFilePath, destinationPath);
+    // Move file (use copy+unlink instead of rename for cross-volume compatibility in Docker)
+    await fs.promises.copyFile(tempFilePath, destinationPath);
+    await fs.promises.unlink(tempFilePath);
 
     // Create backup record
     const backup = await prisma.backup.create({
