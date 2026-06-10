@@ -34,7 +34,7 @@ module.exports = {
         exec_mode: 'cluster',
 
         // Memory management
-        max_memory_restart: '500M',
+        max_memory_restart: '1G',
 
         // Watch disabled untuk production
         watch: false,
