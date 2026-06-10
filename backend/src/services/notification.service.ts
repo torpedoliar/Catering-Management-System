@@ -5,7 +5,7 @@ import * as admin from 'firebase-admin';
 import path from 'path';
 
 try {
-    const serviceAccountPath = path.join(process.cwd(), 'firebase-service-account.json');
+    const serviceAccountPath = path.resolve(__dirname, '../../firebase-service-account.json');
     admin.initializeApp({
         credential: admin.credential.cert(serviceAccountPath)
     });
@@ -105,6 +105,21 @@ export class NotificationService {
                         data: {
                             url: '/',
                             relatedId: relatedId || '',
+                            type: type || 'INFO',
+                        },
+                        android: {
+                            priority: 'high',
+                            notification: {
+                                sound: 'default',
+                                channelId: 'default',
+                            }
+                        },
+                        apns: {
+                            payload: {
+                                aps: {
+                                    sound: 'default',
+                                }
+                            }
                         },
                         tokens: tokens
                     };
