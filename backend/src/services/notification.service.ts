@@ -108,7 +108,7 @@ export class NotificationService {
                             type: type || 'INFO',
                         },
                         android: {
-                            priority: 'high',
+                            priority: 'high' as const,
                             notification: {
                                 sound: 'default',
                                 channelId: 'default',
