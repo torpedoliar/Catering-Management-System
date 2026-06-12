@@ -102,6 +102,38 @@ router.post('/login', validate(loginSchema), async (req, res) => {
             });
         }
 
+        // Check if user is blacklisted (block login entirely)
+        const activeBlacklist = await prisma.blacklist.findFirst({
+            where: {
+                userId: user.id,
+                isActive: true,
+                OR: [
+                    { endDate: null },
+                    { endDate: { gt: getNow() } },
+                ],
+            },
+        });
+
+        if (activeBlacklist) {
+            await logAuth('LOGIN_FAILED', { id: user.id, name: user.name, externalId }, context, {
+                success: false,
+                errorMessage: 'User blacklisted',
+                metadata: {
+                    ip: clientIp,
+                    blacklistId: activeBlacklist.id,
+                    blacklistReason: activeBlacklist.reason,
+                    blacklistEndDate: activeBlacklist.endDate?.toISOString() || 'Permanent',
+                },
+            });
+            const endDateMsg = activeBlacklist.endDate
+                ? ` hingga ${activeBlacklist.endDate.toLocaleDateString('id-ID', { day: 'numeric', month: 'long', year: 'numeric' })}`
+                : ' secara permanen';
+            return res.status(403).json({
+                error: `Akun Anda sedang diblokir${endDateMsg}. Alasan: ${activeBlacklist.reason}`,
+                code: 'USER_BLACKLISTED',
+            });
+        }
+
         const jwtSecret = process.env.JWT_SECRET;
         if (!jwtSecret) {
             console.error('CRITICAL: JWT_SECRET environment variable is not set!');
