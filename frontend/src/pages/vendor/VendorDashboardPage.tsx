@@ -2,6 +2,7 @@ import { useState, useEffect, useCallback } from 'react';
 import { FileSpreadsheet, Calendar, TrendingUp, Package, Loader2, Download, ChevronLeft, ChevronRight, MapPin } from 'lucide-react';
 import toast from 'react-hot-toast';
 import { api } from '../../contexts/AuthContext';
+import { useSSERefresh, ORDER_EVENTS } from '../../contexts/SSEContext';
 
 interface Shift {
     id: string;
@@ -149,6 +150,9 @@ export default function VendorDashboardPage() {
             loadWeeklyData();
         }
     }, [selectedWeek, selectedYear, loadWeeklyData]);
+
+    // Auto-refresh on order events (create, cancel, checkin, no-show, bulk)
+    useSSERefresh(ORDER_EVENTS, loadWeeklyData);
 
     const formatDate = (dateStr: string) => {
         const date = new Date(dateStr);
