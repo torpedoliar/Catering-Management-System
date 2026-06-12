@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback } from 'react';
-import { FileSpreadsheet, Calendar, TrendingUp, Package, Loader2, Download, ChevronLeft, ChevronRight, MapPin } from 'lucide-react';
+import { FileSpreadsheet, Calendar, TrendingUp, Package, Loader2, Download, ChevronLeft, ChevronRight, MapPin, XCircle, AlertTriangle } from 'lucide-react';
 import toast from 'react-hot-toast';
 import { api } from '../../contexts/AuthContext';
 import { useSSERefresh, ORDER_EVENTS } from '../../contexts/SSEContext';
@@ -209,6 +209,7 @@ export default function VendorDashboardPage() {
             csv += '\nRingkasan\n';
             csv += 'Total Order,' + data.summary.totalOrders + '\n';
             csv += 'Total Picked Up,' + data.summary.totalPickedUp + '\n';
+            csv += 'Total Dibatalkan,' + data.summary.totalCancelled + '\n';
             csv += 'Total No Show,' + data.summary.totalNoShow + '\n';
             csv += 'Total Biaya,' + data.summary.totalCost + '\n';
 
@@ -298,7 +299,7 @@ export default function VendorDashboardPage() {
 
             {/* Summary Cards */}
             {data && (
-                <div className="grid grid-cols-3 gap-4">
+                <div className="grid grid-cols-5 gap-4">
                     <div className="card p-4">
                         <div className="flex items-center gap-3">
                             <div className="w-10 h-10 rounded-xl bg-teal-100 flex items-center justify-center">
@@ -319,6 +320,30 @@ export default function VendorDashboardPage() {
                             <div>
                                 <p className="text-2xl font-bold text-slate-800">{data.summary.totalPickedUp}</p>
                                 <p className="text-xs text-slate-500">Picked Up</p>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div className="card p-4">
+                        <div className="flex items-center gap-3">
+                            <div className="w-10 h-10 rounded-xl bg-red-100 flex items-center justify-center">
+                                <XCircle className="w-5 h-5 text-red-600" />
+                            </div>
+                            <div>
+                                <p className="text-2xl font-bold text-slate-800">{data.summary.totalCancelled}</p>
+                                <p className="text-xs text-slate-500">Dibatalkan</p>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div className="card p-4">
+                        <div className="flex items-center gap-3">
+                            <div className="w-10 h-10 rounded-xl bg-orange-100 flex items-center justify-center">
+                                <AlertTriangle className="w-5 h-5 text-orange-600" />
+                            </div>
+                            <div>
+                                <p className="text-2xl font-bold text-slate-800">{data.summary.totalNoShow}</p>
+                                <p className="text-xs text-slate-500">No Show</p>
                             </div>
                         </div>
                     </div>
