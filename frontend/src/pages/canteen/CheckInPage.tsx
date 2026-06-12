@@ -183,7 +183,7 @@ export default function CheckInPage() {
     const [showSuccessPopup, setShowSuccessPopup] = useState(false);
     const [successData, setSuccessData] = useState<CheckInResult | null>(null);
     const [lastError, setLastError] = useState<string | null>(null);
-    const [todayStats, setTodayStats] = useState({ total: 0, checkedIn: 0, pending: 0, noShow: 0 });
+    const [todayStats, setTodayStats] = useState({ total: 0, checkedIn: 0, pending: 0, noShow: 0, cancelled: 0 });
     const [lastCheckInTime, setLastCheckInTime] = useState<number>(0);
     const [currentTime, setCurrentTime] = useState(new Date());
     const inputRef = useRef<HTMLInputElement>(null);
@@ -209,7 +209,7 @@ export default function CheckInPage() {
     const loadStats = useCallback(async () => {
         try {
             const res = await api.get('/api/orders/stats/today');
-            setTodayStats({ total: res.data.total, checkedIn: res.data.pickedUp, pending: res.data.pending, noShow: res.data.noShow || 0 });
+            setTodayStats({ total: res.data.total, checkedIn: res.data.pickedUp, pending: res.data.pending, noShow: res.data.noShow || 0, cancelled: res.data.cancelled || 0 });
         } catch (error) {
             console.error('Failed to load stats:', error);
         }
@@ -501,7 +501,7 @@ export default function CheckInPage() {
                 </div>
             )}
 
-            <div className="grid grid-cols-4 gap-4">
+            <div className="grid grid-cols-5 gap-4">
                 <div className="stat-card text-center">
                     <p className="text-xs text-white/40 uppercase tracking-wider">Total</p>
                     <p className="text-3xl font-bold text-gradient mt-1">{todayStats.total}</p>
@@ -513,6 +513,10 @@ export default function CheckInPage() {
                 <div className="stat-card text-center">
                     <p className="text-xs text-white/40 uppercase tracking-wider">Pending</p>
                     <p className="text-3xl font-bold text-warning mt-1">{todayStats.pending}</p>
+                </div>
+                <div className="stat-card text-center">
+                    <p className="text-xs text-white/40 uppercase tracking-wider">Dibatalkan</p>
+                    <p className="text-3xl font-bold text-slate-400 mt-1">{todayStats.cancelled}</p>
                 </div>
                 <div className="stat-card text-center">
                     <p className="text-xs text-white/40 uppercase tracking-wider">Tidak Diambil</p>
