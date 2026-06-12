@@ -318,6 +318,8 @@ export default function OrderPage() {
             setTodayOrder(null);
             setShowCancelModal(false);
             setCancelReason('');
+            // Refresh bulk date grid so the cancelled date shows as empty
+            loadBulkData();
             toast.success('Pesanan dibatalkan');
         } catch (error: any) {
             toast.error(error.response?.data?.error || 'Gagal membatalkan pesanan');
