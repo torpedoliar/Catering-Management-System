@@ -2,7 +2,7 @@ import { useState, useEffect, useCallback } from 'react';
 import { Calendar, Plus, Trash2, ChevronLeft, ChevronRight, X, Utensils, Clock, Copy, Sun, Loader2 } from 'lucide-react';
 import toast from 'react-hot-toast';
 import { api } from '../../contexts/AuthContext';
-import { useSSERefresh, HOLIDAY_EVENTS } from '../../contexts/SSEContext';
+import { useSSERefresh, HOLIDAY_EVENTS, ORDER_EVENTS } from '../../contexts/SSEContext';
 
 interface Shift {
     id: string;
@@ -154,7 +154,7 @@ export default function CalendarPage() {
     };
 
     // Auto-refresh on holiday events (SSE)
-    useSSERefresh(HOLIDAY_EVENTS, loadCalendarData);
+    useSSERefresh([...HOLIDAY_EVENTS, ...ORDER_EVENTS], loadCalendarData);
 
     const getDaysInMonth = (year: number, month: number) => {
         return new Date(year, month, 0).getDate();

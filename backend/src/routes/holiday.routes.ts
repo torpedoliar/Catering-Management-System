@@ -89,26 +89,28 @@ router.get('/calendar/:year/:month', authMiddleware, async (req: AuthRequest, re
             orderBy: { date: 'asc' }
         });
 
-        // Get order counts per day for the month
+        // Get order counts per day for the month (exclude cancelled)
         const orders = await prisma.order.groupBy({
             by: ['orderDate'],
             where: {
                 orderDate: {
                     gte: startDate,
                     lte: endDate
-                }
+                },
+                status: { not: 'CANCELLED' }
             },
             _count: { id: true }
         });
 
-        // Get order counts per day per shift
+        // Get order counts per day per shift (exclude cancelled)
         const ordersByShift = await prisma.order.groupBy({
             by: ['orderDate', 'shiftId'],
             where: {
                 orderDate: {
                     gte: startDate,
                     lte: endDate
-                }
+                },
+                status: { not: 'CANCELLED' }
             },
             _count: { id: true }
         });
