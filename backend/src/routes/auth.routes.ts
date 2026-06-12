@@ -391,6 +391,27 @@ router.post('/refresh', async (req, res) => {
             return res.status(401).json({ error: 'User account is inactive' });
         }
 
+        // Check if user is blacklisted (block refresh for blacklisted users)
+        const refreshBlacklist = await prisma.blacklist.findFirst({
+            where: {
+                userId: user.id,
+                isActive: true,
+                OR: [
+                    { endDate: null },
+                    { endDate: { gt: getNow() } },
+                ],
+            },
+        });
+
+        if (refreshBlacklist) {
+            // Revoke all refresh tokens for this blacklisted user
+            await prisma.refreshToken.updateMany({
+                where: { userId: user.id },
+                data: { isRevoked: true },
+            });
+            return res.status(401).json({ error: 'User account is blacklisted' });
+        }
+
         // 4. Terbitkan Access Token baru (R-003: 15 minutes to match login)
         const newAccessToken = jwt.sign(
             { id: user.id, externalId: user.externalId, role: user.role },
