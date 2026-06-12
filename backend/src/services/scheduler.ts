@@ -3,6 +3,7 @@ import { processNoShows } from './noshow.service';
 import { prisma } from '../lib/prisma';
 import { createBackup } from './server.service';
 import { NotificationService } from './notification.service';
+import { checkAndExpireBlacklists } from '../middleware/blacklist.middleware';
 
 let isSchedulerRunning = false;
 
@@ -35,6 +36,16 @@ export function startScheduler() {
             }
         } catch (error) {
             console.error('[Scheduler] Error running no-show check:', error);
+        }
+
+        // Expire blacklists that have passed their end date
+        try {
+            const expired = await checkAndExpireBlacklists();
+            if (expired > 0) {
+                console.log(`[Scheduler] Expired ${expired} blacklist entries`);
+            }
+        } catch (error) {
+            console.error('[Scheduler] Error expiring blacklists:', error);
         }
     });
 

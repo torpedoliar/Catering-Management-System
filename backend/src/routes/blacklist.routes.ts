@@ -8,12 +8,16 @@ import { cancelOrdersForBlacklistedUser } from '../services/noshow.service';
 import { ErrorMessages } from '../utils/errorMessages';
 import { prisma } from '../lib/prisma';
 import { getCachedSettings } from '../services/cache.service';
+import { checkAndExpireBlacklists } from '../middleware/blacklist.middleware';
 
 const router = Router();
 
 // Get all blacklisted users (Admin only)
 router.get('/', authMiddleware, adminMiddleware, async (req: AuthRequest, res: Response) => {
     try {
+        // Auto-expire blacklists that have passed end date before querying
+        await checkAndExpireBlacklists();
+
         const { active = 'true', page = '1', limit = '50' } = req.query;
 
         const where: any = {};
