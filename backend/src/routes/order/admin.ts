@@ -16,6 +16,7 @@ import {
     getToday,
     getTomorrow,
 } from './shared';
+import { getCachedSettings } from '../../services/cache.service';
 
 const router = Router();
 
@@ -106,7 +107,7 @@ router.post('/process-noshows', authMiddleware, adminMiddleware, async (req: Aut
             return now > shiftEndTime;
         });
 
-        const settings = await prisma.settings.findUnique({ where: { id: 'default' } });
+        const settings = await getCachedSettings();
         const strikeThreshold = settings?.blacklistStrikes || 3;
         const blacklistDuration = settings?.blacklistDuration || 7;
 

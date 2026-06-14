@@ -12,6 +12,7 @@ import {
     AuthRequest,
     authMiddleware,
     blacklistMiddleware,
+    blockVendorMiddleware,
     sseManager,
     getNow,
     getToday,
@@ -27,16 +28,13 @@ import {
     cutoffMiddleware,
     parseDateToCateringTime,
 } from './shared';
+import { getCachedSettings } from '../../services/cache.service';
 
 const router = Router();
 
 // Create order (with blacklist validation, rate limiting, cutoff validated per selected date inside)
-router.post('/', authMiddleware, blacklistMiddleware, apiRateLimitMiddleware('default'), cutoffMiddleware, validate(createOrderSchema), async (req: AuthRequest, res: Response) => {
+router.post('/', authMiddleware, blockVendorMiddleware, blacklistMiddleware, apiRateLimitMiddleware('default'), cutoffMiddleware, validate(createOrderSchema), async (req: AuthRequest, res: Response) => {
     const context = getRequestContext(req);
-
-    if (req.user?.role === 'VENDOR') {
-        return res.status(403).json({ error: 'Vendor tidak diizinkan membuat order' });
-    }
 
     try {
         const { shiftId, orderDate: orderDateParam, canteenId } = req.body;
@@ -69,7 +67,7 @@ router.post('/', authMiddleware, blacklistMiddleware, apiRateLimitMiddleware('de
         }
 
         // Get settings to check cutoff mode and limits
-        const settings = await prisma.settings.findUnique({ where: { id: 'default' } });
+        const settings = await getCachedSettings();
         const cutoffMode = settings?.cutoffMode || 'per-shift';
         const maxOrderDaysAhead = settings?.maxOrderDaysAhead || 7;
         const cutoffDays = settings?.cutoffDays || 0;

@@ -3,6 +3,99 @@ import { sseManager } from '../controllers/sse.controller';
 import { getNow, getToday } from './time.service';
 import { createAuditLog } from './audit.service';
 import { prisma } from '../lib/prisma';
+import { Prisma } from '@prisma/client';
+
+/**
+ * Thrown by createOrderWithCapacityCheck when a canteen's per-shift or
+ * daily capacity has been reached. Callers should catch this and return
+ * HTTP 409 to the client.
+ *
+ * Audit ref: C-R1 (HIGH — TOCTOU race on capacity check).
+ */
+export class CapacityError extends Error {
+    constructor(
+        public readonly limit: number,
+        public readonly isShiftSpecific: boolean
+    ) {
+        super(`Canteen capacity ${limit} reached`);
+        this.name = 'CapacityError';
+    }
+}
+
+/**
+ * Create an order inside a SERIALIZABLE transaction with capacity check.
+ *
+ * The classic TOCTOU race in the order create path: a `count` followed by
+ * a `create` lets two concurrent requests for the last capacity slot both
+ * pass the check and both create orders, overbooking the canteen by 1.
+ *
+ * This helper wraps the count + create in a `prisma.$transaction` with
+ * `Serializable` isolation. If the count returns >= limit, throws
+ * CapacityError. Caller catches and returns 409.
+ *
+ * @param tx Prisma transaction client
+ * @param canteenId canteen for the order
+ * @param shiftId shift for the order
+ * @param orderDate catering date (Fake-UTC midnight)
+ * @param orderData the order create payload
+ * @returns created Order
+ * @throws CapacityError if the canteen is full
+ */
+export async function createOrderWithCapacityCheck(
+    tx: Prisma.TransactionClient,
+    canteenId: string | null,
+    shiftId: string,
+    orderDate: Date,
+    orderData: Omit<Prisma.OrderCreateInput, 'canteen' | 'shift' | 'orderDate'>
+): Promise<any> {
+    if (!canteenId) {
+        // No canteenId → no capacity constraint, just create
+        return await tx.order.create({ data: { ...orderData, orderDate } as any });
+    }
+
+    const canteen = await tx.canteen.findUnique({
+        where: { id: canteenId },
+        include: { canteenShifts: { where: { shiftId } } },
+    });
+
+    if (!canteen || !canteen.isActive) {
+        throw new Error('Kantin tidak ditemukan atau tidak aktif');
+    }
+
+    const canteenShift = canteen.canteenShifts[0];
+    let limit = 0;
+    let isShiftSpecific = false;
+
+    if (canteenShift && canteenShift.capacity) {
+        limit = canteenShift.capacity;
+        isShiftSpecific = true;
+    } else if (canteen.capacity) {
+        limit = canteen.capacity;
+    } else {
+        // No limit set — fall through to create
+        return await tx.order.create({ data: { ...orderData, orderDate } as any });
+    }
+
+    const nextDay = new Date(orderDate);
+    nextDay.setDate(nextDay.getDate() + 1);
+
+    const where: Prisma.OrderWhereInput = {
+        canteenId,
+        orderDate: { gte: orderDate, lt: nextDay },
+        status: { not: 'CANCELLED' },
+    };
+    if (isShiftSpecific) {
+        where.shiftId = shiftId;
+    }
+
+    const currentCount = await tx.order.count({ where });
+
+    if (currentCount >= limit) {
+        throw new CapacityError(limit, isShiftSpecific);
+    }
+
+    return await tx.order.create({ data: { ...orderData, orderDate } as any });
+}
 
 /**
  * Service to handle complex order operations

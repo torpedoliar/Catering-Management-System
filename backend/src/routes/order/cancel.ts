@@ -17,11 +17,14 @@ import {
     getRequestContext,
     ErrorMessages,
 } from './shared';
+import { getCachedSettings } from '../../services/cache.service';
+import { blockVendorMiddleware } from '../../middleware/blockVendor.middleware';
+import { blacklistMiddleware } from '../../middleware/blacklist.middleware';
 
 const router = Router();
 
 // Cancel order
-router.post('/:id/cancel', authMiddleware, async (req: AuthRequest, res: Response) => {
+router.post('/:id/cancel', authMiddleware, blockVendorMiddleware, blacklistMiddleware, async (req: AuthRequest, res: Response) => {
     const context = getRequestContext(req);
 
     try {
@@ -43,7 +46,7 @@ router.post('/:id/cancel', authMiddleware, async (req: AuthRequest, res: Respons
         }
 
         // Check cutoff time
-        const settings = await prisma.settings.findUnique({ where: { id: 'default' } });
+        const settings = await getCachedSettings();
         const cutoffMode = settings?.cutoffMode || 'per-shift';
         const cutoffDays = settings?.cutoffDays || 0;
         const cutoffHours = settings?.cutoffHours || 6;

@@ -1,5 +1,6 @@
 import nodemailer from 'nodemailer';
 import { prisma } from '../lib/prisma';
+import { getCachedSettings } from './cache.service';
 
 interface EmailSettings {
     emailEnabled: boolean;

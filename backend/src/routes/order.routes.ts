@@ -20,6 +20,7 @@ import sharp from 'sharp';
 import fs from 'fs';
 import path from 'path';
 import { isOvernightShift, validateCheckinTimeWindow } from '../utils/shift-utils';
+import { parseOrderDate } from '../utils/orderDate';
 
 const router = Router();
 
@@ -141,27 +142,18 @@ router.post('/', authMiddleware, validate(createOrderSchema), async (req: AuthRe
         // Parse and validate orderDate
         let orderDate: Date;
         if (orderDateParam) {
-            // Parse date string as local date (avoid UTC timezone shift)
-            // "2025-12-08" should become Dec 8 at 00:00 LOCAL, not UTC
-            const dateParts = orderDateParam.split('-');
-            if (dateParts.length === 3) {
-                const year = parseInt(dateParts[0]);
-                const month = parseInt(dateParts[1]) - 1; // JS months are 0-indexed
-                const day = parseInt(dateParts[2]);
-                orderDate = new Date(year, month, day, 0, 0, 0, 0);
-            } else {
+            const parsed = parseOrderDate(orderDateParam);
+            if (!parsed) {
                 orderDate = new Date(orderDateParam);
-            }
-            // Validate it's a valid date
-            if (isNaN(orderDate.getTime())) {
-                return res.status(400).json({ error: ErrorMessages.INVALID_ORDER_DATE });
+                if (isNaN(orderDate.getTime())) {
+                    return res.status(400).json({ error: ErrorMessages.INVALID_ORDER_DATE });
+                }
+            } else {
+                orderDate = parsed;
             }
         } else {
             orderDate = getToday();
         }
-
-        // Normalize to start of day (redundant but safe)
-        orderDate.setHours(0, 0, 0, 0);
 
         // Date-specific Blacklist Validation
         const blacklistEntry = await prisma.blacklist.findFirst({
@@ -488,16 +480,11 @@ router.post('/bulk', authMiddleware, apiRateLimitMiddleware('bulk-order'), valid
             }
 
             // Parse date
-            let orderDate: Date;
-            const dateParts = orderDateParam.split('-');
-            if (dateParts.length === 3) {
-                const year = parseInt(dateParts[0]);
-                const month = parseInt(dateParts[1]) - 1;
-                const day = parseInt(dateParts[2]);
-                orderDate = new Date(year, month, day, 0, 0, 0, 0);
-            } else {
-                orderDate = new Date(orderDateParam);
-            }
+            const parsedBulkDate = parseOrderDate(orderDateParam);
+            const orderDate: Date = parsedBulkDate ?? (() => {
+                const d = new Date(orderDateParam);
+                return isNaN(d.getTime()) ? d : d;
+            })();
 
             if (isNaN(orderDate.getTime())) {
                 failedOrders.push({
@@ -507,7 +494,6 @@ router.post('/bulk', authMiddleware, apiRateLimitMiddleware('bulk-order'), valid
                 });
                 continue;
             }
-            orderDate.setHours(0, 0, 0, 0);
 
             // Check if date is in the past
             if (orderDate < today) {

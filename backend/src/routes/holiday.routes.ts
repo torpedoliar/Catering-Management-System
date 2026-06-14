@@ -5,6 +5,7 @@ import { sseManager } from '../controllers/sse.controller';
 import { ErrorMessages } from '../utils/errorMessages';
 import { logHoliday, getRequestContext } from '../services/audit.service';
 import { prisma } from '../lib/prisma';
+import { getCachedSettings } from '../services/cache.service';
 
 const router = Router();
 
@@ -388,7 +389,7 @@ router.delete('/:id', authMiddleware, adminMiddleware, async (req: AuthRequest, 
 // Get Sunday auto-holiday status
 router.get('/sundays/status', authMiddleware, async (req: AuthRequest, res: Response) => {
     try {
-        const settings = await prisma.settings.findUnique({ where: { id: 'default' } });
+        const settings = await getCachedSettings();
         res.json({
             enabled: settings?.sundayAutoHoliday || false
         });

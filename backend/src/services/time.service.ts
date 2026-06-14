@@ -3,6 +3,7 @@ import { promisify } from 'util';
 import https from 'https';
 import http from 'http';
 import { prisma } from '../lib/prisma';
+import { getCachedSettings } from './cache.service';
 
 const execAsync = promisify(exec);
 
@@ -486,9 +487,7 @@ async function queryHTTPTime(): Promise<number> {
  */
 export async function syncNTP(): Promise<{ success: boolean; offset: number; error?: string }> {
     try {
-        const settings = await prisma.settings.findUnique({
-            where: { id: 'default' }
-        });
+        const settings = await getCachedSettings();
 
         if (!settings?.ntpEnabled) {
             console.log('[NTP] NTP sync is disabled');
@@ -542,9 +541,7 @@ function delay(ms: number): Promise<void> {
 export async function initNTPService(): Promise<void> {
     try {
         // Load cached settings
-        const settings = await prisma.settings.findUnique({
-            where: { id: 'default' }
-        });
+        const settings = await getCachedSettings();
 
         if (settings) {
             cachedOffset = settings.ntpOffset || 0;
@@ -617,9 +614,7 @@ export function stopNTPScheduler(): void {
  * Get NTP settings
  */
 export async function getNTPSettings(): Promise<NTPSettings> {
-    const settings = await prisma.settings.findUnique({
-        where: { id: 'default' }
-    });
+    const settings = await getCachedSettings();
 
     return {
         ntpEnabled: settings?.ntpEnabled ?? true,

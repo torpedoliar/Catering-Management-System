@@ -12,6 +12,7 @@ import {
     AuthRequest,
     authMiddleware,
     blacklistMiddleware,
+    blockVendorMiddleware,
     sseManager,
     getNow,
     getToday,
@@ -26,15 +27,12 @@ import {
     BulkOrderSuccess,
     BulkOrderFailure,
 } from './shared';
+import { parseOrderDate } from '../../utils/orderDate';
 
 const router = Router();
 
 // Bulk create orders (with blacklist validation)
-router.post('/bulk', authMiddleware, blacklistMiddleware, apiRateLimitMiddleware('bulk-order'), validate(bulkOrderSchema), async (req: AuthRequest, res: Response) => {
-    if (req.user?.role === 'VENDOR') {
-        return res.status(403).json({ error: 'Vendor tidak diizinkan membuat order' });
-    }
-
+router.post('/bulk', authMiddleware, blockVendorMiddleware, blacklistMiddleware, apiRateLimitMiddleware('bulk-order'), validate(bulkOrderSchema), async (req: AuthRequest, res: Response) => {
     const context = getRequestContext(req);
 
     try {
@@ -67,19 +65,16 @@ router.post('/bulk', authMiddleware, blacklistMiddleware, apiRateLimitMiddleware
 
         // ========== BATCH PRE-FETCH DATA (N+1 Query Optimization) ==========
 
-        const parseDateSafe = (dateStr: string): Date | null => {
-            const parts = dateStr.split('-');
-            if (parts.length === 3) {
-                const d = new Date(+parts[0], +parts[1] - 1, +parts[2], 0, 0, 0, 0);
-                return isNaN(d.getTime()) ? null : d;
-            }
-            const d = new Date(dateStr);
-            return isNaN(d.getTime()) ? null : d;
-        };
-
         const allParsedDates = orderRequests
-            .map((o: { date: string; shiftId: string }) => ({ ...o, parsed: parseDateSafe(o.date) }))
-            .filter(o => o.parsed !== null);
+            .map((o: { date: string; shiftId: string }) => {
+                const parsed = parseOrderDate(o.date);
+                return parsed ? { ...o, parsed } : null;
+            })
+            .filter((o): o is { date: string; shiftId: string; parsed: Date } => o !== null);
+
+        if (allParsedDates.length === 0) {
+            return res.status(400).json({ error: 'Tidak ada tanggal yang valid' });
+        }
 
         const allDates = allParsedDates.map(o => o.parsed as Date);
         const allShiftIds = [...new Set(orderRequests.map((o: { shiftId: string }) => o.shiftId))];
@@ -140,19 +135,12 @@ router.post('/bulk', authMiddleware, blacklistMiddleware, apiRateLimitMiddleware
                 continue;
             }
 
-            let orderDate: Date;
-            const dateParts = orderDateParam.split('-');
-            if (dateParts.length === 3) {
-                orderDate = new Date(parseInt(dateParts[0]), parseInt(dateParts[1]) - 1, parseInt(dateParts[2]), 0, 0, 0, 0);
-            } else {
-                orderDate = new Date(orderDateParam);
-            }
+            const orderDate = parseOrderDate(orderDateParam);
 
-            if (isNaN(orderDate.getTime())) {
+            if (!orderDate) {
                 failedOrders.push({ date: orderDateParam, shiftId, reason: 'Format tanggal tidak valid' });
                 continue;
             }
-            orderDate.setHours(0, 0, 0, 0);
 
             if (orderDate < today) {
                 failedOrders.push({ date: orderDateParam, shiftId, reason: 'Tidak bisa memesan untuk tanggal yang sudah lewat' });

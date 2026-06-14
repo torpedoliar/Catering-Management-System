@@ -7,6 +7,8 @@
         "dev": "npx prisma generate && nodemon --exec ts-node src/index.ts",
         "build": "tsc",
         "start": "node dist/index.js",
+        "test": "vitest run",
+        "test:watch": "vitest",
         "pm2:start": "npx prisma generate && npx pm2-runtime start ecosystem.config.js",
         "pm2:build-start": "npm run build && npx prisma generate && npx pm2-runtime start ecosystem.config.js",
         "prisma:generate": "prisma generate",
@@ -59,6 +61,7 @@
         "nodemon": "^3.0.2",
         "prisma": "^5.7.0",
         "ts-node": "^10.9.2",
-        "typescript": "^5.3.3"
+        "typescript": "^5.3.3",
+        "vitest": "^2.1.9"
     }
 }

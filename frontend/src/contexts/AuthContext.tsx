@@ -15,10 +15,28 @@ const api = axios.create({
 // Token in-memory untuk axios interceptor agar tetap berjalan secara synchronous
 let memoryToken: string | null = null;
 
-// Add request interceptor to attach token
+/**
+ * Auth-route paths. Requests to these must NOT carry a Bearer token
+ * (login establishes one, refresh and logout do not consume the access
+ * token). Sending an expired Bearer to /auth/refresh on web will fail
+ * server-side depending on cookie handling; on native, the refresh call
+ * sends the refresh token in the body and a stale Bearer header is
+ * pointless.
+ *
+ * Audit ref: FE-1 (CRITICAL).
+ */
+const AUTH_ROUTES = ['/auth/refresh', '/auth/login', '/auth/logout'] as const;
+
+function isAuthRoute(url: string | undefined): boolean {
+    if (!url) return false;
+    const path = url.split('?')[0];
+    return AUTH_ROUTES.some((r) => path.includes(r));
+}
+
+// Add request interceptor to attach token (skip auth routes)
 api.interceptors.request.use(
     (config) => {
-        if (memoryToken) {
+        if (memoryToken && !isAuthRoute(config.url)) {
             config.headers.Authorization = `Bearer ${memoryToken}`;
         }
         return config;
@@ -45,8 +63,7 @@ api.interceptors.response.use(
 
         if (error.response?.status === 401
             && !originalRequest._retry
-            && !originalRequest.url?.includes('/auth/refresh')
-            && !originalRequest.url?.includes('/auth/login')) {
+            && !isAuthRoute(originalRequest.url)) {
 
             if (isRefreshing) {
                 return new Promise((resolve, reject) => {
@@ -81,14 +98,14 @@ api.interceptors.response.use(
                 return api(originalRequest);
             } catch (refreshError) {
                 processQueue(refreshError, null);
-                
+
                 await Preferences.remove({ key: 'token' });
                 if (isNativePlatform) {
                     await Preferences.remove({ key: 'refreshToken' });
                 }
                 memoryToken = null;
                 window.dispatchEvent(new Event('force-logout'));
-                
+
                 return Promise.reject(refreshError);
             } finally {
                 isRefreshing = false;

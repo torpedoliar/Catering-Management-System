@@ -4,6 +4,7 @@ import { prisma } from '../lib/prisma';
 import { createBackup } from './server.service';
 import { NotificationService } from './notification.service';
 import { checkAndExpireBlacklists } from '../middleware/blacklist.middleware';
+import { getCachedSettings } from './cache.service';
 
 let isSchedulerRunning = false;
 
@@ -66,7 +67,7 @@ export function startScheduler() {
 
 async function runAutoBackupCheck() {
     try {
-        const settings = await prisma.settings.findUnique({ where: { id: 'default' } });
+        const settings = await getCachedSettings();
         if (!settings?.autoBackupEnabled) {
             console.log('[Scheduler] Auto backup is disabled, skipping');
             return;

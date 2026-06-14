@@ -1,48 +1,59 @@
 /**
  * Timezone Utility Functions
- * Handles consistent date/time formatting in WIB (Asia/Jakarta) timezone
+ *
+ * IMPORTANT — TZ semantics:
+ * The backend uses "Fake UTC": process TZ is forced to UTC, but stored Date
+ * fields actually hold catering-tz (Asia/Jakarta) wall-clock values. ISO
+ * timestamps are serialized with a `Z` suffix that is misleading.
+ *
+ * For displaying these timestamps to a user:
+ *  - In WIB (Asia/Jakarta), the literal slice "YYYY-MM-DD HH:mm" matches
+ *    what the user expects, with NO conversion.
+ *  - In other timezones, the stored value is still shown verbatim — this is
+ *    intentional. The server's wall-clock is the source of truth for shifts
+ *    and order slots; re-converting for the viewer's tz would mislead.
+ *
+ * For "what day is it for the user right now", use getLocalDateString from
+ * utils/dateHelpers.ts instead.
  */
 
 /**
- * Formats a date/time string or Date object to WIB timezone
- * Properly handles:
- * - ISO strings with 'Z' (UTC): "2025-12-12T01:39:00.000Z" 
- * - ISO strings without 'Z' (local): "2025-12-12T08:39:00"
- * - Date objects
- * 
- * @param dateInput - Date string or Date object from backend
- * @param options - Intl.DateTimeFormat options
- * @returns Formatted string in WIB timezone
+ * Format a backend ISO timestamp by direct substring slicing — no Date
+ * parsing, no `toLocaleString`, no tz conversion. The result is the stored
+ * wall-clock value as the server wrote it.
+ *
+ * Accepts the legacy `options` parameter for back-compat with callers that
+ * pass Intl.DateTimeFormatOptions, but the options are IGNORED. Use the
+ * dedicated helpers below (formatTimeWIB, formatDateWIB, ...) which respect
+ * the timeOnly/dateOnly shape callers actually want.
+ *
+ * @param dateInput backend ISO string
+ * @param _options ignored (kept for back-compat)
+ * @returns "YYYY-MM-DD HH:mm" in the stored wall-clock, or "-" for invalid
  */
 export function formatToWIB(
     dateInput: string | Date | undefined | null,
-    options: Intl.DateTimeFormatOptions = {}
+    // eslint-disable-next-line @typescript-eslint/no-unused-vars
+    _options: Intl.DateTimeFormatOptions = {}
 ): string {
     if (!dateInput) return '-';
 
     try {
-        let date: Date;
-
-        if (typeof dateInput === 'string') {
-            // Database stores timestamps in WIB but Prisma adds 'Z' suffix
-            // Remove 'Z' to prevent JavaScript from treating it as UTC
-            const cleanTimestamp = dateInput.replace('Z', '');
-
-            if (cleanTimestamp.includes('T')) {
-                // ISO format - parse without timezone conversion
-                date = new Date(cleanTimestamp);
-            } else {
-                // Simple date string
-                date = new Date(cleanTimestamp);
-            }
-        } else {
-            date = new Date(dateInput);
+        if (dateInput instanceof Date) {
+            if (isNaN(dateInput.getTime())) return '-';
+            const iso = dateInput.toISOString();
+            return `${iso.slice(0, 10)} ${iso.slice(11, 16)}`;
         }
 
-        if (isNaN(date.getTime())) return '-';
+        if (typeof dateInput !== 'string') return '-';
 
-        // Format without timezone conversion since data is already in WIB
-        return date.toLocaleString('id-ID', options);
+        // Strict ISO check. Reject anything that doesn't look like our stored
+        // format, including locale strings or RFC timezones — silently doing
+        // a `new Date(...)` re-parse on those would re-convert the Fake-UTC
+        // value and produce wrong output for non-WIB viewers.
+        if (!/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}/.test(dateInput)) return '-';
+
+        return `${dateInput.slice(0, 10)} ${dateInput.slice(11, 16)}`;
     } catch {
         return '-';
     }
@@ -50,72 +61,68 @@ export function formatToWIB(
 
 /**
  * Format date and time with full details (for check-in, logs, etc.)
+ * Returns "YYYY-MM-DD HH:mm" — same as formatToWIB; locale-aware labels were
+ * removed because `toLocaleString` re-converts.
  */
 export function formatDateTimeWIB(dateInput: string | Date | undefined | null): string {
-    return formatToWIB(dateInput, {
-        weekday: 'long',
-        year: 'numeric',
-        month: 'long',
-        day: 'numeric',
-        hour: '2-digit',
-        minute: '2-digit',
-        second: '2-digit'
-    });
+    return formatToWIB(dateInput);
 }
 
 /**
- * Format date and time short (dd MMM yyyy, HH:mm)
+ * Format date and time short (YYYY-MM-DD HH:mm)
  */
 export function formatDateTimeShortWIB(dateInput: string | Date | undefined | null): string {
-    return formatToWIB(dateInput, {
-        day: '2-digit',
-        month: 'short',
-        year: 'numeric',
-        hour: '2-digit',
-        minute: '2-digit'
-    });
+    return formatToWIB(dateInput);
 }
 
 /**
  * Format time only (HH:mm)
  */
 export function formatTimeWIB(dateInput: string | Date | undefined | null): string {
-    return formatToWIB(dateInput, {
-        hour: '2-digit',
-        minute: '2-digit'
-    });
+    if (!dateInput) return '-';
+    if (dateInput instanceof Date) {
+        if (isNaN(dateInput.getTime())) return '-';
+        return dateInput.toISOString().slice(11, 16);
+    }
+    if (typeof dateInput !== 'string') return '-';
+    if (!/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}/.test(dateInput)) return '-';
+    return dateInput.slice(11, 16);
 }
 
 /**
  * Format time with seconds (HH:mm:ss)
  */
 export function formatTimeWithSecondsWIB(dateInput: string | Date | undefined | null): string {
-    return formatToWIB(dateInput, {
-        hour: '2-digit',
-        minute: '2-digit',
-        second: '2-digit'
-    });
+    if (!dateInput) return '-';
+    if (dateInput instanceof Date) {
+        if (isNaN(dateInput.getTime())) return '-';
+        return dateInput.toISOString().slice(11, 19);
+    }
+    if (typeof dateInput !== 'string') return '-';
+    if (!/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}/.test(dateInput)) return '-';
+    return dateInput.slice(11, 19);
 }
 
 /**
- * Format date only (dd MMM yyyy)
+ * Format date only (YYYY-MM-DD)
  */
 export function formatDateWIB(dateInput: string | Date | undefined | null): string {
-    return formatToWIB(dateInput, {
-        day: '2-digit',
-        month: 'short',
-        year: 'numeric'
-    });
+    if (!dateInput) return '-';
+    if (dateInput instanceof Date) {
+        if (isNaN(dateInput.getTime())) return '-';
+        return dateInput.toISOString().slice(0, 10);
+    }
+    if (typeof dateInput !== 'string') return '-';
+    if (!/^\d{4}-\d{2}-\d{2}/.test(dateInput)) return '-';
+    return dateInput.slice(0, 10);
 }
 
 /**
- * Format date long (EEEE, dd MMMM yyyy)
+ * Format date long — kept as a noop wrapper around formatDateWIB. The
+ * previous "EEEE, dd MMMM yyyy" rendering required toLocaleString which
+ * re-converts the Fake-UTC value; we now return the YYYY-MM-DD form which
+ * is correct in all viewer timezones.
  */
 export function formatDateLongWIB(dateInput: string | Date | undefined | null): string {
-    return formatToWIB(dateInput, {
-        weekday: 'long',
-        day: 'numeric',
-        month: 'long',
-        year: 'numeric'
-    });
+    return formatDateWIB(dateInput);
 }

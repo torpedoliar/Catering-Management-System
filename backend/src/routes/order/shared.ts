@@ -9,6 +9,7 @@ import QRCode from 'qrcode';
 import { v4 as uuidv4 } from 'uuid';
 import ExcelJS from 'exceljs';
 import { AuthRequest, authMiddleware, adminMiddleware, canteenMiddleware } from '../../middleware/auth.middleware';
+import { blockVendorMiddleware } from '../../middleware/blockVendor.middleware';
 import { cutoffMiddleware } from '../../middleware/cutoff.middleware';
 import { blacklistMiddleware } from '../../middleware/blacklist.middleware';
 import { sseManager } from '../../controllers/sse.controller';
@@ -53,6 +54,7 @@ export {
     canteenMiddleware,
     cutoffMiddleware,
     blacklistMiddleware,
+    blockVendorMiddleware,
     sseManager,
     getNow,
     getNowUTC,

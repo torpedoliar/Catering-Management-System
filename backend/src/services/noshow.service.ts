@@ -113,9 +113,13 @@ export async function processNoShows(): Promise<NoShowResult> {
         console.log(`[NoShow Service] Found ${pendingOrders.length} unclaimed orders`);
 
         // Get settings
-        const settings = await prisma.settings.findFirst();
-        const blacklistStrikes = settings?.blacklistStrikes ?? 3;
-        const blacklistDuration = settings?.blacklistDuration ?? 7;
+        const settings = await prisma.settings.findUnique({ where: { id: 'default' } });
+        if (!settings) {
+            console.error('[NoShow Service] Settings row "default" not found');
+            return result;
+        }
+        const blacklistStrikes = settings.blacklistStrikes;
+        const blacklistDuration = settings.blacklistDuration;
 
         // Track users already blacklisted in this batch to prevent duplicates
         const usersBlacklistedThisBatch = new Set<string>();

@@ -157,6 +157,15 @@ export function SSEProvider({ children }: { children: ReactNode }) {
                 console.error('📡 SSE ticket/connect error:', error);
                 isConnectingRef.current = false;
 
+                // FE-2: Close any leaked EventSource that was assigned during the
+                // failed ticket/connect path. Without this, the broken EventSource
+                // holds a TCP handle and re-fires onerror recursively.
+                const leaked = eventSourceRef.current;
+                if (leaked) {
+                    try { leaked.close(); } catch { /* noop */ }
+                    eventSourceRef.current = null;
+                }
+
                 // Retry after delay
                 if (reconnectAttemptsRef.current < maxReconnectAttempts) {
                     reconnectAttemptsRef.current++;
