@@ -213,14 +213,11 @@ router.post('/bulk', authMiddleware, blockVendorMiddleware, blacklistMiddleware,
                 continue;
             }
 
-            // Check canteen capacity
-            if (canteenId) {
-                const capacityCheck = await OrderService.validateCanteenCapacity(canteenId, shiftId, orderDate);
-                if (!capacityCheck.valid) {
-                    failedOrders.push({ date: orderDateParam, shiftId, reason: capacityCheck.message || 'Kuota kantin penuh' });
-                    continue;
-                }
-            }
+            // C-R1: the pre-transaction capacity probe was a TOCTOU race; the
+            // real check is now inside createOrderWithCapacityCheck below.
+            // Keep a pre-flight only to fail fast on already-full days so we
+            // don't burn a QR for each bulk row; the transaction re-checks
+            // and is the source of truth.
 
             // Create order
             try {

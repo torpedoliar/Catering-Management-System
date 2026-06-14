@@ -386,22 +386,47 @@ router.post('/refresh', async (req, res) => {
             // somebody (re)used a token we already retired. The legit user
             // would have moved on to the rotated successor. Evict every
             // sibling in this token family to lock the attacker out.
-            if (storedToken?.isRevoked && storedToken.tokenFamilyId) {
+            //
+            // Edge case: pre-migration tokens have tokenFamilyId=null. We
+            // can't do family-revoke on those, so fall back to revoking
+            // ALL active tokens for the user — same end-state (force
+            // re-login) but broader blast radius. Acceptable: only
+            // triggered for tokens issued before Wave 1 migration.
+            if (storedToken?.isRevoked) {
                 try {
-                    await prisma.refreshToken.updateMany({
-                        where: {
-                            tokenFamilyId: storedToken.tokenFamilyId,
-                            isRevoked: false,
-                        },
-                        data: {
-                            isRevoked: true,
-                            revokedReason: 'STOLEN_TOKEN_DETECTED',
-                        },
-                    });
-                    await logAuth('TOKEN_FAMILY_REVOKED', { id: storedToken.userId }, context, {
-                        success: true,
-                        metadata: { tokenFamilyId: storedToken.tokenFamilyId, source: 'reused_revoked' },
-                    });
+                    if (storedToken.tokenFamilyId) {
+                        await prisma.refreshToken.updateMany({
+                            where: {
+                                tokenFamilyId: storedToken.tokenFamilyId,
+                                isRevoked: false,
+                            },
+                            data: {
+                                isRevoked: true,
+                                revokedReason: 'STOLEN_TOKEN_DETECTED',
+                            },
+                        });
+                        await logAuth('TOKEN_FAMILY_REVOKED', { id: storedToken.userId }, context, {
+                            success: true,
+                            metadata: {
+                                tokenFamilyId: storedToken.tokenFamilyId,
+                                source: 'reused_revoked',
+                            },
+                        });
+                    } else {
+                        // No family → revoke everything for this user. Catches
+                        // legacy pre-rotation tokens that slipped through.
+                        await prisma.refreshToken.updateMany({
+                            where: { userId: storedToken.userId, isRevoked: false },
+                            data: { isRevoked: true, revokedReason: 'STOLEN_TOKEN_DETECTED_NO_FAMILY' },
+                        });
+                        await logAuth('TOKEN_FAMILY_REVOKED', { id: storedToken.userId }, context, {
+                            success: true,
+                            metadata: {
+                                source: 'reused_revoked_no_family',
+                                fallbackScope: 'user',
+                            },
+                        });
+                    }
                 } catch (err) {
                     console.error('[F-3] Family revoke failed:', err);
                 }

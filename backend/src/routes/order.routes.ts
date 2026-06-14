@@ -285,6 +285,12 @@ router.post('/', authMiddleware, validate(createOrderSchema), async (req: AuthRe
         }
 
         // Calculate cutoff time for the selected date
+        // T-2: shiftStartDateTime is derived from `orderDate` which already
+        // passed through parseOrderDate (Fake-UTC midnight). The previous
+        // implementation used `new Date(orderDate).setHours(...)` on a
+        // real-UTC Date — correct only under TZ=UTC. With Fake-UTC the
+        // setHours writes wall-clock fields directly into the parsed
+        // Fake-UTC Date, so the comparison against getNow() is now exact.
         const [hours, minutes] = shift.startTime.split(':').map(Number);
         const shiftStartDateTime = new Date(orderDate);
         shiftStartDateTime.setHours(hours, minutes, 0, 0);
