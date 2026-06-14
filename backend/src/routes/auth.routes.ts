@@ -6,7 +6,7 @@ import { prisma } from '../lib/prisma';
 import { AuthRequest, authMiddleware } from '../middleware/auth.middleware';
 import { getNow } from '../services/time.service';
 import { logAuth, logUserManagement, getRequestContext } from '../services/audit.service';
-import { rateLimiter } from '../services/rate-limiter.service';
+import { rateLimiter, apiRateLimitMiddleware } from '../services/rate-limiter.service';
 import { cacheService, getCachedSettings } from '../services/cache.service';
 import { validate } from '../middleware/validate.middleware';
 import { loginSchema, changePasswordSchema } from '../utils/validation';
@@ -143,10 +143,12 @@ router.post('/login', validate(loginSchema), async (req, res) => {
         }
 
         // Generate Access Token (R-003: shortened to 15 minutes to reduce localStorage exposure window)
+        // A-7: pin algorithm + issuer to round-trip with the verify calls
+        // in auth.middleware.ts and /refresh below.
         const token = jwt.sign(
             { id: user.id, externalId: user.externalId, role: user.role, vendorId: user.vendorId ?? undefined },
             jwtSecret,
-            { expiresIn: '15m' }
+            { expiresIn: '15m', algorithm: 'HS256', issuer: 'catering-api' }
         );
 
         // Generate Refresh Token (30 days)
@@ -159,7 +161,7 @@ router.post('/login', validate(loginSchema), async (req, res) => {
         const refreshTokenValue = jwt.sign(
             { id: user.id, type: 'refresh' },
             refreshSecret,
-            { expiresIn: '30d' }
+            { expiresIn: '30d', algorithm: 'HS256', issuer: 'catering-api' }
         );
 
         // Hash refresh token for storage
@@ -347,7 +349,12 @@ router.put('/me', authMiddleware, async (req: AuthRequest, res: Response) => {
 });
 
 // Refresh Access Token
-router.post('/refresh', async (req, res) => {
+// A-5: rate-limited. Without this guard, a single leaked refresh token
+// can mint unlimited access tokens. The 'default' bucket shares with
+// login etc, which is acceptable because the legitimate user only
+// refreshes once per ~15 minutes; the per-IP and per-user buckets
+// already protect against burst attacks on login.
+router.post('/refresh', apiRateLimitMiddleware('default'), async (req, res) => {
     const context = getRequestContext(req);
     try {
         // R-005: Read refresh token from HttpOnly cookie first, fallback to body (for Capacitor native)
@@ -362,10 +369,13 @@ router.post('/refresh', async (req, res) => {
             return res.status(500).json({ error: 'Server configuration error' });
         }
 
-        // 1. Verifikasi JWT signature & expiry
+        // 1. Verifikasi JWT signature & expiry (A-7: alg + issuer pinned)
         let decoded: { id: string; type: string };
         try {
-            decoded = jwt.verify(refreshToken, refreshSecret) as any;
+            decoded = jwt.verify(refreshToken, refreshSecret, {
+                algorithms: ['HS256'],
+                issuer: 'catering-api',
+            }) as any;
         } catch {
             return res.status(401).json({ error: 'Invalid or expired refresh token' });
         }
@@ -473,7 +483,7 @@ router.post('/refresh', async (req, res) => {
         const newAccessToken = jwt.sign(
             { id: user.id, externalId: user.externalId, role: user.role, vendorId: user.vendorId ?? undefined },
             jwtSecret,
-            { expiresIn: '15m' }
+            { expiresIn: '15m', algorithm: 'HS256', issuer: 'catering-api' }
         );
 
         // F-3: refresh-token rotation. Two sources of truth — env var for
@@ -493,7 +503,7 @@ router.post('/refresh', async (req, res) => {
             const newRefreshValue = jwt.sign(
                 { id: user.id, type: 'refresh' },
                 refreshSecret,
-                { expiresIn: '30d' }
+                { expiresIn: '30d', algorithm: 'HS256', issuer: 'catering-api' }
             );
             const newHash = crypto.createHash('sha256').update(newRefreshValue).digest('hex');
 

@@ -2,6 +2,7 @@ import { useState, useEffect, useCallback } from 'react';
 import { ChevronLeft, ChevronRight, Calendar, Store, Pizza, UtensilsCrossed } from 'lucide-react';
 import { api } from '../contexts/AuthContext';
 import { useSSERefresh, MENU_EVENTS } from '../contexts/SSEContext';
+import { getLocalDateString } from '../utils/dateHelpers';
 
 interface Vendor {
     id: string;
@@ -240,8 +241,7 @@ export default function FoodMenuPage() {
     };
 
     const isToday = (dateStr: string) => {
-        const today = new Date().toISOString().split('T')[0];
-        return dateStr === today;
+        return dateStr === getLocalDateString();
     };
 
     if (loading && !weekData) {

@@ -29,8 +29,15 @@ import path from 'path';
 import { isOvernightShift, validateCheckinTimeWindow } from '../../utils/shift-utils';
 
 // Multer config for check-in photo
+// F-6 (Wave 3): fileSize cap. The check-in photo is a sharp-resized
+// webp at most ~200KB, so 5MB is plenty of headroom for source. Without
+// the cap, multer.memoryStorage() buffers into RAM and a malicious
+// upload can OOM the process.
 const storage = multer.memoryStorage();
-export const upload = multer({ storage });
+export const upload = multer({
+    storage,
+    limits: { fileSize: 5 * 1024 * 1024 },
+});
 
 // Check-in uploads directory
 export const checkinUploadDir = path.join(__dirname, '../../../uploads/checkins');

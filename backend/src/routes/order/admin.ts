@@ -19,6 +19,7 @@ import {
 import { getCachedSettings } from '../../services/cache.service';
 import { parseDateToCateringTime } from '../../services/time.service';
 import { parseOrderDate, toOrderDateKey } from '../../utils/orderDate';
+import { logOrder, logBlacklist, getRequestContext } from '../../services/audit.service';
 
 const router = Router();
 
@@ -139,6 +140,13 @@ router.post('/process-noshows', authMiddleware, adminMiddleware, async (req: Aut
                 data: { noShowCount: { increment: 1 } },
             });
 
+            // D-3: log the no-show mark. Without this, the audit trail
+            // has no record of which admin ran process-noshows and what
+            // changed — the noshow.service.ts path logs, but admin.ts
+            // is the new path called from the admin UI.
+            const context = getRequestContext(req);
+            await logOrder('ORDER_NOSHOW', req.user || null, { ...order, status: 'NO_SHOW' }, context);
+
             results.processed++;
 
             if (updatedUser.noShowCount >= strikeThreshold) {
@@ -150,12 +158,20 @@ router.post('/process-noshows', authMiddleware, adminMiddleware, async (req: Aut
                     const endDate = getNow();
                     endDate.setDate(endDate.getDate() + blacklistDuration);
 
-                    await prisma.blacklist.create({
+                    const blacklist = await prisma.blacklist.create({
                         data: {
                             userId: order.userId,
                             reason: `Accumulated ${updatedUser.noShowCount} no-shows`,
                             endDate,
                         },
+                    });
+
+                    // D-3: log the blacklist event. Same audit-trail gap
+                    // as the noshow mark above.
+                    await logBlacklist('USER_BLACKLISTED', req.user || null, updatedUser, context, {
+                        blacklist,
+                        previousStrikes: updatedUser.noShowCount - 1,
+                        metadata: { source: 'process-noshows', triggerOrderId: order.id },
                     });
 
                     results.blacklisted.push(updatedUser.externalId);

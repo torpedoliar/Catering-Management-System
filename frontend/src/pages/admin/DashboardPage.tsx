@@ -3,6 +3,7 @@ import { Link } from 'react-router-dom';
 import { format } from 'date-fns';
 import { id } from 'date-fns/locale';
 import { api } from '../../contexts/AuthContext';
+import { getLocalDateString, addDays } from '../../utils/dateHelpers';
 import { useSSE, useSSERefresh, ORDER_EVENTS, USER_EVENTS } from '../../contexts/SSEContext';
 import {
     LayoutDashboard,
@@ -193,7 +194,7 @@ export default function DashboardPage() {
 
     const loadData = useCallback(async () => {
         try {
-            const tomorrow = getLocalDateString(new Date(Date.now() + 24 * 60 * 60 * 1000));
+            const tomorrow = addDays(getLocalDateString(), 1);
 
             const [statsRes, ordersRes, tomorrowRes] = await Promise.all([
                 api.get(`/api/orders/stats/range?startDate=${startDate}&endDate=${endDate}`),
@@ -848,7 +849,7 @@ export default function DashboardPage() {
                                         +{tomorrowOrders.length - 10} pesanan lainnya
                                     </p>
                                     <Link
-                                        to={`/admin/orders?date=${getLocalDateString(new Date(Date.now() + 24 * 60 * 60 * 1000))}`}
+                                        to={`/admin/orders?date=${addDays(getLocalDateString(), 1)}`}
                                         className="text-sm text-primary-400 hover:text-primary-300 flex items-center gap-1 transition-colors"
                                     >
                                         Lihat Semua

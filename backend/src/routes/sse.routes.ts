@@ -33,7 +33,7 @@ router.post('/ticket', authMiddleware, async (req: AuthRequest, res: Response) =
                 purpose: 'sse',
             },
             jwtSecret,
-            { expiresIn: '30s' }
+            { expiresIn: '30s', algorithm: 'HS256', issuer: 'catering-api' }
         );
 
         res.json({ ticket });
@@ -60,7 +60,11 @@ router.get('/', (req: Request, res: Response) => {
 
     let decoded: { id: string; role: string; purpose: string };
     try {
-        decoded = jwt.verify(ticket, jwtSecret) as any;
+        // A-7: alg + issuer pinned to match the sign call above.
+        decoded = jwt.verify(ticket, jwtSecret, {
+            algorithms: ['HS256'],
+            issuer: 'catering-api',
+        }) as any;
     } catch (error) {
         return res.status(401).json({ error: 'Invalid or expired SSE ticket' });
     }

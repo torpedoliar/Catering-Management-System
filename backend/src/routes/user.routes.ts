@@ -16,8 +16,13 @@ import { UserWhereFilter, ImportUserData, ImportError } from '../types';
 import { getNow } from '../services/time.service';
 
 const router = Router();
+// F-6 (Wave 3): fileSize cap. Profile photos are 300x300 webp at ~50KB;
+// 5MB is plenty.
 const storage = multer.memoryStorage();
-const upload = multer({ storage });
+const upload = multer({
+    storage,
+    limits: { fileSize: 5 * 1024 * 1024 },
+});
 
 // Ensure uploads directory exists
 const uploadDir = path.join(__dirname, '../../uploads/users');

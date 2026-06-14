@@ -283,6 +283,7 @@ model Order {
   // Composite indexes for common query patterns
   @@index([orderDate, status])         // Dashboard filtering by date and status
   @@index([userId, orderDate])         // User's orders by date
+  @@index([userId, orderDate, status]) // D-4: covers "today's order" + manual check-in duplicate lookup
   @@index([shiftId, orderDate, status]) // Shift orders on specific date
   @@index([canteenId, orderDate, status]) // Canteen orders on specific date
   @@index([createdAt])  // For recent orders listing

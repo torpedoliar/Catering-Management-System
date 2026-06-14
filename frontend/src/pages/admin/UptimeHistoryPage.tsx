@@ -2,6 +2,7 @@ import { useState, useEffect, useCallback } from 'react';
 import { Clock, RefreshCw, ArrowUpCircle, ArrowDownCircle, Activity, Calendar, Timer, AlertTriangle, Download, RotateCcw } from 'lucide-react';
 import toast from 'react-hot-toast';
 import { api } from '../../contexts/AuthContext';
+import { getLocalDateString, addDays } from '../../utils/dateHelpers';
 
 interface DailyStat {
     date: string;
@@ -95,13 +96,10 @@ export default function UptimeHistoryPage() {
     const [isLoading, setIsLoading] = useState(true);
     const [isRefreshing, setIsRefreshing] = useState(false);
 
-    // Date range - default last 7 days
-    const today = new Date();
-    const sevenDaysAgo = new Date(today);
-    sevenDaysAgo.setDate(today.getDate() - 6);
-
-    const [startDate, setStartDate] = useState(sevenDaysAgo.toISOString().split('T')[0]);
-    const [endDate, setEndDate] = useState(today.toISOString().split('T')[0]);
+    // Date range - default last 7 days (calendar math, DST-safe)
+    const today = getLocalDateString();
+    const [startDate, setStartDate] = useState(() => addDays(today, -6));
+    const [endDate, setEndDate] = useState(today);
     const [autoRefresh, setAutoRefresh] = useState(true);
 
     const fetchData = useCallback(async (showLoading = true) => {

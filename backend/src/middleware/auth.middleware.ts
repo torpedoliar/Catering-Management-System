@@ -34,7 +34,15 @@ export const authMiddleware = async (req: AuthRequest, res: Response, next: Next
             return res.status(500).json({ error: 'Server configuration error' });
         }
 
-        const decoded = jwt.verify(token, secret) as {
+        // A-7: pin the algorithm to HS256. jsonwebtoken@9 no longer
+        // accepts 'none' by default, but the library will accept ANY
+        // algorithm configured for the secret if omitted. Pin to
+        // prevent alg-confusion attacks. Issuer claim is added in
+        // jwt.sign to round-trip.
+        const decoded = jwt.verify(token, secret, {
+            algorithms: ['HS256'],
+            issuer: 'catering-api',
+        }) as {
             id: string;
             externalId: string;
             role: string;

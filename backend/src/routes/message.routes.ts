@@ -15,8 +15,13 @@ import { NotificationService } from '../services/notification.service';
 const router = Router();
 
 // Multer config for appeal photo
+// F-6 (Wave 3): fileSize cap. Appeal photos are typically 1-2MB;
+// 5MB is plenty.
 const storage = multer.memoryStorage();
-const upload = multer({ storage });
+const upload = multer({
+    storage,
+    limits: { fileSize: 5 * 1024 * 1024 },
+});
 
 // Ensure appeals upload directory exists
 const appealUploadDir = path.join(__dirname, '../../uploads/appeals');

@@ -3,6 +3,7 @@ import { Calendar, TrendingUp, Package, Loader2, CheckCircle, Clock, ArrowRight,
 import toast from 'react-hot-toast';
 import { api } from '../../contexts/AuthContext';
 import { useSSERefresh, ORDER_EVENTS } from '../../contexts/SSEContext';
+import { getLocalDateString } from '../../utils/dateHelpers';
 
 interface ShiftStats {
     ordered: number;
@@ -177,14 +178,8 @@ function DonutChart({ stats, status }: { stats: ShiftStats; status: ShiftData['s
 export default function VendorPickupStatsPage() {
     const [isLoading, setIsLoading] = useState(true);
     const [data, setData] = useState<PickupStatsData | null>(null);
-    const [startDate, setStartDate] = useState(() => {
-        const today = new Date();
-        return today.toISOString().split('T')[0];
-    });
-    const [endDate, setEndDate] = useState(() => {
-        const today = new Date();
-        return today.toISOString().split('T')[0];
-    });
+    const [startDate, setStartDate] = useState(() => getLocalDateString());
+    const [endDate, setEndDate] = useState(() => getLocalDateString());
 
     const loadData = useCallback(async () => {
         setIsLoading(true);
