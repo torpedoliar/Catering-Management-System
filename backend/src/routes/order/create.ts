@@ -29,6 +29,7 @@ import {
     parseDateToCateringTime,
 } from './shared';
 import { getCachedSettings } from '../../services/cache.service';
+import { createOrderWithCapacityCheck } from '../../services/order.service';
 
 const router = Router();
 
@@ -146,23 +147,33 @@ router.post('/', authMiddleware, blockVendorMiddleware, blacklistMiddleware, api
             color: { dark: '#000000', light: '#ffffff' },
         });
 
-        // Check canteen capacity
-        if (canteenId) {
-            const capacityCheck = await OrderService.validateCanteenCapacity(canteenId, shiftId, orderDate);
-            if (!capacityCheck.valid) {
-                return res.status(400).json({ error: capacityCheck.message });
+        // C-R1: capacity check + create inside SERIALIZABLE transaction. The
+        // old TOCTOU pattern (count + create as separate calls) allowed
+        // concurrent requests for the last slot to both pass.
+        const orderData: any = {
+            userId,
+            shiftId,
+            qrCode: qrCodeData,
+            mealPrice: shift.mealPrice,
+            canteen: canteenId ? { connect: { id: canteenId } } : undefined,
+        };
+
+        let order;
+        try {
+            order = await prisma.$transaction(
+                (tx) => createOrderWithCapacityCheck(tx, canteenId, shiftId, orderDate, orderData),
+                { isolationLevel: 'Serializable' }
+            );
+        } catch (e: any) {
+            if (e?.name === 'CapacityError') {
+                return res.status(409).json({ error: e.message, code: 'CAPACITY_FULL' });
             }
+            throw e;
         }
 
-        const order = await prisma.order.create({
-            data: {
-                userId,
-                shiftId,
-                orderDate,
-                qrCode: qrCodeData,
-                mealPrice: shift.mealPrice,
-                canteenId: canteenId || null,
-            },
+        // Reload with includes for the response shape
+        const orderWithIncludes = await prisma.order.findUnique({
+            where: { id: order.id },
             include: {
                 user: { select: { id: true, name: true, externalId: true, company: true, division: true, department: true, photo: true } },
                 shift: true,
@@ -170,15 +181,15 @@ router.post('/', authMiddleware, blockVendorMiddleware, blacklistMiddleware, api
             },
         });
 
-        await logOrder('ORDER_CREATED', req.user || null, order, context);
+        await logOrder('ORDER_CREATED', req.user || null, orderWithIncludes, context);
 
         sseManager.broadcast('order:created', {
-            order,
+            order: orderWithIncludes,
             timestamp: getNow().toISOString(),
         });
 
         res.status(201).json({
-            ...order,
+            ...orderWithIncludes,
             qrCodeImage,
         });
     } catch (error) {

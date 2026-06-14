@@ -131,7 +131,7 @@ export async function createAuditLog(
  * Helper function to log auth events
  */
 export async function logAuth(
-    action: 'LOGIN' | 'LOGOUT' | 'LOGIN_FAILED' | 'PASSWORD_CHANGE',
+    action: 'LOGIN' | 'LOGOUT' | 'LOGIN_FAILED' | 'PASSWORD_CHANGE' | 'TOKEN_REFRESHED' | 'TOKEN_FAMILY_REVOKED',
     user: AuditUser | null,
     context: RequestContext,
     options?: { success?: boolean; errorMessage?: string; metadata?: any }
@@ -141,6 +141,8 @@ export async function logAuth(
         LOGOUT: `User ${user?.name || 'Unknown'} logged out`,
         LOGIN_FAILED: `Failed login attempt for user ${user?.externalId || 'Unknown'}`,
         PASSWORD_CHANGE: `User ${user?.name || 'Unknown'} changed password`,
+        TOKEN_REFRESHED: `Refresh token rotated for user ${user?.name || user?.id || 'Unknown'}`,
+        TOKEN_FAMILY_REVOKED: `Refresh-token family revoked (stolen-token detection) for user ${user?.id || 'Unknown'}`,
     };
 
     await createAuditLog(user, {

@@ -17,6 +17,8 @@ import {
     getTomorrow,
 } from './shared';
 import { getCachedSettings } from '../../services/cache.service';
+import { parseDateToCateringTime } from '../../services/time.service';
+import { parseOrderDate, toOrderDateKey } from '../../utils/orderDate';
 
 const router = Router();
 
@@ -82,22 +84,35 @@ router.post('/process-noshows', authMiddleware, adminMiddleware, async (req: Aut
         const today = getToday();
         const tomorrow = getTomorrow();
 
+        // T-2: Build the no-show window using Fake-UTC arithmetic. The
+        // previous code did `new Date(today.getTime() - 24*60*60*1000)` and
+        // `new Date(order.orderDate).setHours(0,0,0,0)` on a real-UTC
+        // Prisma Date — both correct only when the configured tz is UTC.
+        // In WIB, shift-end times were being compared 7 hours too early.
+        // today/tomorrow from getToday()/getTomorrow() are already Fake-UTC
+        // midnights. order.orderDate from Prisma is real-UTC; to get a
+        // Fake-UTC midnight for the calendar day, slice the ISO date and
+        // re-parse via parseDateToCateringTime.
+        const yesterday = parseDateToCateringTime(
+            toOrderDateKey(new Date(today.getTime() - 24 * 60 * 60 * 1000))
+        );
+
         const pendingOrders = await prisma.order.findMany({
             where: {
-                orderDate: { gte: new Date(today.getTime() - 24 * 60 * 60 * 1000), lt: tomorrow },
+                orderDate: { gte: yesterday, lt: tomorrow },
                 status: 'ORDERED',
             },
             include: { user: true, shift: true },
         });
 
         const noShowOrders = pendingOrders.filter(order => {
-            const orderDate = new Date(order.orderDate);
-            orderDate.setHours(0, 0, 0, 0);
+            // T-2: derive Fake-UTC midnight for the order's catering day.
+            const orderDate = parseDateToCateringTime(toOrderDateKey(order.orderDate));
 
             const [endHours, endMinutes] = order.shift.endTime.split(':').map(Number);
             const [startHours] = order.shift.startTime.split(':').map(Number);
 
-            let shiftEndTime = new Date(orderDate);
+            const shiftEndTime = new Date(orderDate);
             shiftEndTime.setHours(endHours, endMinutes, 0, 0);
 
             if (endHours < startHours) {

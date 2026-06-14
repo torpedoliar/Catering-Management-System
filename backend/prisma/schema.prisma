@@ -353,6 +353,9 @@ model Settings {
   // Canteen Check-in Enforcement
   enforceCanteenCheckin Boolean @default(false) // Require canteen selection at check-in station
 
+  // Auth Feature Flags (Wave 1 / F-3)
+  enableTokenRotation  Boolean  @default(false) // Refresh-token rotation + family-revoke
+
   // Branding Settings
   appName            String   @default("Catering Management System")
   appShortName       String   @default("Catering")
@@ -371,6 +374,8 @@ enum AuditAction {
   LOGOUT
   LOGIN_FAILED
   PASSWORD_CHANGE
+  TOKEN_REFRESHED
+  TOKEN_FAMILY_REVOKED
   
   // CRUD actions
   CREATE
@@ -601,19 +606,30 @@ model ServerUptimeLog {
 
 // Refresh Token for persistent sessions
 model RefreshToken {
-  id          String   @id @default(uuid())
-  token       String   @unique          // Hash of refresh token (SHA-256)
-  userId      String
-  deviceInfo  String?                   // "Android", "iOS", "Web"
-  expiresAt   DateTime                  // When it expires
-  isRevoked   Boolean  @default(false)  // Revoked on logout or admin intervention
-  createdAt   DateTime @default(now())
+  id            String   @id @default(uuid())
+  token         String   @unique          // Hash of refresh token (SHA-256)
+  userId        String
+  deviceInfo    String?                   // "Android", "iOS", "Web"
+  expiresAt     DateTime                  // When it expires
+  isRevoked     Boolean  @default(false)  // Revoked on logout or admin intervention
+  revokedReason String?                   // "ROTATED" | "STOLEN_TOKEN_DETECTED" | "LOGOUT" | etc
+  createdAt     DateTime @default(now())
 
-  user        User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  // Token rotation chain (Wave 1 / F-3). NULL for pre-rotation tokens.
+  // All tokens in the same login session share a tokenFamilyId.
+  // When a revoked token is reused, all tokens in the family are revoked.
+  tokenFamilyId String?
+  // Self-referential: the token that replaced THIS one. NULL if still active.
+  replacedById  String?  @unique
+  replacedBy    RefreshToken?  @relation("RefreshReplacement", fields: [replacedById], references: [id])
+  replaces      RefreshToken?  @relation("RefreshReplacement")
+
+  user          User     @relation(fields: [userId], references: [id], onDelete: Cascade)
 
   @@index([token])
   @@index([userId])
   @@index([expiresAt])
+  @@index([tokenFamilyId])
 }
 
 

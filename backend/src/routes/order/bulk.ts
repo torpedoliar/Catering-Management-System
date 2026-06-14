@@ -28,6 +28,7 @@ import {
     BulkOrderFailure,
 } from './shared';
 import { parseOrderDate } from '../../utils/orderDate';
+import { createOrderWithCapacityCheck } from '../../services/order.service';
 
 const router = Router();
 
@@ -230,15 +231,33 @@ router.post('/bulk', authMiddleware, blockVendorMiddleware, blacklistMiddleware,
                     color: { dark: '#000000', light: '#ffffff' },
                 });
 
-                const order = await prisma.order.create({
-                    data: {
-                        userId,
-                        shiftId,
-                        orderDate,
-                        qrCode: qrCodeData,
-                        mealPrice: shift.mealPrice,
-                        canteenId: canteenId || null,
-                    },
+                // C-R1: capacity check + create in a SERIALIZABLE transaction
+                // to prevent overbooking when two bulk requests race for the
+                // last slot.
+                const orderData: any = {
+                    userId,
+                    shiftId,
+                    qrCode: qrCodeData,
+                    mealPrice: shift.mealPrice,
+                    canteen: canteenId ? { connect: { id: canteenId } } : undefined,
+                };
+
+                let order;
+                try {
+                    order = await prisma.$transaction(
+                        (tx) => createOrderWithCapacityCheck(tx, canteenId, shiftId, orderDate, orderData),
+                        { isolationLevel: 'Serializable' }
+                    );
+                } catch (e: any) {
+                    if (e?.name === 'CapacityError') {
+                        failedOrders.push({ date: orderDateParam, shiftId, reason: 'Kapasitas kantin penuh' });
+                        continue;
+                    }
+                    throw e;
+                }
+
+                const orderWithIncludes = await prisma.order.findUnique({
+                    where: { id: order.id },
                     include: {
                         user: { select: { id: true, name: true, externalId: true, company: true, division: true, department: true, photo: true } },
                         shift: true,
@@ -246,12 +265,12 @@ router.post('/bulk', authMiddleware, blockVendorMiddleware, blacklistMiddleware,
                     },
                 });
 
-                await logOrder('ORDER_CREATED', req.user || null, order, context);
+                await logOrder('ORDER_CREATED', req.user || null, orderWithIncludes, context);
 
                 successOrders.push({
                     date: orderDateParam,
                     shiftId,
-                    order: { ...order, qrCodeImage },
+                    order: { ...orderWithIncludes, qrCodeImage },
                 });
             } catch (err) {
                 console.error(`Failed to create order for ${orderDateParam}:`, err);

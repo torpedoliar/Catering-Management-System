@@ -20,6 +20,8 @@ import {
 import { getCachedSettings } from '../../services/cache.service';
 import { blockVendorMiddleware } from '../../middleware/blockVendor.middleware';
 import { blacklistMiddleware } from '../../middleware/blacklist.middleware';
+import { parseOrderDate, toOrderDateKey } from '../../utils/orderDate';
+import { parseDateToCateringTime } from '../../services/time.service';
 
 const router = Router();
 
@@ -72,17 +74,23 @@ router.post('/:id/cancel', authMiddleware, blockVendorMiddleware, blacklistMiddl
 
         // Strict enforce: cannot cancel if it's today and the shift has already started
         const now = getNow();
-        const orderDateObj = new Date(order.orderDate);
-        orderDateObj.setHours(0, 0, 0, 0);
-        
-        const todayNormalized = new Date(now);
-        todayNormalized.setHours(0, 0, 0, 0);
+        // T-3: orderDateObj was previously constructed from the Prisma
+        // real-UTC Date with setHours(0,0,0,0) on server-local (which with
+        // TZ=UTC means real-UTC midnight). Compared against todayNormalized
+        // (Fake-UTC). In WIB the two midnights are 7h apart, so the strict
+        // "shift started" check fired only when the user's real-UTC
+        // midnight and Fake-UTC midnight happened to align — almost never.
+        // Now both sides use Fake-UTC via parseDateToCateringTime so the
+        // comparison is exact.
+        const orderDateKey = toOrderDateKey(order.orderDate);
+        const orderDateObj = parseDateToCateringTime(orderDateKey);
+        const todayNormalized = parseDateToCateringTime(toOrderDateKey(now));
 
         if (orderDateObj.getTime() === todayNormalized.getTime()) {
             const [startHour, startMin] = order.shift.startTime.split(':').map(Number);
             const shiftStartObj = new Date(now);
             shiftStartObj.setHours(startHour, startMin, 0, 0);
-            
+
             if (now.getTime() >= shiftStartObj.getTime()) {
                 canCancel = false;
                 cancelBlockReason = `Jam shift ${order.shift.name} sudah berjalan. Anda tidak bisa lagi membatalkan pesanan.`;

@@ -1,14 +1,16 @@
 import { Router, Response } from 'express';
 import bcrypt from 'bcryptjs';
 import jwt from 'jsonwebtoken';
+import crypto from 'crypto';
 import { prisma } from '../lib/prisma';
 import { AuthRequest, authMiddleware } from '../middleware/auth.middleware';
 import { getNow } from '../services/time.service';
 import { logAuth, logUserManagement, getRequestContext } from '../services/audit.service';
 import { rateLimiter } from '../services/rate-limiter.service';
-import { cacheService } from '../services/cache.service';
+import { cacheService, getCachedSettings } from '../services/cache.service';
 import { validate } from '../middleware/validate.middleware';
 import { loginSchema, changePasswordSchema } from '../utils/validation';
+import { ENABLE_TOKEN_ROTATION } from '../utils/env';
 
 const router = Router();
 
@@ -161,7 +163,6 @@ router.post('/login', validate(loginSchema), async (req, res) => {
         );
 
         // Hash refresh token for storage
-        const crypto = await import('crypto');
         const hashedRefreshToken = crypto.createHash('sha256').update(refreshTokenValue).digest('hex');
 
         // Detect device platform from user-agent
@@ -170,6 +171,12 @@ router.post('/login', validate(loginSchema), async (req, res) => {
         if (userAgent.includes('HalloFood-Android')) deviceInfo = 'Android';
         else if (userAgent.includes('HalloFood-iOS')) deviceInfo = 'iOS';
 
+        // F-3: each new login starts a fresh refresh-token family. The same
+        // family is inherited by all rotations of THIS login session. A stolen
+        // (revoked) token presented to /refresh triggers family-revoke, which
+        // evicts every device that authenticated in this session.
+        const tokenFamilyId = crypto.randomUUID();
+
         // Save refresh token to DB
         await prisma.refreshToken.create({
             data: {
@@ -177,6 +184,7 @@ router.post('/login', validate(loginSchema), async (req, res) => {
                 userId: user.id,
                 deviceInfo,
                 expiresAt: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000), // 30 days
+                tokenFamilyId,
             }
         });
 
@@ -340,6 +348,7 @@ router.put('/me', authMiddleware, async (req: AuthRequest, res: Response) => {
 
 // Refresh Access Token
 router.post('/refresh', async (req, res) => {
+    const context = getRequestContext(req);
     try {
         // R-005: Read refresh token from HttpOnly cookie first, fallback to body (for Capacitor native)
         const refreshToken = req.cookies?.refreshToken || req.body.refreshToken;
@@ -366,7 +375,6 @@ router.post('/refresh', async (req, res) => {
         }
 
         // 2. Cek apakah token ada di DB dan belum dicabut
-        const crypto = await import('crypto');
         const hashedToken = crypto.createHash('sha256').update(refreshToken).digest('hex');
 
         const storedToken = await prisma.refreshToken.findUnique({
@@ -374,6 +382,30 @@ router.post('/refresh', async (req, res) => {
         });
 
         if (!storedToken || storedToken.isRevoked) {
+            // F-3 family-revoke: a revoked token presented to /refresh means
+            // somebody (re)used a token we already retired. The legit user
+            // would have moved on to the rotated successor. Evict every
+            // sibling in this token family to lock the attacker out.
+            if (storedToken?.isRevoked && storedToken.tokenFamilyId) {
+                try {
+                    await prisma.refreshToken.updateMany({
+                        where: {
+                            tokenFamilyId: storedToken.tokenFamilyId,
+                            isRevoked: false,
+                        },
+                        data: {
+                            isRevoked: true,
+                            revokedReason: 'STOLEN_TOKEN_DETECTED',
+                        },
+                    });
+                    await logAuth('TOKEN_FAMILY_REVOKED', { id: storedToken.userId }, context, {
+                        success: true,
+                        metadata: { tokenFamilyId: storedToken.tokenFamilyId, source: 'reused_revoked' },
+                    });
+                } catch (err) {
+                    console.error('[F-3] Family revoke failed:', err);
+                }
+            }
             return res.status(401).json({ error: 'Token has been revoked' });
         }
 
@@ -419,6 +451,77 @@ router.post('/refresh', async (req, res) => {
             { expiresIn: '15m' }
         );
 
+        // F-3: refresh-token rotation. Two sources of truth — env var for
+        // fast kill-switch, settings.enableTokenRotation for per-deployment
+        // opt-in. Either being true enables rotation. The "disabled" path
+        // preserves the original long-lived single-use-per-30d behavior so
+        // deployments that have not opted in are not affected.
+        const settings = await getCachedSettings();
+        const settingsFlag = settings?.enableTokenRotation === true;
+        const rotationEnabled = ENABLE_TOKEN_ROTATION || settingsFlag;
+
+        if (rotationEnabled) {
+            // Mark the old token as rotated (NOT yet family-revoked) and
+            // issue a brand-new refresh token in the same family. The new
+            // token's record is created first so we can set replacedById
+            // on the old record (self-FK requires the row to exist).
+            const newRefreshValue = jwt.sign(
+                { id: user.id, type: 'refresh' },
+                refreshSecret,
+                { expiresIn: '30d' }
+            );
+            const newHash = crypto.createHash('sha256').update(newRefreshValue).digest('hex');
+
+            // First-time rotation: legacy token has no family yet. Adopt it
+            // into a fresh family so future reuse detection works for any
+            // token this user has ever held.
+            const familyId = storedToken.tokenFamilyId ?? crypto.randomUUID();
+
+            const newRecord = await prisma.refreshToken.create({
+                data: {
+                    token: newHash,
+                    userId: user.id,
+                    deviceInfo: storedToken.deviceInfo,
+                    expiresAt: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000),
+                    tokenFamilyId: familyId,
+                },
+            });
+
+            await prisma.refreshToken.update({
+                where: { id: storedToken.id },
+                data: {
+                    isRevoked: true,
+                    revokedReason: 'ROTATED',
+                    replacedById: newRecord.id,
+                    // Backfill family on the old row so the chain is linked.
+                    ...(storedToken.tokenFamilyId ? {} : { tokenFamilyId: familyId }),
+                },
+            });
+
+            await logAuth('TOKEN_REFRESHED', { id: user.id, name: user.name, role: user.role, externalId: user.externalId }, context, {
+                success: true,
+                metadata: { tokenFamilyId: familyId, prevTokenId: storedToken.id, newTokenId: newRecord.id },
+            });
+
+            // Set rotated cookie (web) and include in body (native)
+            const isProduction = process.env.NODE_ENV === 'production';
+            res.cookie('refreshToken', newRefreshValue, {
+                httpOnly: true,
+                secure: isProduction,
+                sameSite: isProduction ? 'strict' : 'lax',
+                path: '/api/auth',
+                maxAge: 30 * 24 * 60 * 60 * 1000,
+            });
+
+            const isNativeClient = storedToken.deviceInfo === 'Android' || storedToken.deviceInfo === 'iOS';
+            const responsePayload: Record<string, any> = { token: newAccessToken };
+            if (isNativeClient) {
+                responsePayload.refreshToken = newRefreshValue;
+            }
+            return res.json(responsePayload);
+        }
+
+        // Legacy non-rotation path (default for unflagged deployments).
         res.json({ token: newAccessToken });
     } catch (error) {
         console.error('Refresh token error:', error);

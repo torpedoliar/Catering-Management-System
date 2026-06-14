@@ -21,6 +21,7 @@ import fs from 'fs';
 import path from 'path';
 import { isOvernightShift, validateCheckinTimeWindow } from '../utils/shift-utils';
 import { parseOrderDate } from '../utils/orderDate';
+import { createOrderWithCapacityCheck } from '../services/order.service';
 
 const router = Router();
 
@@ -311,23 +312,30 @@ router.post('/', authMiddleware, validate(createOrderSchema), async (req: AuthRe
             color: { dark: '#000000', light: '#ffffff' },
         });
 
-        // Check canteen capacity
-        if (canteenId) {
-            const capacityCheck = await OrderService.validateCanteenCapacity(canteenId, shiftId, orderDate);
-            if (!capacityCheck.valid) {
-                return res.status(400).json({ error: capacityCheck.message });
+        // C-R1: capacity check + create in SERIALIZABLE transaction.
+        const orderData: any = {
+            userId,
+            shiftId,
+            qrCode: qrCodeData,
+            mealPrice: shift.mealPrice,
+            canteen: canteenId ? { connect: { id: canteenId } } : undefined,
+        };
+
+        let order;
+        try {
+            order = await prisma.$transaction(
+                (tx) => createOrderWithCapacityCheck(tx, canteenId, shiftId, orderDate, orderData),
+                { isolationLevel: 'Serializable' }
+            );
+        } catch (e: any) {
+            if (e?.name === 'CapacityError') {
+                return res.status(409).json({ error: e.message, code: 'CAPACITY_FULL' });
             }
+            throw e;
         }
 
-        const order = await prisma.order.create({
-            data: {
-                userId,
-                shiftId,
-                orderDate,
-                qrCode: qrCodeData,
-                mealPrice: shift.mealPrice, // Store price at time of order
-                canteenId: canteenId || null, // Optional canteen
-            },
+        const orderWithIncludes = await prisma.order.findUnique({
+            where: { id: order.id },
             include: {
                 user: { select: { id: true, name: true, externalId: true, company: true, division: true, department: true, photo: true } },
                 shift: true,
@@ -336,16 +344,16 @@ router.post('/', authMiddleware, validate(createOrderSchema), async (req: AuthRe
         });
 
         // Log order creation
-        await logOrder('ORDER_CREATED', req.user || null, order, context);
+        await logOrder('ORDER_CREATED', req.user || null, orderWithIncludes, context);
 
         // Broadcast to all clients
         sseManager.broadcast('order:created', {
-            order,
+            order: orderWithIncludes,
             timestamp: getNow().toISOString(),
         });
 
         res.status(201).json({
-            ...order,
+            ...orderWithIncludes,
             qrCodeImage,
         });
     } catch (error) {
