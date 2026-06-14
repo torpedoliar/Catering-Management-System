@@ -7,7 +7,10 @@ RUN apk add --no-cache postgresql-client
 WORKDIR /app
 
 # Install dependencies for Prisma and NTP
-RUN apk add --no-cache openssl openntpd
+# - openssl: Prisma engine needs libssl
+# - openntpd: provides ntpd for NTP daemon mode (not used directly; HTTP fallback is preferred)
+# - busybox-extras: provides sntp client for time.service.ts NTP query fallback
+RUN apk add --no-cache openssl openntpd busybox-extras
 
 # Copy package files
 COPY package*.json ./

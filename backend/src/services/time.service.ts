@@ -68,20 +68,34 @@ function getTimezoneOffset(timezone: string): number {
 }
 
 /**
- * Get current time adjusted with NTP offset in configured timezone.
- * Use this for time comparisons and display purposes.
- * WARNING: Do NOT use this for database storage - use getNowUTC() instead.
+ * Get current time adjusted with NTP offset in configured timezone ("Fake UTC" / "Shifted UTC").
+ *
+ * The Node process is forced to TZ=UTC at boot (index.ts:4), so `new Date()` returns
+ * a real-UTC instant. To match the "Shifted UTC" architecture documented in CLAUDE.md,
+ * we return a Date whose UTC fields hold the WALL-CLOCK value in `cachedTimezone`.
+ * This is what gets serialized to Prisma and shipped to the frontend, which strips
+ * the trailing Z and parses as local time — yielding the original wall-clock.
+ *
+ * Math:
+ *   1. `cachedOffset` is the NTP delta in ms (NTP server - local clock). When the
+ *      local clock is fast, this is negative.
+ *   2. `tzOffset` is the timezone offset in ms (Asia/Jakarta = +7h, UTC = 0).
+ *   3. `real_utc + cachedOffset + tzOffset` shifts the real instant forward by the
+ *      timezone gap, then reinterprets the result as a new Date whose UTC fields
+ *      hold the wall-clock value.
+ *
+ * The previous implementation had `getTimezoneOffset() * 60_000` added BEFORE the
+ * tzOffset shift, which double-counted the conversion whenever the host TZ was not
+ * UTC. Under TZ=UTC (the only configured mode) it happened to be a no-op, masking
+ * the bug. Refactored to be explicit about the two adjustments.
+ *
+ * WARNING: Do NOT use this for real-time protocol logic. This is for display +
+ * DB storage only.
  */
 export function getNow(): Date {
-    const now = new Date();
-    // Apply NTP offset
-    const adjustedTime = new Date(now.getTime() + cachedOffset);
-
-    // Convert UTC to configured timezone
-    const utcTime = adjustedTime.getTime() + (adjustedTime.getTimezoneOffset() * 60 * 1000);
-    const tzOffset = getTimezoneOffset(cachedTimezone);
-
-    return new Date(utcTime + tzOffset);
+    const realNowMs = Date.now();
+    const shifted = realNowMs + cachedOffset + getTimezoneOffset(cachedTimezone);
+    return new Date(shifted);
 }
 
 /**
