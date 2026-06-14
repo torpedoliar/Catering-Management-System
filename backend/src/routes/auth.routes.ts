@@ -144,7 +144,7 @@ router.post('/login', validate(loginSchema), async (req, res) => {
 
         // Generate Access Token (R-003: shortened to 15 minutes to reduce localStorage exposure window)
         const token = jwt.sign(
-            { id: user.id, externalId: user.externalId, role: user.role },
+            { id: user.id, externalId: user.externalId, role: user.role, vendorId: user.vendorId ?? undefined },
             jwtSecret,
             { expiresIn: '15m' }
         );
@@ -471,7 +471,7 @@ router.post('/refresh', async (req, res) => {
 
         // 4. Terbitkan Access Token baru (R-003: 15 minutes to match login)
         const newAccessToken = jwt.sign(
-            { id: user.id, externalId: user.externalId, role: user.role },
+            { id: user.id, externalId: user.externalId, role: user.role, vendorId: user.vendorId ?? undefined },
             jwtSecret,
             { expiresIn: '15m' }
         );

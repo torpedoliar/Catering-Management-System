@@ -46,9 +46,30 @@ const PORT = process.env.PORT || 3012;
 // R-006: Suppress X-Powered-By header to prevent technology disclosure
 app.disable('x-powered-by');
 
+// I-6 (Wave 2): CORS_ORIGIN validation. With credentials: true, the
+// browser refuses CORS responses that have Access-Control-Allow-Origin:
+// *. The previous code silently fell through to localhost:3011 in that
+// case, breaking refresh-token cookie auth in production. Now we
+// fail-fast on misconfiguration.
+const rawCorsOrigin = process.env.CORS_ORIGIN || 'http://localhost:3011';
+if (rawCorsOrigin.trim() === '*') {
+    console.error('[CORS] CORS_ORIGIN=* is not allowed with credentials: true. Refusing to boot.');
+    process.exit(1);
+}
+const allowedCorsOrigins = rawCorsOrigin
+    .split(',')
+    .map((o) => o.trim())
+    .filter(Boolean);
+
 // Middleware
 app.use(cors({
-    origin: process.env.CORS_ORIGIN || 'http://localhost:3011',
+    origin: (origin, callback) => {
+        // Allow non-browser requests (no Origin header — server-to-server,
+        // curl, mobile native) by passing the first allowed origin.
+        if (!origin) return callback(null, allowedCorsOrigins[0]);
+        if (allowedCorsOrigins.includes(origin)) return callback(null, origin);
+        return callback(new Error(`CORS origin ${origin} not allowed`));
+    },
     credentials: true,
     exposedHeaders: ['Content-Disposition', 'Content-Length', 'Content-Type'],
 }));
@@ -100,22 +121,80 @@ app.use('/api/notifications', notificationRoutes);
 import { errorHandler } from './middleware/error.middleware';
 app.use(errorHandler);
 
-// Graceful shutdown
-process.on('SIGTERM', async () => {
-    console.log('SIGTERM received, shutting down...');
-    await logServerStop('SIGTERM received');
-    await redisService.disconnect();
-    await prisma.$disconnect();
-    process.exit(0);
-});
+// Graceful shutdown — I-2 (Wave 2)
+//
+// On SIGTERM/SIGINT: stop accepting new connections, drain in-flight
+// requests, close SSE clients cleanly, stop cron + NTP timers, then
+// close service connections in reverse-startup order. If any step
+// throws, we record the failure and exit non-zero so PM2/Docker can
+// distinguish a clean stop from a crash.
+let isShuttingDown = false;
 
-process.on('SIGINT', async () => {
-    console.log('SIGINT received, shutting down...');
-    await logServerStop('SIGINT received');
-    await redisService.disconnect();
-    await prisma.$disconnect();
-    process.exit(0);
-});
+async function shutdown(signal: string) {
+    if (isShuttingDown) return;
+    isShuttingDown = true;
+    console.log(`${signal} received, draining...`);
+    process.exitCode = 0;
+
+    try {
+        // 1. Stop accepting new connections. The httpServer is created
+        //    by app.listen — capture the reference so we can close it.
+        const server = (app as any).server as import('http').Server | undefined;
+        const closeServer = server ? new Promise<void>((resolve) => {
+            server.close((err) => {
+                if (err) console.error('[shutdown] http server close error:', err);
+                resolve();
+            });
+            // Force-close idle connections after 5s
+            setTimeout(() => {
+                if (typeof server.closeIdleConnections === 'function') {
+                    server.closeIdleConnections();
+                }
+            }, 5000).unref();
+        }) : Promise.resolve();
+
+        // 2. Drain SSE clients
+        try {
+            sseManager.closeAllClients();
+        } catch (e) {
+            console.error('[shutdown] sse close error:', e);
+        }
+
+        // 3. Stop cron + NTP schedulers
+        try {
+            const { stopScheduler } = await import('./services/scheduler');
+            stopScheduler();
+        } catch (e) {
+            console.error('[shutdown] scheduler stop error:', e);
+        }
+        try {
+            const { stopNTPScheduler } = await import('./services/time.service');
+            stopNTPScheduler();
+        } catch (e) {
+            console.error('[shutdown] NTP stop error:', e);
+        }
+
+        // 4. Wait for in-flight requests to settle (best-effort)
+        await closeServer;
+
+        // 5. Close services in reverse-startup order
+        await logServerStop(`${signal} received`);
+        try { await cacheService.disconnect(); } catch (e) { console.error('[shutdown] cacheService:', e); }
+        try { await redisService.disconnect(); } catch (e) { console.error('[shutdown] redis:', e); }
+        try { await prisma.$disconnect(); } catch (e) { console.error('[shutdown] prisma:', e); }
+
+        console.log(`${signal} drained, exiting.`);
+    } catch (err) {
+        console.error(`[shutdown] Error during ${signal}:`, err);
+        process.exitCode = 1;
+    } finally {
+        // Belt-and-suspenders: hard-exit after 10s no matter what
+        setTimeout(() => process.exit(process.exitCode ?? 0), 10000).unref();
+    }
+}
+
+process.on('SIGTERM', () => { void shutdown('SIGTERM'); });
+process.on('SIGINT', () => { void shutdown('SIGINT'); });
 
 app.listen(PORT, async () => {
     console.log(`🚀 Catering API running on http://localhost:${PORT}`);

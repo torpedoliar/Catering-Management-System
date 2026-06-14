@@ -79,6 +79,19 @@ router.get('/weekly-summary', authMiddleware, vendorMiddleware, async (req: Auth
         // Get week date range
         const { start, end, dates } = getWeekDates(week, year);
 
+        // F-2 vendor scoping: VENDOR role only sees their own vendor's
+        // data. ADMIN is unconstrained. We build the scope filter once
+        // and apply it to the order/canteen queries below.
+        const isVendor = req.user?.role === 'VENDOR';
+        const vendorId = req.user?.vendorId;
+        if (isVendor && !vendorId) {
+            // Vendor user without a vendorId binding: deny rather than leak.
+            return res.status(403).json({ error: 'FORBIDDEN', message: 'Vendor account is not bound to a vendor' });
+        }
+        const canteenWhere = isVendor
+            ? { isActive: true, vendorId: vendorId! }
+            : { isActive: true };
+
         // Fetch all required data in parallel
         const [shifts, canteens, orders, holidays] = await Promise.all([
             prisma.shift.findMany({
@@ -87,13 +100,15 @@ router.get('/weekly-summary', authMiddleware, vendorMiddleware, async (req: Auth
                 select: { id: true, name: true, startTime: true, endTime: true, mealPrice: true, breakStartTime: true, breakEndTime: true, hasSpecialDayBreaks: true, dayBreaks: { select: { dayOfWeek: true, breakStartTime: true, breakEndTime: true } } }
             }),
             prisma.canteen.findMany({
-                where: { isActive: true },
+                where: canteenWhere,
                 orderBy: { name: 'asc' },
                 select: { id: true, name: true, location: true }
             }),
             prisma.order.findMany({
                 where: {
-                    orderDate: { gte: start, lte: end }
+                    orderDate: { gte: start, lte: end },
+                    // F-2: scope to vendor's own canteens
+                    ...(isVendor ? { canteen: { is: { vendorId: vendorId! } } } : {}),
                 },
                 select: {
                     id: true,
@@ -351,6 +366,13 @@ router.get('/pickup-stats', authMiddleware, vendorMiddleware, async (req: AuthRe
         const now = getNow();
         const { startDate, endDate } = req.query;
 
+        // F-2 vendor scoping: same rule as weekly-summary.
+        const isVendor = req.user?.role === 'VENDOR';
+        const vendorId = req.user?.vendorId;
+        if (isVendor && !vendorId) {
+            return res.status(403).json({ error: 'FORBIDDEN', message: 'Vendor account is not bound to a vendor' });
+        }
+
         // Default to today if not provided
         const start = startDate
             ? new Date(startDate as string)
@@ -371,7 +393,9 @@ router.get('/pickup-stats', authMiddleware, vendorMiddleware, async (req: AuthRe
             }),
             prisma.order.findMany({
                 where: {
-                    orderDate: { gte: start, lte: end }
+                    orderDate: { gte: start, lte: end },
+                    // F-2: scope to vendor's own canteens
+                    ...(isVendor ? { canteen: { is: { vendorId: vendorId! } } } : {}),
                 },
                 select: {
                     id: true,

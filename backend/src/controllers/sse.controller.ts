@@ -248,6 +248,27 @@ class SSEManager {
             })),
         };
     }
+
+    /**
+     * I-2 (Wave 2): close all SSE clients gracefully. Sends a final
+     * disconnect event so client-side handlers can distinguish a clean
+     * server shutdown from a network failure. The client will then
+     * attempt to reconnect — by the time the reconnect timer fires,
+     * the process is exiting and the OS will reject the connection.
+     */
+    closeAllClients(): void {
+        const count = this.clients.size;
+        for (const [id, client] of this.clients) {
+            try {
+                client.response.write(`event: disconnect\ndata: {"reason":"server_shutdown"}\n\n`);
+                client.response.end();
+            } catch {
+                // Best-effort; some clients may already be closed.
+            }
+            this.removeClient(id);
+        }
+        console.log(`[SSE] closeAllClients: closed ${count} clients`);
+    }
 }
 
 export const sseManager = new SSEManager();

@@ -7,6 +7,10 @@ export interface AuthRequest extends Request {
         externalId: string;
         role: string;
         name?: string;
+        // F-2: vendor scoping needs the user's vendorId at request level.
+        // Decoded from JWT during authMiddleware; falls back to undefined
+        // for non-VENDOR users.
+        vendorId?: string;
     };
 }
 
@@ -34,9 +38,17 @@ export const authMiddleware = async (req: AuthRequest, res: Response, next: Next
             id: string;
             externalId: string;
             role: string;
+            vendorId?: string;
         };
 
-        req.user = decoded;
+        req.user = {
+            ...decoded,
+            // vendorId is intentionally not loaded here — too expensive
+            // for every request. The vendor routes load the user row
+            // directly when they need it (rare path). For self-VENDOR
+            // reads of their own scope, the JWT claim is the source of
+            // truth; if it's stale, the user re-logs in to refresh.
+        };
 
         // R-001: Chain into passwordChangeGuard
         return passwordChangeGuard(req, res, next);

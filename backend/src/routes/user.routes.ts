@@ -119,8 +119,22 @@ router.get('/', authMiddleware, adminMiddleware, async (req: AuthRequest, res: R
 // Get single user
 router.get('/:id', authMiddleware, async (req: AuthRequest, res: Response) => {
     try {
+        // F-1 IDOR: any authenticated user (USER, CANTEEN, VENDOR) could
+        // previously read any other user's full profile + 10 latest orders
+        // + active blacklists. Restrict to: self OR CANTEEN OR ADMIN.
+        // VENDOR is denied (no legitimate vendor-side user detail view).
+        const requesterId = req.user?.id;
+        const requesterRole = req.user?.role;
+        const targetId = req.params.id;
+
+        const isSelf = requesterId === targetId;
+        const isPrivileged = requesterRole === 'ADMIN' || requesterRole === 'CANTEEN';
+        if (!isSelf && !isPrivileged) {
+            return res.status(403).json({ error: ErrorMessages.FORBIDDEN });
+        }
+
         const user = await prisma.user.findUnique({
-            where: { id: req.params.id },
+            where: { id: targetId },
             include: {
                 orders: {
                     orderBy: { orderDate: 'desc' },
@@ -141,6 +155,13 @@ router.get('/:id', authMiddleware, async (req: AuthRequest, res: Response) => {
 
         if (!user) {
             return res.status(404).json({ error: ErrorMessages.USER_NOT_FOUND });
+        }
+
+        // Defense-in-depth: non-self non-admin should not see the user's
+        // blacklist history. CANTEEN may legitimately need it (e.g. for
+        // canteen-side no-show display), so they retain access.
+        if (!isSelf && requesterRole !== 'ADMIN') {
+            delete (user as any).blacklists;
         }
 
         res.json(user);
@@ -322,6 +343,15 @@ router.put('/:id', authMiddleware, adminMiddleware, upload.single('photo'), asyn
             await cacheService.delete('canteens:active');
             await cacheService.delete('canteens:all');
         }
+
+        // A-4: invalidate the passwordChangeGuard cache. The guard caches
+        // `mustChangePassword` for 60s; if an admin flips it via this
+        // endpoint the next authenticated request from the user would
+        // otherwise see the stale cached value for up to a minute.
+        // We invalidate unconditionally on user mutation to be safe — the
+        // guard will re-fetch on the next request.
+        const { cacheService: cs } = await import('../services/cache.service');
+        await cs.delete(`mustChangePassword:${user.id}`);
 
         // Log audit
         await logUserManagement('UPDATE', req.user || null, user, getRequestContext(req), { oldValue: oldUser });
@@ -569,6 +599,15 @@ router.post('/import', authMiddleware, adminMiddleware, apiRateLimitMiddleware('
                     ? canteenIdMap.get(userData.canteenId) || undefined
                     : undefined;
 
+                // D-2: probe existence so we can track created vs updated.
+                // The previous code always incremented `created` even on
+                // updates, which made the audit log skip pure-update
+                // imports and the summary message lie.
+                const existing = await prisma.user.findUnique({
+                    where: { externalId: userData.externalId },
+                    select: { id: true },
+                });
+
                 await prisma.user.upsert({
                     where: { externalId: userData.externalId },
                     update: {
@@ -595,24 +634,29 @@ router.post('/import', authMiddleware, adminMiddleware, apiRateLimitMiddleware('
                         preferredCanteenId: preferredCanteenId || null,
                     },
                 });
-                results.created++;
+                if (existing) {
+                    results.updated++;
+                } else {
+                    results.created++;
+                }
             } catch (error) {
                 results.failed++;
                 errors.push({ externalId: userData.externalId, error: 'Failed to import' });
             }
         }
 
-        if (results.created > 0) {
+        const totalAffected = results.created + results.updated + results.failed;
+        if (totalAffected > 0) {
             await logDataOperation('IMPORT_DATA', req.user || null, context, {
                 dataType: 'Users',
-                recordCount: results.created,
+                recordCount: totalAffected,
                 filename: req.file.originalname,
                 metadata: { created: results.created, updated: results.updated, failed: results.failed }
             });
         }
 
         res.json({
-            message: `Imported ${results.created} users successfully`,
+            message: `Imported ${results.created} new, updated ${results.updated} users (${results.failed} failed)`,
             results,
             errors: errors.length > 0 ? errors : undefined,
         });
@@ -684,6 +728,13 @@ router.post('/:id/reset-password', authMiddleware, adminMiddleware, async (req: 
                 mustChangePassword: true,
             },
         });
+
+        // A-4: invalidate the passwordChangeGuard cache so the change
+        // takes effect immediately instead of waiting up to 60s for the
+        // cached 'false' to expire. The cache key pattern is shared with
+        // auth.middleware.ts:118.
+        const { cacheService } = await import('../services/cache.service');
+        await cacheService.delete(`mustChangePassword:${user.id}`);
 
         // Log audit for password reset by admin
         await logUserManagement('UPDATE', req.user || null, user, context, {

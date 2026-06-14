@@ -173,6 +173,13 @@ model Canteen {
   location    String?  // Optional address/description
   capacity    Int?     // Max daily orders (null = unlimited)
   isActive    Boolean  @default(true)
+
+  // F-2 (Wave 2): vendor ownership. Nullable for legacy canteens; new
+  // canteens should set this. Scopes /api/vendor/* endpoints to the
+  // caller's vendorId.
+  vendorId    String?
+  vendor      Vendor?  @relation(fields: [vendorId], references: [id], onDelete: SetNull)
+
   createdAt   DateTime @default(now())
   updatedAt   DateTime @updatedAt
 
@@ -182,6 +189,7 @@ model Canteen {
 
   @@index([isActive])
   @@index([name])
+  @@index([vendorId])
 }
 
 // Join table for Canteen-Shift availability with optional capacity per shift
@@ -533,6 +541,7 @@ model Vendor {
 
   menuItems   MenuItem[]
   users       User[]
+  canteens    Canteen[]
 
   @@index([isActive])
   @@index([name])
