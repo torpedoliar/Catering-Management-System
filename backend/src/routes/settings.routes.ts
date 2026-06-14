@@ -99,7 +99,14 @@ router.put('/', authMiddleware, adminMiddleware, async (req: AuthRequest, res: R
             blacklistStrikes,
             blacklistDuration,
             enforceCanteenCheckin,
+            // W4 (F-3 / Wave 4 admin UI): admin can flip token-rotation
+            // on/off here. Validation: must be a boolean.
+            enableTokenRotation,
         } = req.body;
+
+        if (enableTokenRotation !== undefined && typeof enableTokenRotation !== 'boolean') {
+            return res.status(400).json({ error: 'enableTokenRotation must be a boolean' });
+        }
 
         // Validate per-shift mode values
         if (cutoffDays !== undefined && (cutoffDays < 0 || cutoffDays > 30)) {
@@ -150,6 +157,7 @@ router.put('/', authMiddleware, adminMiddleware, async (req: AuthRequest, res: R
                 ...(blacklistStrikes !== undefined && { blacklistStrikes }),
                 ...(blacklistDuration !== undefined && { blacklistDuration }),
                 ...(enforceCanteenCheckin !== undefined && { enforceCanteenCheckin }),
+                ...(enableTokenRotation !== undefined && { enableTokenRotation }),
             },
             create: {
                 id: 'default',

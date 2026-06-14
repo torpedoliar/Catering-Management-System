@@ -59,6 +59,22 @@ Consequences:
 - Never "convert timezones" on the frontend for backend timestamps — the value is already wall-clock. Use the `formatToWIB`/`*WIB` helpers.
 - NTP sync (`initNTPService`) adjusts a `cachedOffset` on top of this; timezone is configurable in Settings, so don't hardcode Jakarta.
 
+## Audit-remediation helpers (added 2026-06-13)
+
+The 5-agent audit on 2026-06-13 surfaced 140 findings; waves 0-4 of the remediation plan added these cross-cutting helpers. **Use them — do not re-invent the same logic in a route handler.**
+
+- **`backend/src/utils/orderDate.ts`** — Fake-UTC date helpers.
+  - `parseOrderDate("2026-02-20")` — parse YYYY-MM-DD to Fake-UTC midnight. Use this anywhere a business date comes in via query/body. Returns `null` on invalid input.
+  - `toOrderDateKey(d)` / `toOrderDateKeyFromPrisma(d)` — extract the YYYY-MM-DD catering calendar key from any ISO string or Prisma Date.
+  - `safeDateFromBody(s)` — tolerant date parser for non-business timestamps (e.g. `?from=...`); returns `null` on invalid.
+  - `isSameCateringDay(a, b)` / `addDaysToKey(key, n)` — calendar math without DST/tz slips.
+- **`backend/src/middleware/blockVendor.middleware.ts`** — `blockVendorMiddleware` rejects VENDOR role with 403. Use this on every order/checkin mutation route; the inline `if (role === 'VENDOR')` checks are gone.
+- **`backend/src/services/order.service.ts` `createOrderWithCapacityCheck` + `CapacityError`** — capacity check + create in a SERIALIZABLE transaction. Use this on every order-create path. Catch `CapacityError` → 409 `CAPACITY_FULL`.
+- **`backend/src/services/cache.service.ts` `getCachedSettings()`** — single source of truth for the `Settings` row, Redis-cached 30 min. **Do not call `prisma.settings.findUnique/findFirst` outside `settings.routes.ts`**.
+- **`backend/src/utils/env.ts` `ENABLE_TOKEN_ROTATION`** — feature flag for F-3 (refresh-token rotation). Also flip via `Settings.enableTokenRotation` in the admin UI.
+- **`frontend/src/utils/dateHelpers.ts`** — `getLocalDateString()`, `addDays()`, `formatOrderDateTime()`, `formatOrderDate()`, `formatOrderTime()`. Replaces `new Date().toISOString().split('T')[0]` and `Date.now() + 86400000`.
+- **`frontend/src/utils/timezone.ts:formatToWIB`** — TZ-neutral substring slicer. The previous `toLocaleString` re-converted Fake-UTC values for non-WIB viewers; this is now safe for all timezones.
+
 ## Backend structure
 
 - Entry `src/index.ts`: registers all `/api/*` routers, CORS (`credentials: true`), compression, cookie-parser, static `/uploads`, centralized `errorHandler` (last), graceful shutdown, and on-listen init of Redis, cache, NTP, scheduler, token cleanup.

@@ -106,11 +106,36 @@ router.get('/:id', authMiddleware, async (req: AuthRequest, res: Response) => {
 
 /**
  * POST /api/menu-items
- * Create a new menu item (Admin only)
+ * Create a new menu item
+ *
+ * F-4 (Wave 4): ADMIN can create items for any vendor. VENDOR can
+ * only create items for their own vendor (vendorId in body must
+ * match req.user.vendorId, or be omitted and we'll fill it from the
+ * user's own vendorId). Without this, a VENDOR could create menu
+ * items for any other vendor.
  */
-router.post('/', authMiddleware, adminMiddleware, upload.single('image'), async (req: AuthRequest, res: Response) => {
+router.post('/', authMiddleware, upload.single('image'), async (req: AuthRequest, res: Response) => {
     try {
-        const { name, description, category, vendorId } = req.body;
+        let { name, description, category, vendorId } = req.body;
+
+        const isAdmin = req.user?.role === 'ADMIN';
+        const isVendor = req.user?.role === 'VENDOR';
+
+        if (!isAdmin && !isVendor) {
+            return res.status(403).json({ error: 'Admin or Vendor access required' });
+        }
+
+        if (isVendor) {
+            // Force vendorId to the caller's own; reject any attempt to
+            // create for another vendor.
+            if (!req.user?.vendorId) {
+                return res.status(403).json({ error: 'Vendor account is not bound to a vendor' });
+            }
+            if (vendorId && vendorId !== req.user.vendorId) {
+                return res.status(403).json({ error: 'FORBIDDEN', message: 'Cannot create items for another vendor' });
+            }
+            vendorId = req.user.vendorId;
+        }
 
         if (!name || !vendorId) {
             return res.status(400).json({ error: 'Name and vendorId are required' });
@@ -163,20 +188,45 @@ router.post('/', authMiddleware, adminMiddleware, upload.single('image'), async 
 
 /**
  * PUT /api/menu-items/:id
- * Update a menu item (Admin only)
+ * Update a menu item
+ *
+ * F-4 (Wave 4): VENDOR can only update items owned by their vendor.
+ * ADMIN can update any item. The vendorId field in the body is
+ * enforced: VENDOR cannot reassign to a different vendor.
  */
-router.put('/:id', authMiddleware, adminMiddleware, upload.single('image'), async (req: AuthRequest, res: Response) => {
+router.put('/:id', authMiddleware, upload.single('image'), async (req: AuthRequest, res: Response) => {
     try {
         const { id } = req.params;
         const { name, description, category, vendorId, isActive } = req.body;
+
+        const isAdmin = req.user?.role === 'ADMIN';
+        const isVendor = req.user?.role === 'VENDOR';
+
+        if (!isAdmin && !isVendor) {
+            return res.status(403).json({ error: 'Admin or Vendor access required' });
+        }
 
         const existing = await prisma.menuItem.findUnique({ where: { id } });
         if (!existing) {
             return res.status(404).json({ error: 'Menu item not found' });
         }
 
-        // Verify vendor if changing
-        if (vendorId && vendorId !== existing.vendorId) {
+        // F-4: ownership check for VENDOR role
+        if (isVendor) {
+            if (!req.user?.vendorId) {
+                return res.status(403).json({ error: 'Vendor account is not bound to a vendor' });
+            }
+            if (existing.vendorId !== req.user.vendorId) {
+                return res.status(403).json({ error: 'FORBIDDEN', message: 'Cannot modify another vendor\'s menu item' });
+            }
+            // VENDOR cannot reassign ownership
+            if (vendorId && vendorId !== req.user.vendorId) {
+                return res.status(403).json({ error: 'FORBIDDEN', message: 'Cannot reassign vendorId' });
+            }
+        }
+
+        // Verify vendor if changing (admin only path)
+        if (isAdmin && vendorId && vendorId !== existing.vendorId) {
             const vendor = await prisma.vendor.findUnique({ where: { id: vendorId } });
             if (!vendor) {
                 return res.status(400).json({ error: 'Vendor not found' });
@@ -234,12 +284,21 @@ router.put('/:id', authMiddleware, adminMiddleware, upload.single('image'), asyn
 
 /**
  * DELETE /api/menu-items/:id
- * Delete a menu item (Admin only)
- * Automatically removes from all weekly menus (cascade delete)
+ * Delete a menu item
+ *
+ * F-4 (Wave 4): same ownership rule as PUT. VENDOR can only delete
+ * their own items. ADMIN can delete any.
  */
-router.delete('/:id', authMiddleware, adminMiddleware, async (req: AuthRequest, res: Response) => {
+router.delete('/:id', authMiddleware, async (req: AuthRequest, res: Response) => {
     try {
         const { id } = req.params;
+
+        const isAdmin = req.user?.role === 'ADMIN';
+        const isVendor = req.user?.role === 'VENDOR';
+
+        if (!isAdmin && !isVendor) {
+            return res.status(403).json({ error: 'Admin or Vendor access required' });
+        }
 
         const existing = await prisma.menuItem.findUnique({
             where: { id },
@@ -248,6 +307,16 @@ router.delete('/:id', authMiddleware, adminMiddleware, async (req: AuthRequest, 
 
         if (!existing) {
             return res.status(404).json({ error: 'Menu item not found' });
+        }
+
+        // F-4: VENDOR ownership check
+        if (isVendor) {
+            if (!req.user?.vendorId) {
+                return res.status(403).json({ error: 'Vendor account is not bound to a vendor' });
+            }
+            if (existing.vendorId !== req.user.vendorId) {
+                return res.status(403).json({ error: 'FORBIDDEN', message: 'Cannot delete another vendor\'s menu item' });
+            }
         }
 
         // Cascade delete: Remove from all weekly menus first

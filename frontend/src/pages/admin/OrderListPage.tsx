@@ -4,6 +4,7 @@ import { format } from 'date-fns';
 import { id } from 'date-fns/locale';
 import { api } from '../../contexts/AuthContext';
 import { useSSERefresh, ORDER_EVENTS } from '../../contexts/SSEContext';
+import { getLocalDateString, addDays } from '../../utils/dateHelpers';
 import {
     ListOrdered,
     CalendarDays,
@@ -192,7 +193,7 @@ export default function OrderListPage() {
 
     const getDynamicTitle = () => {
         const today = getLocalDateString();
-        const tomorrow = getLocalDateString(new Date(Date.now() + 24 * 60 * 60 * 1000));
+        const tomorrow = addDays(today, 1);
 
         if (selectedDate === today) return 'Order Hari Ini';
         if (selectedDate === tomorrow) return 'Order Besok';

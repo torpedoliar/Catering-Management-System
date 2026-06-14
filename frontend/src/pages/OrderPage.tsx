@@ -4,6 +4,7 @@ import { useAuth, api } from '../contexts/AuthContext';
 import { useSSE, useSSERefresh, ORDER_EVENTS, USER_EVENTS, HOLIDAY_EVENTS, SHIFT_EVENTS, SETTINGS_EVENTS } from '../contexts/SSEContext';
 import { Clock, AlertTriangle, CheckCircle2, Ban, Loader2, Download, Wifi, XCircle, Sparkles, CalendarDays, Check, X, MapPin } from 'lucide-react';
 import toast from 'react-hot-toast';
+import { getLocalDateString } from '../utils/dateHelpers';
 
 interface Shift {
     id: string;
@@ -57,14 +58,6 @@ export default function OrderPage() {
     const [selectedShift, setSelectedShift] = useState<string>('');
     const [canteens, setCanteens] = useState<Canteen[]>([]);
     const [selectedCanteen, setSelectedCanteen] = useState<string>('');
-
-    // Helper to format date as YYYY-MM-DD in local timezone (avoids UTC date shift)
-    const getLocalDateString = (date: Date = new Date()): string => {
-        const year = date.getFullYear();
-        const month = (date.getMonth() + 1).toString().padStart(2, '0');
-        const day = date.getDate().toString().padStart(2, '0');
-        return `${year}-${month}-${day}`;
-    };
 
     const [selectedDate] = useState<string>(getLocalDateString());
     const [maxOrderDaysAhead, setMaxOrderDaysAhead] = useState(7);
@@ -404,13 +397,11 @@ export default function OrderPage() {
     }, [isBulkMode, selectedDates, availableDates, shifts]);
 
     const isCancelLocked = useCallback((order: Order) => {
-        const orderDateObj = new Date(order.orderDate);
-        orderDateObj.setHours(0, 0, 0, 0);
         const now = new Date();
-        const todayNormalized = new Date(now);
-        todayNormalized.setHours(0, 0, 0, 0);
+        const orderKey = order.orderDate.slice(0, 10);
+        const todayKey = getLocalDateString(now);
 
-        if (orderDateObj.getTime() === todayNormalized.getTime()) {
+        if (orderKey === todayKey) {
             const [startHour, startMin] = order.shift.startTime.split(':').map(Number);
             const shiftStartObj = new Date(now);
             shiftStartObj.setHours(startHour, startMin, 0, 0);

@@ -21,12 +21,15 @@ export const handleApiError = (error: any, customMessage?: string) => {
 
         // Handle specific status codes
         if (status === 401) {
-            // Only redirect if not already on login page
-            if (!window.location.pathname.includes('/login')) {
-                setTimeout(() => {
-                    window.location.href = '/login';
-                }, 1500);
-            }
+            // FE-9 (Wave 4): do NOT hard-redirect. The AuthContext
+            // response interceptor already attempts a refresh; if
+            // that fails it dispatches 'force-logout' which clears
+            // state. A second redirect here races the interceptor and
+            // can dump a transiently-unauthenticated user to /login
+            // while a refresh is in flight. The toast message still
+            // tells the user the session ended; navigation is owned
+            // by the AuthContext (or by the route guard once it
+            // sees the cleared state).
         }
 
         return message;
