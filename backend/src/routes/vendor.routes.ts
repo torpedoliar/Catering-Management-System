@@ -134,9 +134,9 @@ router.get('/weekly-summary', authMiddleware, vendorMiddleware, async (req: Auth
                         year,
                         menuItem: { vendorId: vendorId! },
                     },
-                    select: { dayOfWeek: true, shiftId: true },
+                    select: { weekNumber: true, dayOfWeek: true, shiftId: true },
                 })
-                : Promise.resolve([] as Array<{ dayOfWeek: number; shiftId: string | null }>),
+                : Promise.resolve([] as Array<{ weekNumber: number; dayOfWeek: number; shiftId: string | null }>),
             prisma.holiday.findMany({
                 where: {
                     date: { gte: start, lte: end },
@@ -146,15 +146,15 @@ router.get('/weekly-summary', authMiddleware, vendorMiddleware, async (req: Auth
             })
         ]);
 
-        // Build a set of (dayOfWeek, shiftId) keys that this vendor "owns"
-        // for the requested week. Order has orderDate (Date) + shiftId — we
-        // match by dayOfWeek(of orderDate) + shiftId. Only the rows whose
-        // menuItem was pinned via WeeklyMenu are counted as the vendor's
-        // orders. Any order outside those pinned slots is treated as
-        // admin-picked (not vendor's pick) and excluded.
+        // Build a set of (weekNumber, dayOfWeek, shiftId) keys that this
+        // vendor "owns" for the requested week. Order has orderDate (Date)
+        // + shiftId — we match by (weekNumber(orderDate), dayOfWeek, shiftId).
+        // Only rows whose menuItem was pinned via WeeklyMenu are counted as
+        // the vendor's orders. Any order outside those pinned slots is
+        // treated as admin-picked (not the vendor's pick) and excluded.
         const vendorSlotSet = new Set<string>();
         for (const wm of weeklyMenusByVendor) {
-            if (wm.shiftId) vendorSlotSet.add(`${wm.dayOfWeek}|${wm.shiftId}`);
+            if (wm.shiftId) vendorSlotSet.add(`${wm.weekNumber}|${wm.dayOfWeek}|${wm.shiftId}`);
         }
 
         // Unscoped (ADMIN) order fetch.
@@ -176,7 +176,8 @@ router.get('/weekly-summary', authMiddleware, vendorMiddleware, async (req: Auth
         const orders = isVendor
             ? allOrders.filter(o => {
                 const dow = o.orderDate.getDay();
-                return vendorSlotSet.has(`${dow}|${o.shiftId}`);
+                const weekNum = getWeekNumber(o.orderDate);
+                return vendorSlotSet.has(`${weekNum}|${dow}|${o.shiftId}`);
             })
             : allOrders;
 
