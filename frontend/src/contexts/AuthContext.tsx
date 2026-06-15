@@ -92,6 +92,15 @@ api.interceptors.response.use(
                 await Preferences.set({ key: 'token', value: newAccessToken });
                 memoryToken = newAccessToken;
 
+                // F-3: when refresh-token rotation is enabled (env or DB flag),
+                // the server returns a new refreshToken in the body for native
+                // clients. Persist it to Capacitor Preferences — otherwise the
+                // next refresh reuses the now-revoked old token, which trips
+                // family-revoke and force-logs the user out of every device.
+                if (isNativePlatform && res.data.refreshToken) {
+                    await Preferences.set({ key: 'refreshToken', value: res.data.refreshToken });
+                }
+
                 processQueue(null, newAccessToken);
 
                 originalRequest.headers.Authorization = `Bearer ${newAccessToken}`;

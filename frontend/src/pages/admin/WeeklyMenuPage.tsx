@@ -1,5 +1,5 @@
-import { useState, useEffect, useCallback } from 'react';
-import { ChevronLeft, ChevronRight, Copy, Trash2, Pizza, Store, Plus, Edit2, Image, X } from 'lucide-react';
+import { useState, useEffect, useCallback, useMemo } from 'react';
+import { ChevronLeft, ChevronRight, Copy, Trash2, Pizza, Store, Plus, Edit2, Image, X, Search } from 'lucide-react';
 import { api } from '../../contexts/AuthContext';
 import { useSSERefresh, VENDOR_EVENTS, MENU_EVENTS } from '../../contexts/SSEContext';
 import toast from 'react-hot-toast';
@@ -86,6 +86,20 @@ export default function WeeklyMenuPage() {
     const [loading, setLoading] = useState(true);
     const [selectedWeek, setSelectedWeek] = useState<{ week: number; year: number } | null>(null);
     const [showMenuSelector, setShowMenuSelector] = useState<{ dayOfWeek: number; shiftId: string | null; shiftIds?: string[] } | null>(null);
+    const [menuSearch, setMenuSearch] = useState<string>('');
+    const [menuCategoryFilter, setMenuCategoryFilter] = useState<string>('all');
+
+    const closeMenuSelector = useCallback(() => {
+        setShowMenuSelector(null);
+        setMenuSearch('');
+        setMenuCategoryFilter('all');
+    }, []);
+
+    const filteredMenuItems = useMemo(() => menuItems.filter(i => {
+        const matchCat = menuCategoryFilter === 'all' || i.category === menuCategoryFilter;
+        const matchSearch = menuSearch.trim() === '' || i.name.toLowerCase().includes(menuSearch.trim().toLowerCase());
+        return matchCat && matchSearch;
+    }), [menuItems, menuSearch, menuCategoryFilter]);
     const [showCopyModal, setShowCopyModal] = useState(false);
     const [copyTarget, setCopyTarget] = useState({ week: 1, year: 2025 });
     const [menuMode, setMenuMode] = useState<'SAME_ALL_SHIFTS' | 'DIFFERENT_PER_SHIFT'>('SAME_ALL_SHIFTS');
@@ -174,7 +188,7 @@ export default function WeeklyMenuPage() {
                     menuItemId
                 });
             }
-            setShowMenuSelector(null);
+            closeMenuSelector();
             toast.success('Menu berhasil ditambahkan');
             loadData();
         } catch (error) {
@@ -544,43 +558,95 @@ export default function WeeklyMenuPage() {
                     <div className="bg-white rounded-2xl w-full max-w-2xl max-h-[80vh] overflow-hidden">
                         <div className="p-4 border-b border-slate-100 flex items-center justify-between">
                             <h2 className="text-lg font-semibold text-slate-800">Pilih Menu</h2>
-                            <button onClick={() => setShowMenuSelector(null)} className="p-1 rounded hover:bg-slate-100">
+                            <button onClick={closeMenuSelector} className="p-1 rounded hover:bg-slate-100">
                                 <X className="w-5 h-5" />
                             </button>
                         </div>
-                        <div className="p-4 overflow-y-auto max-h-[60vh]">
-                            {menuItems.length > 0 ? (
-                                <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
-                                    {menuItems.map(item => (
+                        {menuItems.length > 0 && (
+                            <div className="p-4 border-b border-slate-100 space-y-3">
+                                <div className="relative">
+                                    <Search className="w-4 h-4 text-slate-400 absolute left-3 top-1/2 -translate-y-1/2" />
+                                    <input
+                                        type="text"
+                                        value={menuSearch}
+                                        onChange={e => setMenuSearch(e.target.value)}
+                                        placeholder="Cari menu..."
+                                        className="w-full pl-9 pr-3 py-2 border border-slate-200 rounded-lg text-sm focus:outline-none focus:border-teal-400"
+                                    />
+                                </div>
+                                <div className="flex flex-wrap gap-1.5">
+                                    <button
+                                        onClick={() => setMenuCategoryFilter('all')}
+                                        className={`px-3 py-1 text-xs rounded-full transition-colors ${
+                                            menuCategoryFilter === 'all'
+                                                ? 'bg-teal-500 text-white'
+                                                : 'bg-slate-100 text-slate-600 hover:bg-slate-200'
+                                        }`}
+                                    >
+                                        Semua
+                                    </button>
+                                    {categories.map(c => (
                                         <button
-                                            key={item.id}
-                                            onClick={() => setMenu(showMenuSelector.dayOfWeek, showMenuSelector.shiftId, item.id, showMenuSelector.shiftIds)}
-                                            className="p-3 border border-slate-200 rounded-xl hover:border-teal-400 hover:bg-teal-50 transition-colors text-left"
+                                            key={c}
+                                            onClick={() => setMenuCategoryFilter(c)}
+                                            className={`px-3 py-1 text-xs rounded-full transition-colors ${
+                                                menuCategoryFilter === c
+                                                    ? 'bg-teal-500 text-white'
+                                                    : 'bg-slate-100 text-slate-600 hover:bg-slate-200'
+                                            }`}
                                         >
-                                            {item.imageUrl ? (
-                                                <img src={item.imageUrl} alt="" className="w-full h-20 object-cover rounded-lg mb-2" />
-                                            ) : (
-                                                <div className="w-full h-20 bg-slate-100 rounded-lg mb-2 flex items-center justify-center">
-                                                    <Pizza className="w-8 h-8 text-slate-300" />
-                                                </div>
-                                            )}
-                                            <p className="text-sm font-medium text-slate-800 line-clamp-2">{item.name}</p>
-                                            <p className="text-xs text-slate-400 mt-1">{item.vendor.name}</p>
+                                            {c}
                                         </button>
                                     ))}
                                 </div>
+                            </div>
+                        )}
+                        <div className="p-4 overflow-y-auto max-h-[60vh]">
+                            {menuItems.length > 0 ? (
+                                filteredMenuItems.length > 0 ? (
+                                    <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
+                                        {filteredMenuItems.map(item => (
+                                            <button
+                                                key={item.id}
+                                                onClick={() => setMenu(showMenuSelector.dayOfWeek, showMenuSelector.shiftId, item.id, showMenuSelector.shiftIds)}
+                                                className="p-3 border border-slate-200 rounded-xl hover:border-teal-400 hover:bg-teal-50 transition-colors text-left"
+                                            >
+                                                {item.imageUrl ? (
+                                                    <img src={item.imageUrl} alt="" className="w-full h-20 object-cover rounded-lg mb-2" />
+                                                ) : (
+                                                    <div className="w-full h-20 bg-slate-100 rounded-lg mb-2 flex items-center justify-center">
+                                                        <Pizza className="w-8 h-8 text-slate-300" />
+                                                    </div>
+                                                )}
+                                                <p className="text-sm font-medium text-slate-800 line-clamp-2">{item.name}</p>
+                                                <p className="text-xs text-slate-400 mt-1">{item.vendor.name}</p>
+                                            </button>
+                                        ))}
+                                    </div>
+                                ) : (
+                                    <div className="text-center py-8">
+                                        <Search className="w-12 h-12 mx-auto mb-4 text-slate-300" />
+                                        <p className="text-slate-500">Tidak ada menu yang cocok dengan filter</p>
+                                        <button
+                                            onClick={() => { setMenuSearch(''); setMenuCategoryFilter('all'); }}
+                                            className="mt-4 btn-secondary"
+                                        >
+                                            Reset Filter
+                                        </button>
+                                    </div>
+                                )
                             ) : (
                                 <div className="text-center py-8">
                                     <Pizza className="w-12 h-12 mx-auto mb-4 text-slate-300" />
                                     <p className="text-slate-500">Belum ada menu</p>
-                                    <button onClick={() => { setShowMenuSelector(null); openMenuItemForm(); }} className="mt-4 btn-primary">
+                                    <button onClick={() => { closeMenuSelector(); openMenuItemForm(); }} className="mt-4 btn-primary">
                                         Tambah Menu Baru
                                     </button>
                                 </div>
                             )}
                         </div>
                         <div className="p-4 border-t border-slate-100">
-                            <button onClick={() => setShowMenuSelector(null)} className="w-full btn-secondary">
+                            <button onClick={closeMenuSelector} className="w-full btn-secondary">
                                 Batal
                             </button>
                         </div>

@@ -27,6 +27,7 @@ import {
     Bell,
     Mail,
     Timer,
+    Shield,
     ChevronDown,
     ChevronRight,
     Activity,
@@ -110,6 +111,7 @@ export default function Layout({ children }: LayoutProps) {
         { path: '/admin/shifts', icon: Clock, label: 'Konfigurasi Shift' },
         { path: '/admin/audit-log', icon: ScrollText, label: 'Log Audit' },
         { path: '/admin/time-settings', icon: Timer, label: 'Pengaturan Waktu' },
+        { path: '/admin/security', icon: Shield, label: 'Keamanan' },
         { path: '/admin/email-settings', icon: Mail, label: 'Email Settings' },
         { path: '/admin/branding', icon: Palette, label: 'Branding' },
     ];
