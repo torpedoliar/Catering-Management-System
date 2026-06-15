@@ -97,15 +97,22 @@ router.get('/weekly-summary', authMiddleware, vendorMiddleware, async (req: Auth
         const canteenWhere = isVendor
             ? { isActive: true }
             : { isActive: true };
-        // For VENDOR, the order filter scopes via the menuItem the user ordered
-        // (every order has a menuItemId that resolves to a MenuItem owned by
-        // some vendor). For ADMIN, no extra filter.
+        // Vendor scope: the Order table has no direct menuItemId. The link
+        // to a vendor runs through WeeklyMenu: for a given (weekNumber, year,
+        // dayOfWeek, shiftId) the admin/admin UI pins a menuItem. An order
+        // implicitly references that pinned menuItem by sharing those 4 keys.
+        // We resolve vendor scope by joining via WeeklyMenu matching those
+        // 4 keys with menuItem.vendorId = self.
+        //
+        // Implementation: pull this week's WeeklyMenu rows for the vendor's
+        // own menu items, derive the (date, shiftId) keys, then filter
+        // orders where (orderDate, shiftId) matches any of those keys.
         const orderMenuItemFilter = isVendor
             ? { menuItem: { vendorId: vendorId! } }
             : {};
 
         // Fetch all required data in parallel
-        const [shifts, canteens, orders, holidays] = await Promise.all([
+        const [shifts, canteens, weeklyMenusByVendor, holidays] = await Promise.all([
             prisma.shift.findMany({
                 where: { isActive: true },
                 orderBy: { startTime: 'asc' },
@@ -116,22 +123,20 @@ router.get('/weekly-summary', authMiddleware, vendorMiddleware, async (req: Auth
                 orderBy: { name: 'asc' },
                 select: { id: true, name: true, location: true }
             }),
-            prisma.order.findMany({
-                where: {
-                    orderDate: { gte: start, lte: end },
-                    // F-2: vendor scope via menuItem chain (vendor provides menus,
-                    // not canteens). For ADMIN, no extra filter.
-                    ...(isVendor ? orderMenuItemFilter : {}),
-                },
-                select: {
-                    id: true,
-                    orderDate: true,
-                    shiftId: true,
-                    canteenId: true,
-                    status: true,
-                    shift: { select: { mealPrice: true } }
-                }
-            }),
+            // Vendor scope: WeeklyMenu rows whose menuItem belongs to this
+            // vendor, within the requested week. We'll filter orders in-memory
+            // against these (date, shiftId) keys since the Order table has no
+            // direct menuItemId FK.
+            isVendor
+                ? prisma.weeklyMenu.findMany({
+                    where: {
+                        weekNumber: week,
+                        year,
+                        menuItem: { vendorId: vendorId! },
+                    },
+                    select: { dayOfWeek: true, shiftId: true },
+                })
+                : Promise.resolve([] as Array<{ dayOfWeek: number; shiftId: string | null }>),
             prisma.holiday.findMany({
                 where: {
                     date: { gte: start, lte: end },
@@ -140,6 +145,44 @@ router.get('/weekly-summary', authMiddleware, vendorMiddleware, async (req: Auth
                 select: { date: true, name: true, shiftId: true }
             })
         ]);
+
+        // Build a set of (dayOfWeek, shiftId) keys that this vendor "owns"
+        // for the requested week. Order has orderDate (Date) + shiftId — we
+        // match by dayOfWeek(of orderDate) + shiftId. Only the rows whose
+        // menuItem was pinned via WeeklyMenu are counted as the vendor's
+        // orders. Any order outside those pinned slots is treated as
+        // admin-picked (not vendor's pick) and excluded.
+        const vendorSlotSet = new Set<string>();
+        for (const wm of weeklyMenusByVendor) {
+            if (wm.shiftId) vendorSlotSet.add(`${wm.dayOfWeek}|${wm.shiftId}`);
+        }
+
+        // Unscoped (ADMIN) order fetch.
+        const allOrders = await prisma.order.findMany({
+            where: {
+                orderDate: { gte: start, lte: end },
+            },
+            select: {
+                id: true,
+                orderDate: true,
+                shiftId: true,
+                canteenId: true,
+                status: true,
+                shift: { select: { mealPrice: true } }
+            }
+        });
+
+        // Filter orders by vendor slot if applicable.
+        const orders = isVendor
+            ? allOrders.filter(o => {
+                const dow = o.orderDate.getDay();
+                return vendorSlotSet.has(`${dow}|${o.shiftId}`);
+            })
+            : allOrders;
+
+        // Canteens list is intentionally NOT scoped by vendor — admin
+        // operations spread orders across all active canteens and the
+        // vendor just needs to see all of them in the breakdown.
 
         // Create holiday map
         const holidayMap: Record<string, string> = {};
@@ -397,19 +440,18 @@ router.get('/pickup-stats', authMiddleware, vendorMiddleware, async (req: AuthRe
             : new Date(now.getFullYear(), now.getMonth(), now.getDate());
         end.setHours(23, 59, 59, 999);
 
-        // Fetch shifts and orders
-        const [shifts, orders] = await Promise.all([
+        // Fetch shifts (unscoped) and orders; vendor scoping is applied
+        // in-memory below via WeeklyMenu join (Order has no direct
+        // menuItemId FK).
+        const [shifts, allOrders] = await Promise.all([
             prisma.shift.findMany({
                 where: { isActive: true },
                 orderBy: { startTime: 'asc' },
-                select: { id: true, name: true, startTime: true, endTime: true, breakStartTime: true, breakEndTime: true, hasSpecialDayBreaks: true, dayBreaks: { select: { dayOfWeek: true, breakStartTime: true, breakEndTime: true } } }
+                select: { id: true, name: true, startTime: true, endTime: true, mealPrice: true, breakStartTime: true, breakEndTime: true, hasSpecialDayBreaks: true, dayBreaks: { select: { dayOfWeek: true, breakStartTime: true, breakEndTime: true } } }
             }),
             prisma.order.findMany({
                 where: {
                     orderDate: { gte: start, lte: end },
-                    // F-2: vendor scope via menuItem chain (vendor provides menus,
-                    // not canteens). Same rule as weekly-summary.
-                    ...(isVendor ? { menuItem: { vendorId: vendorId! } } : {}),
                 },
                 select: {
                     id: true,
@@ -419,6 +461,30 @@ router.get('/pickup-stats', authMiddleware, vendorMiddleware, async (req: AuthRe
                 }
             })
         ]);
+
+        // Vendor scope (pickup-stats): match orders against WeeklyMenu rows
+        // whose menuItem belongs to this vendor. Same week/day/shift key
+        // scheme as weekly-summary.
+        let orders = allOrders;
+        if (isVendor) {
+            const year = start.getFullYear();
+            const vendorMenus = await prisma.weeklyMenu.findMany({
+                where: {
+                    year,
+                    menuItem: { vendorId: vendorId! },
+                },
+                select: { weekNumber: true, dayOfWeek: true, shiftId: true },
+            });
+            const slotSet = new Set<string>();
+            for (const wm of vendorMenus) {
+                if (wm.shiftId) slotSet.add(`${wm.weekNumber}|${wm.dayOfWeek}|${wm.shiftId}`);
+            }
+            orders = allOrders.filter(o => {
+                const dow = o.orderDate.getDay();
+                const weekNum = getWeekNumber(o.orderDate);
+                return slotSet.has(`${weekNum}|${dow}|${o.shiftId}`);
+            });
+        }
 
         // Generate all dates in range
         const dates: Date[] = [];
