@@ -231,12 +231,15 @@ router.post('/bulk', authMiddleware, blockVendorMiddleware, blacklistMiddleware,
                 // C-R1: capacity check + create in a SERIALIZABLE transaction
                 // to prevent overbooking when two bulk requests race for the
                 // last slot.
+                //
+                // canteenId is a scalar FK on Order, not a relation. Pass
+                // the FK directly (see order/create.ts for the same fix).
                 const orderData: any = {
                     userId,
                     shiftId,
                     qrCode: qrCodeData,
                     mealPrice: shift.mealPrice,
-                    canteen: canteenId ? { connect: { id: canteenId } } : undefined,
+                    canteenId: canteenId || null,
                 };
 
                 let order;

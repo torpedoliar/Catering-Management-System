@@ -319,12 +319,14 @@ router.post('/', authMiddleware, validate(createOrderSchema), async (req: AuthRe
         });
 
         // C-R1: capacity check + create in SERIALIZABLE transaction.
+        // canteenId is a scalar FK on Order, not a relation (see
+        // order/create.ts and order/bulk.ts for the same fix).
         const orderData: any = {
             userId,
             shiftId,
             qrCode: qrCodeData,
             mealPrice: shift.mealPrice,
-            canteen: canteenId ? { connect: { id: canteenId } } : undefined,
+            canteenId: canteenId || null,
         };
 
         let order;

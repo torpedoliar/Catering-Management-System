@@ -717,7 +717,14 @@ export async function getTimeInfo(): Promise<TimeInfo> {
         timezone: settings.ntpTimezone,
         ntpEnabled: settings.ntpEnabled,
         ntpServer: settings.ntpServer,
-        lastSync: settings.ntpLastSync?.toISOString() ?? null,
+        // ntpLastSync is Date when freshly read from Prisma, but a string
+        // when read from Redis cache (JSON serialization strips Date type).
+        // Coerce before .toISOString() to keep the endpoint crash-free.
+        lastSync: settings.ntpLastSync
+            ? (settings.ntpLastSync instanceof Date
+                ? settings.ntpLastSync.toISOString()
+                : new Date(settings.ntpLastSync).toISOString())
+            : null,
         offset: settings.ntpOffset,
         isSynced: lastSyncTime !== null
     };

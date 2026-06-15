@@ -150,12 +150,18 @@ router.post('/', authMiddleware, blockVendorMiddleware, blacklistMiddleware, api
         // C-R1: capacity check + create inside SERIALIZABLE transaction. The
         // old TOCTOU pattern (count + create as separate calls) allowed
         // concurrent requests for the last slot to both pass.
+        //
+        // Note: `canteenId` is a scalar column (not a relation) on Order.
+        // Prisma rejects `{ canteen: { connect: { id } } }` payloads with
+        // "Unknown argument `canteen`. Did you mean `canteenId`?" because the
+        // relation field is not exposed on the OrderCreateInput for this
+        // particular model setup. Pass the FK directly.
         const orderData: any = {
             userId,
             shiftId,
             qrCode: qrCodeData,
             mealPrice: shift.mealPrice,
-            canteen: canteenId ? { connect: { id: canteenId } } : undefined,
+            canteenId: canteenId || null,
         };
 
         let order;
