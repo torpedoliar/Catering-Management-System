@@ -97,9 +97,9 @@ router.get('/weekly-summary', authMiddleware, vendorMiddleware, async (req: Auth
         const canteenWhere = isVendor
             ? { isActive: true }
             : { isActive: true };
-        // For VENDOR, the order filter scopes via menuItem.vendorId instead
-        // of canteen.vendorId. Canteens are still shown (all active), but the
-        // counts reflect only orders for this vendor's menu items.
+        // For VENDOR, the order filter scopes via the menuItem the user ordered
+        // (every order has a menuItemId that resolves to a MenuItem owned by
+        // some vendor). For ADMIN, no extra filter.
         const orderMenuItemFilter = isVendor
             ? { menuItem: { vendorId: vendorId! } }
             : {};

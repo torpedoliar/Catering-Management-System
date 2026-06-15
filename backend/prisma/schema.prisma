@@ -277,11 +277,6 @@ model Order {
   @@index([shiftId])
   @@index([canteenId])
   @@index([orderDate])
-  @@index([status])
-  @@index([qrCode])
-  @@index([checkedInById])
-  // Composite indexes for common query patterns
-  @@index([orderDate, status])         // Dashboard filtering by date and status
   @@index([userId, orderDate])         // User's orders by date
   @@index([userId, orderDate, status]) // D-4: covers "today's order" + manual check-in duplicate lookup
   @@index([shiftId, orderDate, status]) // Shift orders on specific date

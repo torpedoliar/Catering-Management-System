@@ -152,7 +152,7 @@ router.post('/', authMiddleware, blockVendorMiddleware, blacklistMiddleware, api
         // concurrent requests for the last slot to both pass.
         //
         // Note: `canteenId` is a scalar column (not a relation) on Order.
-        // Prisma rejects `{ canteen: { connect: { id } } }` payloads with
+        // Prisma rejects `{ canteen: { connect: { id } }` payloads with
         // "Unknown argument `canteen`. Did you mean `canteenId`?" because the
         // relation field is not exposed on the OrderCreateInput for this
         // particular model setup. Pass the FK directly.
