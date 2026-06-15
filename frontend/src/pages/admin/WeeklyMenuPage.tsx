@@ -88,18 +88,31 @@ export default function WeeklyMenuPage() {
     const [showMenuSelector, setShowMenuSelector] = useState<{ dayOfWeek: number; shiftId: string | null; shiftIds?: string[] } | null>(null);
     const [menuSearch, setMenuSearch] = useState<string>('');
     const [menuCategoryFilter, setMenuCategoryFilter] = useState<string>('all');
+    const [menuVendorFilter, setMenuVendorFilter] = useState<string>('all');
 
     const closeMenuSelector = useCallback(() => {
         setShowMenuSelector(null);
         setMenuSearch('');
         setMenuCategoryFilter('all');
+        setMenuVendorFilter('all');
     }, []);
+
+    // Build the vendor list from menu items themselves (so inactive vendors
+    // with zero items never appear). Sorted by name for stable display.
+    const availableVendors = useMemo(() => {
+        const seen = new Map<string, string>();
+        menuItems.forEach(i => { if (!seen.has(i.vendorId)) seen.set(i.vendorId, i.vendor.name); });
+        return Array.from(seen.entries())
+            .map(([id, name]) => ({ id, name }))
+            .sort((a, b) => a.name.localeCompare(b.name));
+    }, [menuItems]);
 
     const filteredMenuItems = useMemo(() => menuItems.filter(i => {
         const matchCat = menuCategoryFilter === 'all' || i.category === menuCategoryFilter;
+        const matchVendor = menuVendorFilter === 'all' || i.vendorId === menuVendorFilter;
         const matchSearch = menuSearch.trim() === '' || i.name.toLowerCase().includes(menuSearch.trim().toLowerCase());
-        return matchCat && matchSearch;
-    }), [menuItems, menuSearch, menuCategoryFilter]);
+        return matchCat && matchVendor && matchSearch;
+    }), [menuItems, menuSearch, menuCategoryFilter, menuVendorFilter]);
     const [showCopyModal, setShowCopyModal] = useState(false);
     const [copyTarget, setCopyTarget] = useState({ week: 1, year: 2025 });
     const [menuMode, setMenuMode] = useState<'SAME_ALL_SHIFTS' | 'DIFFERENT_PER_SHIFT'>('SAME_ALL_SHIFTS');
@@ -599,6 +612,39 @@ export default function WeeklyMenuPage() {
                                         </button>
                                     ))}
                                 </div>
+                                {availableVendors.length > 1 && (
+                                    <div className="space-y-1.5">
+                                        <div className="flex items-center gap-1.5 text-xs text-slate-500">
+                                            <Store className="w-3.5 h-3.5" />
+                                            <span className="font-medium">Vendor</span>
+                                        </div>
+                                        <div className="flex flex-wrap gap-1.5">
+                                            <button
+                                                onClick={() => setMenuVendorFilter('all')}
+                                                className={`px-3 py-1 text-xs rounded-full transition-colors ${
+                                                    menuVendorFilter === 'all'
+                                                        ? 'bg-purple-500 text-white'
+                                                        : 'bg-slate-100 text-slate-600 hover:bg-slate-200'
+                                                }`}
+                                            >
+                                                Semua
+                                            </button>
+                                            {availableVendors.map(v => (
+                                                <button
+                                                    key={v.id}
+                                                    onClick={() => setMenuVendorFilter(v.id)}
+                                                    className={`px-3 py-1 text-xs rounded-full transition-colors ${
+                                                        menuVendorFilter === v.id
+                                                            ? 'bg-purple-500 text-white'
+                                                            : 'bg-slate-100 text-slate-600 hover:bg-slate-200'
+                                                    }`}
+                                                >
+                                                    {v.name}
+                                                </button>
+                                            ))}
+                                        </div>
+                                    </div>
+                                )}
                             </div>
                         )}
                         <div className="p-4 overflow-y-auto max-h-[60vh]">
@@ -628,7 +674,7 @@ export default function WeeklyMenuPage() {
                                         <Search className="w-12 h-12 mx-auto mb-4 text-slate-300" />
                                         <p className="text-slate-500">Tidak ada menu yang cocok dengan filter</p>
                                         <button
-                                            onClick={() => { setMenuSearch(''); setMenuCategoryFilter('all'); }}
+                                            onClick={() => { setMenuSearch(''); setMenuCategoryFilter('all'); setMenuVendorFilter('all'); }}
                                             className="mt-4 btn-secondary"
                                         >
                                             Reset Filter
