@@ -158,8 +158,15 @@ router.post('/login', validate(loginSchema), async (req, res) => {
             return res.status(500).json({ error: 'Server configuration error' });
         }
 
+        // F-3: include a per-issuance nonce (jti) in the JWT payload so the
+        // resulting hash is unique even when multiple rotations or logins
+        // happen in the same second. Without this, two consecutive
+        // jwt.sign({id, type:'refresh'}, secret, {expiresIn:'30d'}) calls
+        // produce byte-identical tokens (same iat, same payload) — the
+        // rotated new row collides with the previous row's hash on the
+        // unique `token` index and the rotation throws P2002.
         const refreshTokenValue = jwt.sign(
-            { id: user.id, type: 'refresh' },
+            { id: user.id, type: 'refresh', jti: crypto.randomUUID() },
             refreshSecret,
             { expiresIn: '30d', algorithm: 'HS256', issuer: 'catering-api' }
         );
@@ -501,7 +508,7 @@ router.post('/refresh', apiRateLimitMiddleware('default'), async (req, res) => {
             // token's record is created first so we can set replacedById
             // on the old record (self-FK requires the row to exist).
             const newRefreshValue = jwt.sign(
-                { id: user.id, type: 'refresh' },
+                { id: user.id, type: 'refresh', jti: crypto.randomUUID() },
                 refreshSecret,
                 { expiresIn: '30d', algorithm: 'HS256', issuer: 'catering-api' }
             );
