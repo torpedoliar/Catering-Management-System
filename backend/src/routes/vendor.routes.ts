@@ -82,6 +82,12 @@ router.get('/weekly-summary', authMiddleware, vendorMiddleware, async (req: Auth
         // F-2 vendor scoping: VENDOR role only sees their own vendor's
         // data. ADMIN is unconstrained. We build the scope filter once
         // and apply it to the order/canteen queries below.
+        //
+        // Vendor scope is computed via the menu-item chain: VENDOR provides
+        // menus, not canteens (canteen is a separate operational concept that
+        // admin assigns to orders). So a vendor is "active" if they own at
+        // least one MenuItem. Canteen scope is derived from orders whose
+        // menuItemId resolves to a menu item owned by this vendor.
         const isVendor = req.user?.role === 'VENDOR';
         const vendorId = req.user?.vendorId;
         if (isVendor && !vendorId) {
@@ -89,8 +95,14 @@ router.get('/weekly-summary', authMiddleware, vendorMiddleware, async (req: Auth
             return res.status(403).json({ error: 'FORBIDDEN', message: 'Vendor account is not bound to a vendor' });
         }
         const canteenWhere = isVendor
-            ? { isActive: true, vendorId: vendorId! }
+            ? { isActive: true }
             : { isActive: true };
+        // For VENDOR, the order filter scopes via menuItem.vendorId instead
+        // of canteen.vendorId. Canteens are still shown (all active), but the
+        // counts reflect only orders for this vendor's menu items.
+        const orderMenuItemFilter = isVendor
+            ? { menuItem: { vendorId: vendorId! } }
+            : {};
 
         // Fetch all required data in parallel
         const [shifts, canteens, orders, holidays] = await Promise.all([
@@ -107,8 +119,9 @@ router.get('/weekly-summary', authMiddleware, vendorMiddleware, async (req: Auth
             prisma.order.findMany({
                 where: {
                     orderDate: { gte: start, lte: end },
-                    // F-2: scope to vendor's own canteens
-                    ...(isVendor ? { canteen: { is: { vendorId: vendorId! } } } : {}),
+                    // F-2: vendor scope via menuItem chain (vendor provides menus,
+                    // not canteens). For ADMIN, no extra filter.
+                    ...(isVendor ? orderMenuItemFilter : {}),
                 },
                 select: {
                     id: true,
@@ -394,8 +407,9 @@ router.get('/pickup-stats', authMiddleware, vendorMiddleware, async (req: AuthRe
             prisma.order.findMany({
                 where: {
                     orderDate: { gte: start, lte: end },
-                    // F-2: scope to vendor's own canteens
-                    ...(isVendor ? { canteen: { is: { vendorId: vendorId! } } } : {}),
+                    // F-2: vendor scope via menuItem chain (vendor provides menus,
+                    // not canteens). Same rule as weekly-summary.
+                    ...(isVendor ? { menuItem: { vendorId: vendorId! } } : {}),
                 },
                 select: {
                     id: true,
