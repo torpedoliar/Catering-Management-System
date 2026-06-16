@@ -1,8 +1,13 @@
 {
-    "version": "2.6.0",
-    "releaseDate": "2026-06-14",
+    "version": "2.6.6",
+    "releaseDate": "2026-06-16",
     "minDatabaseVersion": "1.2.0",
     "changelog": [
+        "=== 2.6.6 (2026-06-16) — Vendor realtime visibility fix ===",
+        "Fix: /api/vendor/weekly-summary and /api/vendor/pickup-stats now return all realtime orders for VENDOR role (joint-fulfillment model). Previously filtered via WeeklyMenu slot set keyed by (weekNumber, dayOfWeek, shiftId) with menuItem.vendorId = self, which dropped any order whose slot the admin had not pinned to the calling vendor's menu — producing empty vendor dashboards when admin had not fully populated the week.",
+        "Effect: VENDOR sees the same realtime breakdown as ADMIN (per shift, per canteen, per break time).",
+        "Behavior preserved: VENDOR without vendorId binding still 403; ADMIN unchanged; cutoff enforcement unchanged; canteen list still unscoped.",
+        "No schema change. No frontend change.",
         "=== AUDIT REMEDIATION 2.6.0 (5-agent audit, 2026-06-13) ===",
         "Security: 5-agent full code audit completed; 140 findings identified, 30+ fixed in this release",
         "--- Wave 0 — Pattern foundations ---",
