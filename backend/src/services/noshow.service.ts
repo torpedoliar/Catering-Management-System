@@ -171,7 +171,7 @@ export async function processNoShows(): Promise<NoShowResult> {
                 '⚠️ Pelanggaran: Tidak Ambil Makan',
                 `Pesanan ${order.shift.name} Anda hari ini tidak diambil. Strike ke-${updatedUser.noShowCount}. Setelah ${blacklistStrikes} strike, akun akan diblokir.`,
                 'WARNING',
-                order.id
+                { id: order.id, type: 'ORDER' }
             );
 
             // Check if user should be blacklisted
@@ -236,7 +236,7 @@ export async function processNoShows(): Promise<NoShowResult> {
                         '🚫 Akun Diblokir',
                         `Akun Anda telah diblokir hingga ${endDateStr} karena ${updatedUser.noShowCount} kali tidak ambil makan. Semua pesanan aktif dibatalkan otomatis.`,
                         'DANGER',
-                        blacklist.id
+                        { id: blacklist.id, type: 'BLACKLIST' }
                     );
 
                     // 🔔 Push notification to all Admins
@@ -244,7 +244,7 @@ export async function processNoShows(): Promise<NoShowResult> {
                         '🚫 User Auto-Blacklist',
                         `${updatedUser.name} (${updatedUser.noShowCount} strike) diblokir otomatis hingga ${endDateStr}.`,
                         'DANGER',
-                        blacklist.id
+                        { id: blacklist.id, type: 'BLACKLIST' }
                     );
 
                     // Broadcast blacklist event
@@ -282,6 +282,8 @@ export async function processNoShows(): Promise<NoShowResult> {
                 '📊 Laporan No-Show Harian',
                 summary,
                 result.newBlacklists > 0 ? 'DANGER' : 'WARNING'
+                // no related — admin-only summary; bell click resolves to
+                // /admin/dashboard via the admin deep-link helper.
             );
         }
 
@@ -439,7 +441,7 @@ export async function cancelOrdersForBlacklistedUser(
                 '❌ Pesanan Dibatalkan Otomatis',
                 `Pesanan ${order.shift.name} tanggal ${orderDateStr} dibatalkan karena akun diblokir.`,
                 'DANGER',
-                order.id
+                { id: order.id, type: 'ORDER' }
             );
 
             // Broadcast order cancelled event

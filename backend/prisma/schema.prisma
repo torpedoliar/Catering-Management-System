@@ -645,21 +645,35 @@ enum NotificationType {
   DANGER
 }
 
-model Notification {
-  id        String           @id @default(uuid())
-  userId    String
-  title     String
-  message   String
-  type      NotificationType @default(INFO)
-  isRead    Boolean          @default(false)
-  relatedId String?          // For linking to Order, Appeal, etc.
-  createdAt DateTime         @default(now())
+// FE-NOTIF-NAV: Drives the frontend deep-link target. Persisted alongside
+// relatedId so the client can route to /history, /settings, /admin/messages,
+// etc. without string-matching on the title. New column on the existing
+// Notification table — the migration's UPDATE block also backfills legacy
+// rows by parsing the title prefix so old rows still route correctly.
+enum NotificationRelatedType {
+  ORDER
+  BLACKLIST
+  MESSAGE
+  NONE
+}
 
-  user      User             @relation(fields: [userId], references: [id], onDelete: Cascade)
+model Notification {
+  id          String                  @id @default(uuid())
+  userId      String
+  title       String
+  message     String
+  type        NotificationType        @default(INFO)
+  isRead      Boolean                 @default(false)
+  relatedId   String?                 // FK to Order, Blacklist, or Message (polymorphic)
+  relatedType NotificationRelatedType? // Disambiguates the polymorphic relatedId
+  createdAt   DateTime                @default(now())
+
+  user        User                    @relation(fields: [userId], references: [id], onDelete: Cascade)
 
   @@index([userId])
   @@index([isRead])
   @@index([createdAt])
+  @@index([relatedType])
 }
 
 model PushSubscription {

@@ -29,7 +29,7 @@ export const PushService = {
     async registerNativePush() {
         try {
             const { PushNotifications } = await import('@capacitor/push-notifications');
-            
+
             let permStatus = await PushNotifications.checkPermissions();
             if (permStatus.receive === 'prompt') {
                 permStatus = await PushNotifications.requestPermissions();
@@ -52,10 +52,58 @@ export const PushService = {
                          resolve(false);
                     }
                 });
-                
+
                 PushNotifications.addListener('registrationError', (error) => {
                     console.error('[PushService] Error on FCM registration:', error.error);
                     resolve(false);
+                });
+
+                // FE-NOTIF-NAV: cold/warm tap on a FCM notification. The backend
+                // bakes `data.url`, `data.relatedId`, and `data.relatedType`
+                // into the push payload (see backend notification.service.ts);
+                // we route via the same CustomEvent path used by the bell and
+                // SSE toasts, with the role gate in the mapper as a safety net.
+                PushNotifications.addListener('pushNotificationActionPerformed', (action) => {
+                    const data = (action.notification as any)?.data || {};
+                    import('../utils/notificationRoutes').then(({ navigateToUrl, navigateToNotification }) => {
+                        if (data.url) {
+                            navigateToUrl(data.url);
+                        } else {
+                            navigateToNotification({
+                                relatedType: data.relatedType || null,
+                                relatedId: data.relatedId || null,
+                                title: action.notification.title || '',
+                            });
+                        }
+                    }).catch(() => {});
+                });
+
+                // FE-NOTIF-NAV: foreground FCM arrival — surface a toast that
+                // tap-routes the user. The same notification object flows
+                // through the same mapper as the bell.
+                // react-hot-toast@2.4.1's options type does not declare
+                // `onClick` but the runtime accepts it. Cast through unknown.
+                PushNotifications.addListener('pushNotificationReceived', (notif) => {
+                    const data = (notif.notification as any)?.data || {};
+                    import('react-hot-toast').then(({ default: toast }) => {
+                        const opts = {
+                            icon: '🔔',
+                            onClick: () => {
+                                import('../utils/notificationRoutes').then(({ navigateToUrl, navigateToNotification }) => {
+                                    if (data.url) {
+                                        navigateToUrl(data.url);
+                                    } else {
+                                        navigateToNotification({
+                                            relatedType: data.relatedType || null,
+                                            relatedId: data.relatedId || null,
+                                            title: notif.notification.title || '',
+                                        });
+                                    }
+                                }).catch(() => {});
+                            },
+                        } as unknown as Parameters<typeof toast>[1];
+                        toast(notif.notification.title || 'Notification', opts);
+                    }).catch(() => {});
                 });
 
                 // Finally, trigger registration

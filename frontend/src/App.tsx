@@ -1,5 +1,5 @@
-import { BrowserRouter, Routes, Route, Navigate, Outlet } from 'react-router-dom';
-import { lazy, Suspense } from 'react';
+import { BrowserRouter, Routes, Route, Navigate, Outlet, useNavigate } from 'react-router-dom';
+import { lazy, Suspense, useEffect } from 'react';
 import { Toaster } from 'react-hot-toast';
 import { AuthProvider, useAuth } from './contexts/AuthContext';
 import { SSEProvider } from './contexts/SSEContext';
@@ -149,11 +149,48 @@ function AppRoutes() {
     );
 }
 
+/**
+ * FE-NOTIF-NAV: Listens for the `hallofood:navigate` CustomEvent that the
+ * notification consumers (bell, SSE toasts, native local-tap, FCM-tap)
+ * dispatch, and routes through the React Router. Also replays a cold-start
+ * FCM tap: native handlers stash the route in sessionStorage.pendingNav
+ * before React mounts, and we drain it on the first render.
+ */
+function GlobalNavListener() {
+    const navigate = useNavigate();
+    useEffect(() => {
+        const handler = (e: Event) => {
+            const route = (e as CustomEvent<string>).detail;
+            if (typeof route === 'string' && route.startsWith('/')) {
+                navigate(route);
+            }
+        };
+        window.addEventListener('hallofood:navigate', handler);
+
+        // Cold-start replay: if a native handler ran before this component
+        // mounted, it stashed the route here. Consume and clear so a reload
+        // doesn't re-fire the same navigation.
+        try {
+            const pending = sessionStorage.getItem('pendingNav');
+            if (pending) {
+                sessionStorage.removeItem('pendingNav');
+                if (pending.startsWith('/')) navigate(pending);
+            }
+        } catch {
+            // sessionStorage unavailable — ignore.
+        }
+
+        return () => window.removeEventListener('hallofood:navigate', handler);
+    }, [navigate]);
+    return null;
+}
+
 export default function App() {
     return (
         <BrowserRouter future={{ v7_startTransition: true, v7_relativeSplatPath: true }}>
             <AuthProvider>
                 <SSEProvider>
+                    <GlobalNavListener />
                     <AppRoutes />
                     <Toaster
                         position="top-right"

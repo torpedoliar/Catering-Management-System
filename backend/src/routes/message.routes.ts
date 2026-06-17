@@ -230,7 +230,12 @@ router.post('/appeal', authMiddleware, upload.single('photo'), async (req: AuthR
         // Note: Using a basic date string formatter to avoid importing date-fns if not already imported
         const dateStr = new Date(message.orderDate).toLocaleDateString('id-ID', { day: 'numeric', month: 'short', year: 'numeric' });
         const notifMessage = `Sanggahan baru dari ${message.user.name} untuk pesanan tanggal ${dateStr}`;
-        await NotificationService.notifyAdmins(notifTitle, notifMessage, 'WARNING', message.id);
+        await NotificationService.notifyAdmins(
+            notifTitle,
+            notifMessage,
+            'WARNING',
+            { id: message.id, type: 'MESSAGE' }
+        );
 
         res.status(201).json({
             message: 'Sanggahan berhasil diajukan',
@@ -333,7 +338,17 @@ router.put('/:id/resolve', authMiddleware, adminMiddleware, async (req: AuthRequ
                 : `Admin ${adminName} menolak sanggahan Anda.`;
             const notifType = status === 'APPROVED' ? 'SUCCESS' : 'DANGER';
 
-            await NotificationService.notifyUser(resolvedMessage.userId, notifTitle, notifMessage, notifType, resolvedMessage.orderId || undefined);
+            // FE-NOTIF-NAV: appeal resolution points to the order (where the
+            // appeal status badge is rendered inline). If the appeal has no
+            // order (shouldn't happen but defensive), the mapper falls back
+            // to title-prefix matching.
+            await NotificationService.notifyUser(
+                resolvedMessage.userId,
+                notifTitle,
+                notifMessage,
+                notifType,
+                { id: resolvedMessage.orderId || undefined, type: resolvedMessage.orderId ? 'ORDER' : undefined }
+            );
         }
 
         res.json({

@@ -5,6 +5,7 @@ import { useSSERefresh } from '../../contexts/SSEContext';
 import { PushService } from '../../services/push.service';
 import { formatDistanceToNow } from 'date-fns';
 import { id } from 'date-fns/locale';
+import { navigateToNotification, NotificationRelatedType } from '../../utils/notificationRoutes';
 
 interface Notification {
     id: string;
@@ -14,6 +15,7 @@ interface Notification {
     isRead: boolean;
     createdAt: string;
     relatedId?: string | null;
+    relatedType?: NotificationRelatedType | null;
 }
 
 export default function NotificationBell() {
@@ -137,9 +139,28 @@ export default function NotificationBell() {
                         ) : (
                             <div className="divide-y divide-stone-50">
                                 {notifications.map((notif) => (
-                                    <div 
+                                    <div
                                         key={notif.id}
-                                        onClick={() => !notif.isRead && markAsRead(notif.id)}
+                                        // FE-NOTIF-NAV: click marks read + dispatches
+                                        // the hallofood:navigate event. The mapper
+                                        // (utils/notificationRoutes.ts) resolves
+                                        // the route from relatedType (with a
+                                        // title-prefix fallback for legacy rows).
+                                        onClick={() => {
+                                            if (!notif.isRead) markAsRead(notif.id);
+                                            setIsOpen(false);
+                                            navigateToNotification(notif);
+                                        }}
+                                        role="button"
+                                        tabIndex={0}
+                                        onKeyDown={(e) => {
+                                            if (e.key === 'Enter' || e.key === ' ') {
+                                                e.preventDefault();
+                                                if (!notif.isRead) markAsRead(notif.id);
+                                                setIsOpen(false);
+                                                navigateToNotification(notif);
+                                            }
+                                        }}
                                         className={`flex gap-3 p-4 transition-colors cursor-pointer hover:bg-stone-50 ${!notif.isRead ? 'bg-amber-50/30' : ''}`}
                                     >
                                         <div className="flex-shrink-0 mt-0.5">

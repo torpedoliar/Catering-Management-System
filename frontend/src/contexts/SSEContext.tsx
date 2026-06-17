@@ -345,10 +345,41 @@ function showEventToast(eventType: string, data: any, currentUserId: string) {
     // Don't show toast for own actions
     const isOwnAction = data.order?.userId === currentUserId || data.userId === currentUserId;
 
+    // FE-NOTIF-NAV: every business toast is clickable. The onClick builds
+    // a minimal Notification-shaped object from the SSE payload and lets
+    // the shared mapper decide the destination route. Ambient activity
+    // toasts (order:checkin, order:created) keep the user's flow on the
+    // current page by default — they go to `/` or `/history` depending
+    // on whether the event carries a related order.
+    const goTo = (notif: {
+        relatedType?: 'ORDER' | 'BLACKLIST' | 'MESSAGE' | 'NONE' | null;
+        relatedId?: string | null;
+        title?: string;
+    }) => {
+        // Lazy import: keeps the SSE context bundle small for users who
+        // never tap a toast and avoids a circular dep with AuthContext.
+        import('../utils/notificationRoutes').then(({ navigateToNotification }) => {
+            navigateToNotification({
+                relatedType: notif.relatedType ?? null,
+                relatedId: notif.relatedId ?? null,
+                title: notif.title ?? '',
+            });
+        }).catch(() => {});
+    };
+
+    // react-hot-toast@2.4.1 does not declare `onClick` on its options type,
+    // but the runtime accepts any additional property and wires it through
+    // to the underlying toast component. Cast through unknown so we can
+    // pass the handler without breaking the type-checked surface.
+    const withClick = (opts: Record<string, unknown>) => opts as unknown as Parameters<typeof toast>[1];
+
     switch (eventType) {
         case 'order:created':
             if (!isOwnAction) {
-                toast.success(`📦 New order: ${data.order?.user?.name || 'User'}`, { icon: '🍽️' });
+                toast.success(`📦 New order: ${data.order?.user?.name || 'User'}`, withClick({
+                    icon: '🍽️',
+                    onClick: () => goTo({ relatedType: 'ORDER', relatedId: data.order?.id, title: 'order:created' }),
+                }));
             }
             // Cancel reminders on Android when own order is created
             if (isOwnAction && Capacitor.isNativePlatform()) {
@@ -366,11 +397,17 @@ function showEventToast(eventType: string, data: any, currentUserId: string) {
             }
             break;
         case 'order:checkin':
-            toast.success(`✅ ${data.order?.user?.name || 'User'} checked in!`, { icon: '🎉' });
+            toast.success(`✅ ${data.order?.user?.name || 'User'} checked in!`, withClick({
+                icon: '🎉',
+                onClick: () => goTo({ relatedType: 'ORDER', relatedId: data.order?.id, title: 'order:checkin' }),
+            }));
             break;
         case 'order:cancelled':
             if (!isOwnAction) {
-                toast(`Order cancelled: ${data.order?.user?.name || 'User'}`, { icon: '❌' });
+                toast(`Order cancelled: ${data.order?.user?.name || 'User'}`, withClick({
+                    icon: '❌',
+                    onClick: () => goTo({ relatedType: 'ORDER', relatedId: data.order?.id, title: 'order:cancelled' }),
+                }));
             }
             // Reschedule reminders on Android when own order is cancelled
             if (isOwnAction && Capacitor.isNativePlatform()) {
@@ -380,19 +417,35 @@ function showEventToast(eventType: string, data: any, currentUserId: string) {
             }
             break;
         case 'order:noshow':
-            toast.error(`Tidak diambil: ${data.userName || 'User'}`, { icon: '⚠️' });
+            toast.error(`Tidak diambil: ${data.userName || 'User'}`, withClick({
+                icon: '⚠️',
+                onClick: () => goTo({ relatedType: 'ORDER', relatedId: data.orderId, title: 'order:noshow' }),
+            }));
             break;
         case 'user:blacklisted':
-            toast.error(`${data.userName || 'User'} blacklisted`, { icon: '🚫' });
+            toast.error(`${data.userName || 'User'} blacklisted`, withClick({
+                icon: '🚫',
+                onClick: () => goTo({ relatedType: 'BLACKLIST', relatedId: data.blacklistId, title: 'user:blacklisted' }),
+            }));
             break;
         case 'user:unblocked':
-            toast.success(`${data.userName || 'User'} unblocked`, { icon: '✅' });
+            toast.success(`${data.userName || 'User'} unblocked`, withClick({
+                icon: '✅',
+                onClick: () => goTo({ relatedType: 'BLACKLIST', relatedId: data.blacklistId, title: 'user:unblocked' }),
+            }));
             break;
         case 'notification:new':
-            toast.success(data.notification?.title || 'Notification', { 
+            toast.success(data.notification?.title || 'Notification', withClick({
                 icon: '🔔',
-                style: { background: '#f8fafc', color: '#334155' }
-            });
+                style: { background: '#f8fafc', color: '#334155' },
+                // The notification object already carries relatedType /
+                // relatedId from the backend payload — use them directly.
+                onClick: () => goTo({
+                    relatedType: data.notification?.relatedType ?? null,
+                    relatedId: data.notification?.relatedId ?? null,
+                    title: data.notification?.title ?? '',
+                }),
+            }));
             break;
     }
 }

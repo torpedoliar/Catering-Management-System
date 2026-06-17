@@ -50,9 +50,24 @@ export async function initNotifications(): Promise<void> {
 
         LocalNotifications.addListener('localNotificationActionPerformed', (notification) => {
             console.log('[Notifications] Tapped:', notification.notification.id);
-            if (typeof window !== 'undefined') {
-                window.location.hash = '/';
-            }
+            // FE-NOTIF-NAV: meal reminders carry no relatedType — they are
+            // pre-shift-time nudges, not entity-anchored. If the scheduler
+            // attached a `route` in `extra`, use it; otherwise fall back to
+            // the home page. The custom-event path in App.tsx handles SPA
+            // navigation correctly on the Capacitor `https://` scheme
+            // (window.location.hash does not trigger BrowserRouter).
+            import('../utils/notificationRoutes').then(({ navigateToUrl, navigateToNotification }) => {
+                const extra = (notification.notification as any)?.extra;
+                if (extra?.route) {
+                    navigateToUrl(extra.route);
+                } else {
+                    navigateToNotification({
+                        relatedType: 'NONE',
+                        relatedId: null,
+                        title: '',
+                    });
+                }
+            }).catch(() => {});
         });
         
         console.log('[Notifications] Initialized successfully');
@@ -144,6 +159,11 @@ export async function rescheduleRemindersFromAPI(): Promise<void> {
                                 smallIcon: 'ic_stat_notify',
                                 largeIcon: 'ic_launcher',
                                 autoCancel: true,
+                                // FE-NOTIF-NAV: stash the destination route so the
+                                // localNotificationActionPerformed tap handler
+                                // can route the user to the order page (reminders
+                                // have no relatedType — they point at the home).
+                                extra: { route: '/' },
                             });
                         }
                     }
@@ -186,6 +206,11 @@ export async function rescheduleRemindersFromAPI(): Promise<void> {
                                 smallIcon: 'ic_stat_notify',
                                 largeIcon: 'ic_launcher',
                                 autoCancel: true,
+                                // FE-NOTIF-NAV: stash the destination route so the
+                                // localNotificationActionPerformed tap handler
+                                // can route the user to the order page (reminders
+                                // have no relatedType — they point at the home).
+                                extra: { route: '/' },
                             });
                         }
                     }

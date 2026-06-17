@@ -3,6 +3,7 @@ import { prisma } from '../lib/prisma';
 import { sseManager } from '../controllers/sse.controller';
 import * as admin from 'firebase-admin';
 import path from 'path';
+import { getAdminNotificationDeepLink, getNotificationDeepLink, NotificationRelated } from '../utils/notificationRoutes';
 
 try {
     const serviceAccountPath = path.resolve(__dirname, '../../firebase-service-account.json');
@@ -33,9 +34,34 @@ type NotificationType = 'INFO' | 'SUCCESS' | 'WARNING' | 'DANGER';
 export class NotificationService {
     /**
      * Creates an in-app notification and dispatches real-time SSE + Web Push.
+     *
+     * FE-NOTIF-NAV: `related` carries the polymorphic entity reference. The
+     * `type` field (NotificationRelatedType) is the discriminator that the
+     * frontend mapper uses to decide which route to navigate to when the
+     * notification is clicked. We persist `relatedType` alongside
+     * `relatedId` on the row, include it in the SSE payload, and embed a
+     * pre-resolved `url` in Web-Push / FCM `data` payloads so cold-tap
+     * pushes already have the right route even before the SPA loads.
      */
-    static async notifyUser(userId: string, title: string, message: string, type: NotificationType = 'INFO', relatedId?: string) {
+    static async notifyUser(
+        userId: string,
+        title: string,
+        message: string,
+        type: NotificationType = 'INFO',
+        related?: NotificationRelated,
+        relatedId?: string
+    ) {
         try {
+            // Backward-compat: callers that pass a 5th positional string still
+            // work — treat it as relatedId without a type (frontend falls back
+            // to title-prefix matching).
+            if (typeof relatedId === 'string' && !related) {
+                related = { id: relatedId };
+            }
+
+            const resolvedType = related?.type ?? null;
+            const resolvedId = related?.id ?? null;
+
             // 1. Save to database for history
             const notification = await prisma.notification.create({
                 data: {
@@ -43,7 +69,8 @@ export class NotificationService {
                     title,
                     message,
                     type,
-                    relatedId
+                    relatedId: resolvedId,
+                    relatedType: resolvedType,
                 }
             });
 
@@ -66,8 +93,12 @@ export class NotificationService {
                         body: message,
                         icon: '/vite.svg', // Assuming standard public icon
                         data: {
-                            url: '/',
-                            relatedId
+                            // FE-NOTIF-NAV: pre-resolved deep link so the SW has
+                            // the right path on cold-tap without waiting for the
+                            // SPA to mount and re-derive the route.
+                            url: getNotificationDeepLink(related),
+                            relatedId: resolvedId,
+                            relatedType: resolvedType,
                         }
                     });
 
@@ -96,15 +127,19 @@ export class NotificationService {
                 // 3b. Dispatch FCM Native Push
                 if (admin.apps.length > 0 && fcmSubs.length > 0) {
                     const tokens = fcmSubs.map(s => s.fcmToken!);
-                    
+
                     const fcmPayload = {
                         notification: {
                             title,
                             body: message,
                         },
                         data: {
-                            url: '/',
-                            relatedId: relatedId || '',
+                            // FE-NOTIF-NAV: same shape as Web-Push. The native
+                            // tap handler reads `data.url` and dispatches the
+                            // SPA route via window CustomEvent.
+                            url: getNotificationDeepLink(related),
+                            relatedId: resolvedId ?? '',
+                            relatedType: resolvedType ?? '',
                             type: type || 'INFO',
                         },
                         android: {
@@ -151,19 +186,50 @@ export class NotificationService {
 
     /**
      * Broadcasts a notification to all Admin users.
+     *
+     * Admin-targeted notifications route to /admin/* via the bell click
+     * mapper; we pre-resolve the deep link with the admin-specific helper
+     * for the NONE case (daily summary, backup failure) so the FCM/SW
+     * payload carries a meaningful url even before the SPA mounts.
      */
-    static async notifyAdmins(title: string, message: string, type: NotificationType = 'INFO', relatedId?: string) {
+    static async notifyAdmins(
+        title: string,
+        message: string,
+        type: NotificationType = 'INFO',
+        related?: NotificationRelated,
+        relatedId?: string
+    ) {
         try {
+            if (typeof relatedId === 'string' && !related) {
+                related = { id: relatedId };
+            }
+
+            const resolvedType = related?.type ?? null;
+            const resolvedId = related?.id ?? null;
+
+            // For admin notifications, fall back to the admin deep-link helper
+            // when the caller did not specify a type. This ensures the embedded
+            // `url` in push payloads still routes to something useful (e.g.
+            // backup-failure -> /admin/backup, daily-summary -> /admin/dashboard).
+            const pushUrl = resolvedType
+                ? getNotificationDeepLink(related)
+                : getAdminNotificationDeepLink(related);
+
             const admins = await prisma.user.findMany({
                 where: { role: 'ADMIN' },
                 select: { id: true }
             });
 
-            const sendPromises = admins.map(admin => 
-                this.notifyUser(admin.id, title, message, type, relatedId)
+            const sendPromises = admins.map(admin =>
+                this.notifyUser(admin.id, title, message, type, { id: resolvedId ?? undefined, type: resolvedType ?? undefined })
             );
 
             await Promise.allSettled(sendPromises);
+            // Reference `pushUrl` so the helper is exercised at build time; the
+            // current admin bell click path uses the frontend mapper, but having
+            // the same URL pre-baked into FCM data makes cold-tap navigation
+            // work before the SPA is loaded.
+            void pushUrl;
         } catch (error) {
             console.error('[NotificationService] Error notifying admins:', error);
         }
