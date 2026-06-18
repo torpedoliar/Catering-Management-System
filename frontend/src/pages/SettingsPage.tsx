@@ -1,10 +1,11 @@
 import { useState, useEffect, useCallback } from 'react';
-import { Settings, Lock, Eye, EyeOff, Check, AlertCircle, Clock, Shield, Server, RefreshCw, User, CalendarDays } from 'lucide-react';
+import { useSearchParams } from 'react-router-dom';
+import { Settings, Lock, Eye, EyeOff, Check, AlertCircle, Clock, Shield, Server, RefreshCw, User, CalendarDays, Ban, AlertOctagon } from 'lucide-react';
 import { format } from 'date-fns';
 import { formatDateTimeShortWIB } from '../utils/timezone';
 import toast from 'react-hot-toast';
 import { useAuth, api } from '../contexts/AuthContext';
-import { useSSERefresh, SETTINGS_EVENTS } from '../contexts/SSEContext';
+import { useSSERefresh, SETTINGS_EVENTS, USER_EVENTS } from '../contexts/SSEContext';
 
 interface SystemSettings {
     id: string;
@@ -75,6 +76,64 @@ export default function SettingsPage() {
 
     const [blacklistStrikes, setBlacklistStrikes] = useState(3);
     const [blacklistDuration, setBlacklistDuration] = useState(7);
+
+    // FE-NOTIF-NAV: blacklist banner. Shown to the user when the
+    // `/api/auth/me` payload flags `isBlacklisted`. Also handles the
+    // `?id=<blacklistId>` deep-link from a blacklist notification — the
+    // user-facing destination is always /settings, and the banner
+    // explains why.
+    const [searchParams, setSearchParams] = useSearchParams();
+    const deepLinkId = searchParams.get('id');
+    const isBlacklisted = user?.isBlacklisted === true;
+    const blacklistEndDate = user?.blacklistEndDate;
+    const [activeBlacklist, setActiveBlacklist] = useState<{
+        id: string;
+        reason: string;
+        startDate: string;
+        endDate: string | null;
+    } | null>(null);
+
+    const fetchActiveBlacklist = useCallback(async () => {
+        if (!isBlacklisted) {
+            setActiveBlacklist(null);
+            return;
+        }
+        try {
+            const res = await api.get('/api/blacklist?active=true&limit=1');
+            const me = res.data?.blacklists?.find((b: any) => b.user?.id === user?.id) ?? res.data?.blacklists?.[0];
+            if (me) {
+                setActiveBlacklist({
+                    id: me.id,
+                    reason: me.reason,
+                    startDate: me.startDate,
+                    endDate: me.endDate,
+                });
+            }
+        } catch (error) {
+            console.error('Failed to load active blacklist:', error);
+        }
+    }, [isBlacklisted, user?.id]);
+
+    useEffect(() => {
+        fetchActiveBlacklist();
+    }, [fetchActiveBlacklist]);
+
+    // FE-NOTIF-NAV: scroll to the banner + clear the query once consumed.
+    useEffect(() => {
+        if (!deepLinkId) return;
+        if (!isBlacklisted) return;
+        const el = document.getElementById('blacklist-banner');
+        if (el) {
+            el.scrollIntoView({ behavior: 'smooth', block: 'center' });
+        }
+        const next = new URLSearchParams(searchParams);
+        next.delete('id');
+        setSearchParams(next, { replace: true });
+    }, [deepLinkId, isBlacklisted, searchParams, setSearchParams]);
+
+    // Auto-refresh on blacklist events so the banner disappears
+    // immediately after an admin unblocks the user.
+    useSSERefresh(USER_EVENTS, fetchActiveBlacklist);
 
     const getToken = () => localStorage.getItem('token');
 
@@ -308,6 +367,64 @@ export default function SettingsPage() {
                     </p>
                 </div>
             </div>
+
+            {/* FE-NOTIF-NAV: blacklist banner. Surfaces the user's
+                blacklist reason + duration so the deep-link from the
+                bell lands on something meaningful instead of a generic
+                "Settings" page. */}
+            {isBlacklisted && (
+                <div
+                    id="blacklist-banner"
+                    className="rounded-apple-lg border border-red-500/30 bg-red-500/10 p-5"
+                    role="alert"
+                >
+                    <div className="flex items-start gap-3">
+                        <div className="p-2 rounded-lg bg-red-500/20 flex-shrink-0">
+                            <Ban className="w-5 h-5 text-red-400" />
+                        </div>
+                        <div className="flex-1 min-w-0">
+                            <h2 className="text-title-3 text-red-200">Akun Anda Sedang Diblokir</h2>
+                            <p className="text-callout text-red-200/80 mt-1">
+                                Anda tidak dapat memesan makanan sampai blacklist berakhir atau di-unblock oleh admin.
+                            </p>
+                            <div className="mt-4 grid grid-cols-1 md:grid-cols-3 gap-3 text-sm">
+                                <div className="rounded-lg bg-red-500/10 border border-red-500/20 p-3">
+                                    <p className="text-xs text-red-300/70 uppercase tracking-wide">Mulai</p>
+                                    <p className="text-red-100 font-medium mt-0.5">
+                                        {activeBlacklist?.startDate
+                                            ? formatDateTimeShortWIB(activeBlacklist.startDate)
+                                            : '—'}
+                                    </p>
+                                </div>
+                                <div className="rounded-lg bg-red-500/10 border border-red-500/20 p-3">
+                                    <p className="text-xs text-red-300/70 uppercase tracking-wide">Berakhir</p>
+                                    <p className="text-red-100 font-medium mt-0.5">
+                                        {blacklistEndDate
+                                            ? formatDateTimeShortWIB(blacklistEndDate)
+                                            : <span className="text-amber-300">Permanen</span>}
+                                    </p>
+                                </div>
+                                <div className="rounded-lg bg-red-500/10 border border-red-500/20 p-3">
+                                    <p className="text-xs text-red-300/70 uppercase tracking-wide">Strike</p>
+                                    <p className="text-red-100 font-medium mt-0.5">
+                                        {user?.noShowCount ?? 0}
+                                    </p>
+                                </div>
+                            </div>
+                            {activeBlacklist?.reason && (
+                                <div className="mt-4 rounded-lg bg-red-500/10 border border-red-500/20 p-3">
+                                    <p className="text-xs text-red-300/70 uppercase tracking-wide">Alasan</p>
+                                    <p className="text-red-100 mt-1 whitespace-pre-wrap">{activeBlacklist.reason}</p>
+                                </div>
+                            )}
+                            <p className="text-caption text-red-200/70 mt-3 flex items-center gap-1">
+                                <AlertOctagon className="w-4 h-4" />
+                                Hubungi admin untuk membuka blacklist lebih awal.
+                            </p>
+                        </div>
+                    </div>
+                </div>
+            )}
 
             {/* User Info Card */}
             <div className="card">

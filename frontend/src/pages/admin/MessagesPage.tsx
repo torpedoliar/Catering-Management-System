@@ -1,4 +1,5 @@
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useRef } from 'react';
+import { useSearchParams } from 'react-router-dom';
 import { format } from 'date-fns';
 import { id } from 'date-fns/locale';
 import { api } from '../../contexts/AuthContext';
@@ -80,6 +81,14 @@ export default function MessagesPage() {
     // Photo preview modal
     const [previewPhoto, setPreviewPhoto] = useState<string | null>(null);
 
+    // FE-NOTIF-NAV: deep-link support. `?id=<messageId>` opens the row's
+    // detail modal directly when the user taps a Pengajuan Sanggahan
+    // notification.
+    const [searchParams, setSearchParams] = useSearchParams();
+    const deepLinkId = searchParams.get('id');
+    const deepLinkConsumed = useRef(false);
+    const [detailMessage, setDetailMessage] = useState<Message | null>(null);
+
     const loadMessages = useCallback(async () => {
         try {
             setIsLoading(true);
@@ -123,6 +132,31 @@ export default function MessagesPage() {
 
     // SSE: Reload messages when orders are cancelled (creates message)
     useSSERefresh(ORDER_EVENTS, loadMessages);
+
+    // FE-NOTIF-NAV: open the row's detail modal if the URL has `?id=`.
+    // Paginate a few pages forward if the message is on a later page,
+    // so the deep-link still works for older appeals.
+    useEffect(() => {
+        if (deepLinkConsumed.current) return;
+        if (!deepLinkId || isLoading) return;
+        const match = messages.find(m => m.id === deepLinkId);
+        if (match) {
+            setDetailMessage(match);
+            deepLinkConsumed.current = true;
+            const next = new URLSearchParams(searchParams);
+            next.delete('id');
+            setSearchParams(next, { replace: true });
+        }
+    }, [deepLinkId, isLoading, messages, searchParams, setSearchParams]);
+
+    useEffect(() => {
+        if (deepLinkConsumed.current) return;
+        if (!deepLinkId || isLoading) return;
+        const onPage = messages.some(m => m.id === deepLinkId);
+        if (!onPage && page < totalPages && page < 5) {
+            setPage(p => p + 1);
+        }
+    }, [deepLinkId, isLoading, messages, page, totalPages]);
 
     const handleExport = async () => {
         try {
@@ -471,9 +505,22 @@ export default function MessagesPage() {
                                                         >
                                                             <XCircle className="w-4 h-4" />
                                                         </button>
+                                                        <button
+                                                            onClick={() => setDetailMessage(msg)}
+                                                            className="p-1.5 rounded-lg bg-cyan-500/20 text-cyan-400 hover:bg-cyan-500/30 transition-colors"
+                                                            title="Lihat detail"
+                                                        >
+                                                            <Eye className="w-4 h-4" />
+                                                        </button>
                                                     </div>
                                                 ) : (
-                                                    <span className="text-white/20">-</span>
+                                                    <button
+                                                        onClick={() => setDetailMessage(msg)}
+                                                        className="p-1.5 rounded-lg bg-cyan-500/20 text-cyan-400 hover:bg-cyan-500/30 transition-colors"
+                                                        title="Lihat detail"
+                                                    >
+                                                        <Eye className="w-4 h-4" />
+                                                    </button>
                                                 )}
                                             </td>
                                         </tr>
@@ -532,6 +579,141 @@ export default function MessagesPage() {
                             alt="Bukti Sanggahan"
                             className="rounded-xl shadow-2xl max-h-[75vh] object-contain"
                         />
+                    </div>
+                </div>
+            )}
+
+            {/* FE-NOTIF-NAV: deep-link detail modal. Opened by `?id=` and
+                also by clicking a row's "Detail" affordance. Shows the
+                full message, photo, and resolve controls in one place. */}
+            {detailMessage && (
+                <div
+                    className="fixed inset-0 z-[55] flex items-center justify-center p-4"
+                    onClick={() => setDetailMessage(null)}
+                >
+                    <div
+                        className="absolute inset-0 bg-black/60 backdrop-blur-sm"
+                    />
+                    <div
+                        className="relative bg-slate-800 rounded-xl border border-slate-700 w-full max-w-2xl max-h-[85vh] overflow-y-auto shadow-2xl"
+                        onClick={e => e.stopPropagation()}
+                    >
+                        <div className="px-6 py-4 border-b border-slate-700 flex items-center justify-between sticky top-0 bg-slate-800 z-10">
+                            <div className="flex items-center gap-3">
+                                <div className="p-2 rounded-lg bg-cyan-500/20">
+                                    {getTypeIcon(detailMessage.type)}
+                                </div>
+                                <div>
+                                    <h3 className="text-lg font-semibold text-slate-100">
+                                        Detail {getTypeLabel(detailMessage.type)}
+                                    </h3>
+                                    <p className="text-xs text-slate-400">
+                                        {detailMessage.user.name} ({detailMessage.user.externalId}) — {detailMessage.shift.name}
+                                    </p>
+                                </div>
+                            </div>
+                            <button
+                                onClick={() => setDetailMessage(null)}
+                                className="p-2 hover:bg-slate-700 rounded-lg transition-colors"
+                            >
+                                <X className="w-5 h-5 text-slate-400" />
+                            </button>
+                        </div>
+
+                        <div className="p-6 space-y-4">
+                            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                                <div className="bg-slate-700/40 rounded-lg p-3">
+                                    <p className="text-xs text-slate-400 uppercase tracking-wide">Tanggal Order</p>
+                                    <p className="text-slate-100 font-medium mt-1">
+                                        {format(new Date(detailMessage.orderDate), 'dd MMMM yyyy', { locale: id })}
+                                    </p>
+                                </div>
+                                <div className="bg-slate-700/40 rounded-lg p-3">
+                                    <p className="text-xs text-slate-400 uppercase tracking-wide">Waktu Kirim</p>
+                                    <p className="text-slate-100 font-medium mt-1">
+                                        {formatDateTimeShortWIB(detailMessage.createdAt)}
+                                    </p>
+                                </div>
+                                <div className="bg-slate-700/40 rounded-lg p-3">
+                                    <p className="text-xs text-slate-400 uppercase tracking-wide">Status</p>
+                                    <div className="mt-1">{getStatusBadge(detailMessage) || <span className="text-slate-500">-</span>}</div>
+                                </div>
+                                <div className="bg-slate-700/40 rounded-lg p-3">
+                                    <p className="text-xs text-slate-400 uppercase tracking-wide">Perusahaan</p>
+                                    <p className="text-slate-100 font-medium mt-1">
+                                        {detailMessage.user.company || '-'} / {detailMessage.user.department || '-'}
+                                    </p>
+                                </div>
+                            </div>
+
+                            <div>
+                                <p className="text-xs text-slate-400 uppercase tracking-wide mb-2">Isi Pesan</p>
+                                <div className="bg-slate-700/40 rounded-lg p-4">
+                                    <p className="text-slate-100 whitespace-pre-wrap leading-relaxed">{detailMessage.content}</p>
+                                </div>
+                            </div>
+
+                            {detailMessage.photoUrl && (
+                                <div>
+                                    <p className="text-xs text-slate-400 uppercase tracking-wide mb-2">Bukti Foto</p>
+                                    <button
+                                        onClick={() => setPreviewPhoto(detailMessage.photoUrl ?? null)}
+                                        className="block"
+                                    >
+                                        <img
+                                            src={detailMessage.photoUrl}
+                                            alt="Bukti"
+                                            className="max-h-64 rounded-lg border border-slate-700 hover:border-cyan-500 transition-colors"
+                                        />
+                                    </button>
+                                </div>
+                            )}
+
+                            {detailMessage.resolvedBy && (
+                                <div className="bg-slate-700/40 rounded-lg p-3">
+                                    <p className="text-xs text-slate-400 uppercase tracking-wide">Diproses oleh</p>
+                                    <p className="text-slate-100 font-medium mt-1">
+                                        {detailMessage.resolvedBy}
+                                        {detailMessage.resolvedAt && (
+                                            <span className="text-slate-400 font-normal text-sm ml-2">
+                                                · {formatDateTimeShortWIB(detailMessage.resolvedAt)}
+                                            </span>
+                                        )}
+                                    </p>
+                                </div>
+                            )}
+                        </div>
+
+                        <div className="px-6 py-4 border-t border-slate-700 flex items-center justify-end gap-2">
+                            {detailMessage.type === 'APPEAL' && detailMessage.status === 'PENDING' && (
+                                <>
+                                    <button
+                                        onClick={async () => {
+                                            await handleResolve(detailMessage.id, 'APPROVED');
+                                            setDetailMessage(null);
+                                        }}
+                                        className="px-4 py-2 rounded-lg bg-emerald-600 hover:bg-emerald-700 text-white text-sm font-medium transition-colors flex items-center gap-1.5"
+                                    >
+                                        <ShieldCheck className="w-4 h-4" /> Setujui
+                                    </button>
+                                    <button
+                                        onClick={async () => {
+                                            await handleResolve(detailMessage.id, 'REJECTED');
+                                            setDetailMessage(null);
+                                        }}
+                                        className="px-4 py-2 rounded-lg bg-red-600 hover:bg-red-700 text-white text-sm font-medium transition-colors flex items-center gap-1.5"
+                                    >
+                                        <ShieldX className="w-4 h-4" /> Tolak
+                                    </button>
+                                </>
+                            )}
+                            <button
+                                onClick={() => setDetailMessage(null)}
+                                className="px-4 py-2 rounded-lg bg-slate-700 hover:bg-slate-600 text-slate-300 text-sm font-medium transition-colors"
+                            >
+                                Tutup
+                            </button>
+                        </div>
                     </div>
                 </div>
             )}

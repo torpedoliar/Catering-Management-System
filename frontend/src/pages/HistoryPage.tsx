@@ -1,4 +1,5 @@
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useRef } from 'react';
+import { useSearchParams } from 'react-router-dom';
 import { api } from '../contexts/AuthContext';
 import { useSSERefresh, ORDER_EVENTS } from '../contexts/SSEContext';
 import { format } from 'date-fns';
@@ -43,6 +44,12 @@ export default function HistoryPage() {
     const [totalPages, setTotalPages] = useState(1);
     const [statusFilter, setStatusFilter] = useState('');
     const [selectedOrder, setSelectedOrder] = useState<Order | null>(null);
+    const deepLinkConsumed = useRef(false);
+
+    // FE-NOTIF-NAV: deep-link support. Notification mapper appends
+    // `?id=<orderId>` so the destination can auto-open the matching row.
+    const [searchParams, setSearchParams] = useSearchParams();
+    const deepLinkOrderId = searchParams.get('id');
 
     // Cancel modal states
     const [showCancelModal, setShowCancelModal] = useState(false);
@@ -84,6 +91,36 @@ export default function HistoryPage() {
     }, [loadOrders]);
 
     useSSERefresh(ORDER_EVENTS, loadOrders);
+
+    // FE-NOTIF-NAV: when the page is opened via `?id=<orderId>` and the
+    // matching order is already in the loaded list, auto-open its detail
+    // modal and clear the query so a refresh doesn't re-open it.
+    useEffect(() => {
+        if (deepLinkConsumed.current) return;
+        if (!deepLinkOrderId || isLoading) return;
+        const match = orders.find(o => o.id === deepLinkOrderId);
+        if (match) {
+            setSelectedOrder(match);
+            deepLinkConsumed.current = true;
+            // Strip the query so a reload of the same page doesn't keep
+            // re-opening the modal.
+            const next = new URLSearchParams(searchParams);
+            next.delete('id');
+            setSearchParams(next, { replace: true });
+        }
+    }, [deepLinkOrderId, isLoading, orders, searchParams, setSearchParams]);
+
+    // FE-NOTIF-NAV: if the order isn't on the first page, paginate until
+    // we find it (capped to a few pages so a stale id never loops forever).
+    useEffect(() => {
+        if (deepLinkConsumed.current) return;
+        if (!deepLinkOrderId) return;
+        if (isLoading) return;
+        const onPage = orders.some(o => o.id === deepLinkOrderId);
+        if (!onPage && page < totalPages && page < 5) {
+            setPage(p => p + 1);
+        }
+    }, [deepLinkOrderId, isLoading, orders, page, totalPages]);
 
     const getStatusConfig = (status: string) => {
         switch (status) {

@@ -59,7 +59,12 @@ export async function initNotifications(): Promise<void> {
             import('../utils/notificationRoutes').then(({ navigateToUrl, navigateToNotification }) => {
                 const extra = (notification.notification as any)?.extra;
                 if (extra?.route) {
-                    navigateToUrl(extra.route);
+                    navigateToUrl(
+                        extra.route,
+                        undefined,
+                        extra.relatedId ?? null,
+                        extra.relatedType ?? null,
+                    );
                 } else {
                     navigateToNotification({
                         relatedType: 'NONE',

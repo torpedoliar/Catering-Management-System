@@ -1,8 +1,10 @@
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useRef } from 'react';
+import { useSearchParams } from 'react-router-dom';
 import { api } from '../../contexts/AuthContext';
 import { format } from 'date-fns';
+import { formatDateTimeShortWIB } from '../../utils/timezone';
 import { useSSERefresh, USER_EVENTS } from '../../contexts/SSEContext';
-import { Ban, Unlock, Loader2, ChevronLeft, ChevronRight, UserPlus, X, AlertTriangle, Eye, EyeOff } from 'lucide-react';
+import { Ban, Unlock, Loader2, ChevronLeft, ChevronRight, UserPlus, X, AlertTriangle, Eye, EyeOff, Shield } from 'lucide-react';
 import toast from 'react-hot-toast';
 
 interface Blacklist {
@@ -543,6 +545,13 @@ export default function BlacklistPage() {
     const [showBlacklistModal, setShowBlacklistModal] = useState(false);
     const [unblockTarget, setUnblockTarget] = useState<Blacklist | null>(null);
 
+    // FE-NOTIF-NAV: deep-link detail modal. `?id=<blacklistId>` opens the
+    // matching row's full record.
+    const [searchParams, setSearchParams] = useSearchParams();
+    const deepLinkId = searchParams.get('id');
+    const deepLinkConsumed = useRef(false);
+    const [detailEntry, setDetailEntry] = useState<Blacklist | null>(null);
+
     const loadBlacklists = useCallback(async () => {
         setIsLoading(true);
         try {
@@ -568,6 +577,30 @@ export default function BlacklistPage() {
 
     // Auto-refresh on blacklist events (SSE)
     useSSERefresh(USER_EVENTS, loadBlacklists);
+
+    // FE-NOTIF-NAV: deep-link handling. Open the modal if `?id=` matches
+    // a row in the loaded list; paginate a few pages forward otherwise.
+    useEffect(() => {
+        if (deepLinkConsumed.current) return;
+        if (!deepLinkId || isLoading) return;
+        const match = blacklists.find(b => b.id === deepLinkId);
+        if (match) {
+            setDetailEntry(match);
+            deepLinkConsumed.current = true;
+            const next = new URLSearchParams(searchParams);
+            next.delete('id');
+            setSearchParams(next, { replace: true });
+        }
+    }, [deepLinkId, isLoading, blacklists, searchParams, setSearchParams]);
+
+    useEffect(() => {
+        if (deepLinkConsumed.current) return;
+        if (!deepLinkId || isLoading) return;
+        const onPage = blacklists.some(b => b.id === deepLinkId);
+        if (!onPage && page < totalPages && page < 5) {
+            setPage(p => p + 1);
+        }
+    }, [deepLinkId, isLoading, blacklists, page, totalPages]);
 
     const handleBlacklistUser = async (userId: string, reason: string, durationDays: number | null, adminPassword: string) => {
         await api.post('/api/blacklist', {
@@ -667,15 +700,24 @@ export default function BlacklistPage() {
                                                 <span className="text-red-400 font-medium">{entry.user.noShowCount}</span>
                                             </td>
                                             <td className="px-6 py-4">
-                                                {entry.isActive && (
+                                                <div className="flex items-center gap-2">
                                                     <button
-                                                        onClick={() => setUnblockTarget(entry)}
-                                                        className="flex items-center gap-2 text-sm py-2 px-3 bg-green-600 hover:bg-green-700 text-white rounded-lg transition-colors"
+                                                        onClick={() => setDetailEntry(entry)}
+                                                        className="p-2 rounded-lg bg-cyan-600/20 hover:bg-cyan-600/30 text-cyan-300 transition-colors"
+                                                        title="Lihat detail"
                                                     >
-                                                        <Unlock className="w-4 h-4" />
-                                                        Unblock
+                                                        <Eye className="w-4 h-4" />
                                                     </button>
-                                                )}
+                                                    {entry.isActive && (
+                                                        <button
+                                                            onClick={() => setUnblockTarget(entry)}
+                                                            className="flex items-center gap-2 text-sm py-2 px-3 bg-green-600 hover:bg-green-700 text-white rounded-lg transition-colors"
+                                                        >
+                                                            <Unlock className="w-4 h-4" />
+                                                            Unblock
+                                                        </button>
+                                                    )}
+                                                </div>
                                             </td>
                                         </tr>
                                     ))}
@@ -730,6 +772,127 @@ export default function BlacklistPage() {
                 requireStrikeReduction={true}
                 currentStrikes={unblockTarget?.user.noShowCount || 0}
             />
+
+            {/* FE-NOTIF-NAV: detail modal. Opened by `?id=` deep-link
+                or by clicking the eye icon on a row. Read-only. */}
+            {detailEntry && (
+                <div
+                    className="fixed inset-0 z-[55] flex items-center justify-center p-4"
+                    onClick={() => setDetailEntry(null)}
+                >
+                    <div
+                        className="absolute inset-0 bg-black/60 backdrop-blur-sm"
+                    />
+                    <div
+                        className="relative bg-slate-800 rounded-xl border border-slate-700 w-full max-w-2xl max-h-[85vh] overflow-y-auto shadow-2xl"
+                        onClick={e => e.stopPropagation()}
+                    >
+                        <div className="px-6 py-4 border-b border-slate-700 flex items-center justify-between sticky top-0 bg-slate-800 z-10">
+                            <div className="flex items-center gap-3">
+                                <div className="p-2 rounded-lg bg-red-500/20">
+                                    <Ban className="w-5 h-5 text-red-400" />
+                                </div>
+                                <div>
+                                    <h3 className="text-lg font-semibold text-slate-100">Detail Blacklist</h3>
+                                    <p className="text-xs text-slate-400">{detailEntry.user.name} ({detailEntry.user.externalId})</p>
+                                </div>
+                            </div>
+                            <button
+                                onClick={() => setDetailEntry(null)}
+                                className="p-2 hover:bg-slate-700 rounded-lg transition-colors"
+                            >
+                                <X className="w-5 h-5 text-slate-400" />
+                            </button>
+                        </div>
+
+                        <div className="p-6 space-y-4">
+                            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                                <div className="bg-slate-700/40 rounded-lg p-3">
+                                    <p className="text-xs text-slate-400 uppercase tracking-wide">Status</p>
+                                    <p className="mt-1">
+                                        {detailEntry.isActive ? (
+                                            <span className="badge badge-danger">Aktif</span>
+                                        ) : (
+                                            <span className="badge badge-neutral">Tidak Aktif</span>
+                                        )}
+                                    </p>
+                                </div>
+                                <div className="bg-slate-700/40 rounded-lg p-3">
+                                    <p className="text-xs text-slate-400 uppercase tracking-wide">Strike (Tidak Diambil)</p>
+                                    <p className="text-2xl font-bold text-red-400 mt-1">{detailEntry.user.noShowCount}</p>
+                                </div>
+                                <div className="bg-slate-700/40 rounded-lg p-3">
+                                    <p className="text-xs text-slate-400 uppercase tracking-wide">Mulai</p>
+                                    <p className="text-slate-100 font-medium mt-1">
+                                        {formatDateTimeShortWIB(detailEntry.startDate)}
+                                    </p>
+                                </div>
+                                <div className="bg-slate-700/40 rounded-lg p-3">
+                                    <p className="text-xs text-slate-400 uppercase tracking-wide">Berakhir</p>
+                                    <p className="text-slate-100 font-medium mt-1">
+                                        {detailEntry.endDate
+                                            ? formatDateTimeShortWIB(detailEntry.endDate)
+                                            : <span className="text-amber-400">Permanen</span>}
+                                    </p>
+                                </div>
+                            </div>
+
+                            <div>
+                                <p className="text-xs text-slate-400 uppercase tracking-wide mb-2">Alasan</p>
+                                <div className="bg-slate-700/40 rounded-lg p-4">
+                                    <p className="text-slate-100 whitespace-pre-wrap leading-relaxed">{detailEntry.reason}</p>
+                                </div>
+                            </div>
+
+                            <div className="bg-slate-700/40 rounded-lg p-4 space-y-2">
+                                <p className="text-xs text-slate-400 uppercase tracking-wide">Informasi User</p>
+                                <div className="grid grid-cols-2 gap-2 text-sm">
+                                    <div>
+                                        <p className="text-slate-400">Nama</p>
+                                        <p className="text-slate-100">{detailEntry.user.name}</p>
+                                    </div>
+                                    <div>
+                                        <p className="text-slate-400">ID</p>
+                                        <p className="text-slate-100">{detailEntry.user.externalId}</p>
+                                    </div>
+                                    <div>
+                                        <p className="text-slate-400">Perusahaan</p>
+                                        <p className="text-slate-100">{detailEntry.user.company || '-'}</p>
+                                    </div>
+                                    <div>
+                                        <p className="text-slate-400">Divisi</p>
+                                        <p className="text-slate-100">{detailEntry.user.division || '-'}</p>
+                                    </div>
+                                    <div className="col-span-2">
+                                        <p className="text-slate-400">Departemen</p>
+                                        <p className="text-slate-100">{detailEntry.user.department || '-'}</p>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+
+                        <div className="px-6 py-4 border-t border-slate-700 flex items-center justify-end gap-2">
+                            {detailEntry.isActive && (
+                                <button
+                                    onClick={() => {
+                                        setUnblockTarget(detailEntry);
+                                        setDetailEntry(null);
+                                    }}
+                                    className="px-4 py-2 rounded-lg bg-green-600 hover:bg-green-700 text-white text-sm font-medium transition-colors flex items-center gap-1.5"
+                                >
+                                    <Unlock className="w-4 h-4" /> Unblock User
+                                </button>
+                            )}
+                            <button
+                                onClick={() => setDetailEntry(null)}
+                                className="px-4 py-2 rounded-lg bg-slate-700 hover:bg-slate-600 text-slate-300 text-sm font-medium transition-colors"
+                            >
+                                Tutup
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            )}
         </div>
     );
 }

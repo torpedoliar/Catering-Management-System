@@ -67,7 +67,12 @@ export const PushService = {
                     const data = (action.notification as any)?.data || {};
                     import('../utils/notificationRoutes').then(({ navigateToUrl, navigateToNotification }) => {
                         if (data.url) {
-                            navigateToUrl(data.url);
+                            navigateToUrl(
+                                data.url,
+                                undefined,
+                                data.relatedId ?? null,
+                                data.relatedType ?? null,
+                            );
                         } else {
                             navigateToNotification({
                                 relatedType: data.relatedType || null,
@@ -91,7 +96,12 @@ export const PushService = {
                             onClick: () => {
                                 import('../utils/notificationRoutes').then(({ navigateToUrl, navigateToNotification }) => {
                                     if (data.url) {
-                                        navigateToUrl(data.url);
+                                        navigateToUrl(
+                                            data.url,
+                                            undefined,
+                                            data.relatedId ?? null,
+                                            data.relatedType ?? null,
+                                        );
                                     } else {
                                         navigateToNotification({
                                             relatedType: data.relatedType || null,
