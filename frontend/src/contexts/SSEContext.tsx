@@ -69,9 +69,29 @@ export function SSEProvider({ children }: { children: ReactNode }) {
     const reconnectTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
     const reconnectAttemptsRef = useRef(0);
     const isConnectingRef = useRef(false);
+    const lastHeartbeatRef = useRef<number>(Date.now());
+    const heartbeatWatchdogRef = useRef<ReturnType<typeof setInterval> | null>(null);
+    const connectionProbeRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
-    const maxReconnectAttempts = 10;  // Increased from 5
-    const baseReconnectDelayMs = 1000; // Reduced from 3000ms for faster reconnect
+    // Infinite reconnect with capped exponential backoff (never gives up)
+    const maxBackoffMs = 30_000;        // Cap delay at 30s
+    const baseReconnectDelayMs = 1000;  // Start at 1s
+    // Server sends heartbeat every 10s. If none in 25s → connection is dead.
+    const heartbeatTimeoutMs = 25_000;
+    // Probe EventSource readyState every 15s to catch silent zombie connections
+    const probeIntervalMs = 15_000;
+
+    /**
+     * Compute delay for attempt N with capped exponential backoff + jitter.
+     * attempt 1→1s, 2→2s, 3→4s, 4→8s, 5→16s, 6+→30s (capped)
+     */
+    const getReconnectDelay = useCallback((attempt: number): number => {
+        const exponential = baseReconnectDelayMs * Math.pow(2, attempt - 1);
+        const capped = Math.min(exponential, maxBackoffMs);
+        // Add ±20% jitter to avoid thundering-herd on server restart
+        const jitter = capped * 0.2 * (Math.random() * 2 - 1);
+        return Math.max(500, capped + jitter);
+    }, []);
 
     const notifySubscribers = useCallback((eventType: string, data: any) => {
         const callbacks = subscribersRef.current.get(eventType);
@@ -98,6 +118,85 @@ export function SSEProvider({ children }: { children: ReactNode }) {
         }
     }, []);
 
+    /**
+     * Stop the heartbeat watchdog and connection probe timers.
+     */
+    const stopWatchdogs = useCallback(() => {
+        if (heartbeatWatchdogRef.current) {
+            clearInterval(heartbeatWatchdogRef.current);
+            heartbeatWatchdogRef.current = null;
+        }
+        if (connectionProbeRef.current) {
+            clearInterval(connectionProbeRef.current);
+            connectionProbeRef.current = null;
+        }
+    }, []);
+
+    /**
+     * Start the heartbeat watchdog: if no heartbeat arrives within
+     * `heartbeatTimeoutMs`, the connection is silently dead → force reconnect.
+     * Also start the connection probe that checks EventSource.readyState.
+     */
+    const startWatchdogs = useCallback(() => {
+        stopWatchdogs();
+        lastHeartbeatRef.current = Date.now();
+
+        // Heartbeat watchdog — detect silent connection death
+        heartbeatWatchdogRef.current = setInterval(() => {
+            const elapsed = Date.now() - lastHeartbeatRef.current;
+            if (elapsed > heartbeatTimeoutMs) {
+                console.log(`📡 Heartbeat watchdog: no heartbeat for ${Math.round(elapsed / 1000)}s — forcing reconnect`);
+                const es = eventSourceRef.current;
+                if (es) {
+                    es.close();
+                    eventSourceRef.current = null;
+                }
+                isConnectingRef.current = false;
+                setIsConnected(false);
+                // Reset attempts so reconnect starts with short delay
+                reconnectAttemptsRef.current = Math.min(reconnectAttemptsRef.current, 2);
+                connectRef.current();
+            }
+        }, 5_000); // Check every 5s
+
+        // Connection probe — catch zombie EventSource (readyState != OPEN)
+        connectionProbeRef.current = setInterval(() => {
+            const es = eventSourceRef.current;
+            if (!es) return;
+            if (es.readyState === EventSource.CLOSED) {
+                console.log('📡 Connection probe: EventSource is CLOSED — forcing reconnect');
+                es.close();
+                eventSourceRef.current = null;
+                isConnectingRef.current = false;
+                setIsConnected(false);
+                reconnectAttemptsRef.current = Math.min(reconnectAttemptsRef.current, 2);
+                connectRef.current();
+            }
+            // CONNECTING (readyState 0) = native auto-reconnect in progress.
+            // Don't interfere — EventSource will fire onopen or onerror.
+        }, probeIntervalMs);
+    }, [stopWatchdogs]);
+
+    /**
+     * Schedule a reconnect attempt with capped backoff.
+     * Never gives up — keeps retrying indefinitely.
+     */
+    const scheduleReconnect = useCallback(() => {
+        if (reconnectTimeoutRef.current) return; // Already scheduled
+        if (!token || !user) return;              // No auth, don't reconnect
+
+        reconnectAttemptsRef.current++;
+        const delay = getReconnectDelay(reconnectAttemptsRef.current);
+        console.log(`📡 SSE Reconnect scheduled in ${Math.round(delay)}ms (attempt ${reconnectAttemptsRef.current})`);
+
+        reconnectTimeoutRef.current = setTimeout(() => {
+            reconnectTimeoutRef.current = null;
+            if (token && user) {
+                connectRef.current();
+            }
+        }, delay);
+    }, [token, user, getReconnectDelay]);
+
     const cleanup = useCallback(() => {
         if (reconnectTimeoutRef.current) {
             clearTimeout(reconnectTimeoutRef.current);
@@ -107,8 +206,138 @@ export function SSEProvider({ children }: { children: ReactNode }) {
             eventSourceRef.current.close();
             eventSourceRef.current = null;
         }
+        stopWatchdogs();
         isConnectingRef.current = false;
-    }, []);
+    }, [stopWatchdogs]);
+
+    // Declare connect as a ref-stable function so scheduleReconnect and
+    // watchdogs can call it without being in each other's dependency arrays.
+    const connectRef = useRef<() => void>(() => {});
+
+    const connect = useCallback(async () => {
+        // Prevent multiple connect calls
+        if (isConnectingRef.current) return;
+        if (eventSourceRef.current?.readyState === EventSource.OPEN) return;
+
+        isConnectingRef.current = true;
+
+        try {
+            // R-002: Obtain SSE ticket via authenticated endpoint
+            const ticketRes = await fetch(`${API_URL}/api/sse/ticket`, {
+                method: 'POST',
+                headers: {
+                    'Authorization': `Bearer ${token}`,
+                    'Content-Type': 'application/json',
+                },
+                credentials: 'include',
+            });
+
+            if (!ticketRes.ok) {
+                throw new Error(`SSE ticket request failed: ${ticketRes.status}`);
+            }
+
+            const { ticket } = await ticketRes.json();
+
+            // R-002: Connect with server-validated ticket instead of raw userId/role
+            const url = `${API_URL}/api/sse?ticket=${encodeURIComponent(ticket)}&tabId=${TAB_ID}`;
+            console.log(`📡 SSE Connecting... (Tab: ${TAB_ID}, attempt ${reconnectAttemptsRef.current})`);
+
+            const eventSource = new EventSource(url);
+            eventSourceRef.current = eventSource;
+        } catch (error) {
+            console.error('📡 SSE ticket/connect error:', error);
+            isConnectingRef.current = false;
+
+            // FE-2: Close any leaked EventSource that was assigned during the
+            // failed ticket/connect path. Without this, the broken EventSource
+            // holds a TCP handle and re-fires onerror recursively.
+            const leaked = eventSourceRef.current;
+            if (leaked) {
+                try { leaked.close(); } catch { /* noop */ }
+                eventSourceRef.current = null;
+            }
+
+            // Infinite retry — never gives up
+            scheduleReconnect();
+            return;
+        }
+
+        const eventSource = eventSourceRef.current!;
+
+        eventSource.onopen = () => {
+            setIsConnected(true);
+            reconnectAttemptsRef.current = 0;
+            isConnectingRef.current = false;
+            lastHeartbeatRef.current = Date.now();
+            startWatchdogs();
+            console.log(`📡 SSE Connected (Tab: ${TAB_ID})`);
+        };
+
+        eventSource.onerror = () => {
+            // Only handle if this is still our active connection
+            if (eventSourceRef.current !== eventSource) {
+                return;
+            }
+
+            console.log('📡 SSE Connection error');
+            setIsConnected(false);
+            isConnectingRef.current = false;
+            stopWatchdogs();
+
+            // Close the current connection
+            eventSource.close();
+            eventSourceRef.current = null;
+
+            // Infinite reconnect — never gives up
+            scheduleReconnect();
+        };
+
+        // Connection event from server
+        eventSource.addEventListener('connection', (event: MessageEvent) => {
+            try {
+                const data = JSON.parse(event.data);
+                setConnectedClients(data.connectedClients || 1);
+                console.log('📡 SSE Connection confirmed:', data.clientId);
+            } catch (e) {
+                console.error('Failed to parse connection event:', e);
+            }
+        });
+
+        // Client count updates
+        eventSource.addEventListener('clients', (event: MessageEvent) => {
+            try {
+                const data = JSON.parse(event.data);
+                setConnectedClients(data.count || 0);
+            } catch (e) {
+                // Ignore parse errors
+            }
+        });
+
+        // Handle all business events
+        ALL_EVENTS.forEach(eventType => {
+            eventSource.addEventListener(eventType, (event: MessageEvent) => {
+                try {
+                    const data = JSON.parse(event.data);
+                    const eventObj = { type: eventType, data, timestamp: new Date().toISOString() };
+                    setLastEvent(eventObj);
+                    notifySubscribers(eventType, data);
+                    showEventToast(eventType, data, user?.id ?? '');
+                } catch (e) {
+                    console.error(`Failed to parse SSE event ${eventType}:`, e);
+                }
+            });
+        });
+
+        // Heartbeat — track last heartbeat time so watchdog can detect silence
+        eventSource.addEventListener('heartbeat', () => {
+            lastHeartbeatRef.current = Date.now();
+            // Also reset reconnect attempts on successful heartbeat
+            reconnectAttemptsRef.current = 0;
+        });
+    }, [token, user, notifySubscribers, scheduleReconnect, startWatchdogs, stopWatchdogs]);
+
+    // Keep connectRef in sync so watchdogs/scheduleReconnect always call latest
+    connectRef.current = connect;
 
     useEffect(() => {
         if (!token || !user) {
@@ -122,154 +351,15 @@ export function SSEProvider({ children }: { children: ReactNode }) {
             return;
         }
 
-        const connect = async () => {
-            // Prevent multiple connect calls
-            if (isConnectingRef.current) {
-                return;
-            }
-
-            isConnectingRef.current = true;
-
-            try {
-                // R-002: Obtain SSE ticket via authenticated endpoint
-                const ticketRes = await fetch(`${API_URL}/api/sse/ticket`, {
-                    method: 'POST',
-                    headers: {
-                        'Authorization': `Bearer ${token}`,
-                        'Content-Type': 'application/json',
-                    },
-                    credentials: 'include',
-                });
-
-                if (!ticketRes.ok) {
-                    throw new Error(`SSE ticket request failed: ${ticketRes.status}`);
-                }
-
-                const { ticket } = await ticketRes.json();
-
-                // R-002: Connect with server-validated ticket instead of raw userId/role
-                const url = `${API_URL}/api/sse?ticket=${encodeURIComponent(ticket)}&tabId=${TAB_ID}`;
-                console.log(`📡 SSE Connecting... (Tab: ${TAB_ID})`);
-
-                const eventSource = new EventSource(url);
-                eventSourceRef.current = eventSource;
-            } catch (error) {
-                console.error('📡 SSE ticket/connect error:', error);
-                isConnectingRef.current = false;
-
-                // FE-2: Close any leaked EventSource that was assigned during the
-                // failed ticket/connect path. Without this, the broken EventSource
-                // holds a TCP handle and re-fires onerror recursively.
-                const leaked = eventSourceRef.current;
-                if (leaked) {
-                    try { leaked.close(); } catch { /* noop */ }
-                    eventSourceRef.current = null;
-                }
-
-                // Retry after delay
-                if (reconnectAttemptsRef.current < maxReconnectAttempts) {
-                    reconnectAttemptsRef.current++;
-                    const delay = baseReconnectDelayMs * reconnectAttemptsRef.current;
-                    reconnectTimeoutRef.current = setTimeout(() => {
-                        if (token && user) {
-                            connect();
-                        }
-                    }, delay);
-                }
-                return;
-            }
-
-            const eventSource = eventSourceRef.current!;
-
-            eventSource.onopen = () => {
-                setIsConnected(true);
-                reconnectAttemptsRef.current = 0;
-                isConnectingRef.current = false;
-                console.log(`📡 SSE Connected (Tab: ${TAB_ID})`);
-            };
-
-            eventSource.onerror = () => {
-                // Only handle if this is still our active connection
-                if (eventSourceRef.current !== eventSource) {
-                    return;
-                }
-
-                console.log('📡 SSE Connection error');
-                setIsConnected(false);
-                isConnectingRef.current = false;
-
-                // Close the current connection
-                eventSource.close();
-                eventSourceRef.current = null;
-
-                // Only reconnect if we haven't exceeded max attempts
-                if (reconnectAttemptsRef.current < maxReconnectAttempts) {
-                    reconnectAttemptsRef.current++;
-                    const delay = baseReconnectDelayMs * reconnectAttemptsRef.current;
-                    console.log(`📡 SSE Reconnecting in ${delay}ms (attempt ${reconnectAttemptsRef.current}/${maxReconnectAttempts})`);
-
-                    reconnectTimeoutRef.current = setTimeout(() => {
-                        if (token && user) {
-                            connect();
-                        }
-                    }, delay);
-                } else {
-                    console.error('📡 SSE Max reconnect attempts reached');
-                }
-            };
-
-            // Connection event from server
-            eventSource.addEventListener('connection', (event: MessageEvent) => {
-                try {
-                    const data = JSON.parse(event.data);
-                    setConnectedClients(data.connectedClients || 1);
-                    console.log('📡 SSE Connection confirmed:', data.clientId);
-                } catch (e) {
-                    console.error('Failed to parse connection event:', e);
-                }
-            });
-
-            // Client count updates
-            eventSource.addEventListener('clients', (event: MessageEvent) => {
-                try {
-                    const data = JSON.parse(event.data);
-                    setConnectedClients(data.count || 0);
-                } catch (e) {
-                    // Ignore parse errors
-                }
-            });
-
-            // Handle all business events
-            ALL_EVENTS.forEach(eventType => {
-                eventSource.addEventListener(eventType, (event: MessageEvent) => {
-                    try {
-                        const data = JSON.parse(event.data);
-                        const eventObj = { type: eventType, data, timestamp: new Date().toISOString() };
-                        setLastEvent(eventObj);
-                        notifySubscribers(eventType, data);
-                        showEventToast(eventType, data, user.id);
-                    } catch (e) {
-                        console.error(`Failed to parse SSE event ${eventType}:`, e);
-                    }
-                });
-            });
-
-            // Heartbeat - just confirm connection is alive
-            eventSource.addEventListener('heartbeat', () => {
-                // Connection is alive, reset reconnect attempts
-                reconnectAttemptsRef.current = 0;
-            });
-        };
-
         // Reconnect when tab becomes visible (aggressive reconnect)
         const handleVisibilityChange = () => {
             if (document.visibilityState === 'visible') {
                 // If not connected, try to reconnect immediately
                 if (!eventSourceRef.current || eventSourceRef.current.readyState !== EventSource.OPEN) {
-                    console.log('📡 Tab visible - reconnecting SSE...');
-                    reconnectAttemptsRef.current = 0; // Reset attempts
+                    console.log('📡 Tab visible — reconnecting SSE...');
+                    reconnectAttemptsRef.current = 0; // Reset to get fast delay
                     cleanup();
-                    setTimeout(connect, 100); // Small delay for stability
+                    setTimeout(() => connectRef.current(), 100); // Small delay for stability
                 }
             }
         };
@@ -278,16 +368,16 @@ export function SSEProvider({ children }: { children: ReactNode }) {
 
         // Reconnect on network online
         const handleOnline = () => {
-            console.log('📡 Network online - reconnecting SSE...');
+            console.log('📡 Network online — reconnecting SSE...');
             reconnectAttemptsRef.current = 0;
             cleanup();
-            setTimeout(connect, 500);
+            setTimeout(() => connectRef.current(), 300);
         };
 
         window.addEventListener('online', handleOnline);
 
         // Small delay before connecting to ensure auth is stable
-        const initTimeout = setTimeout(connect, 500);
+        const initTimeout = setTimeout(() => connectRef.current(), 500);
 
         return () => {
             clearTimeout(initTimeout);
@@ -458,17 +548,42 @@ export function useSSE() {
     return context;
 }
 
-// Custom hook for auto-refresh on SSE events
+// Custom hook for auto-refresh on SSE events.
+//
+// Uses refs for both `eventTypes` and `refreshFn` so that callers can
+// safely pass inline arrays (e.g. `[...ORDER_EVENTS, ...USER_EVENTS]`)
+// or inline functions without triggering unsubscribe/resubscribe on
+// every render.  The effect only re-fires when the *content* of
+// `eventTypes` actually changes (compared via a joined string key).
 export function useSSERefresh(eventTypes: string[], refreshFn: () => void) {
     const { subscribe, subscribeMultiple } = useSSE();
 
+    // Always call the latest callback without re-running the effect.
+    const refreshFnRef = useRef(refreshFn);
+    refreshFnRef.current = refreshFn;
+
+    const stableCallback = useCallback(() => {
+        refreshFnRef.current();
+    }, []);
+
+    // Derive a stable string key from the event list so the effect only
+    // re-subscribes when the set of events actually changes.
+    const eventKey = eventTypes.join(',');
+    const eventKeyRef = useRef(eventKey);
+    const eventTypesRef = useRef(eventTypes);
+    if (eventKeyRef.current !== eventKey) {
+        eventKeyRef.current = eventKey;
+        eventTypesRef.current = eventTypes;
+    }
+
     useEffect(() => {
-        const unsubscribe = eventTypes.length === 1
-            ? subscribe(eventTypes[0], refreshFn)
-            : subscribeMultiple(eventTypes, refreshFn);
+        const types = eventTypesRef.current;
+        const unsubscribe = types.length === 1
+            ? subscribe(types[0], stableCallback)
+            : subscribeMultiple(types, stableCallback);
 
         return unsubscribe;
-    }, [eventTypes, refreshFn, subscribe, subscribeMultiple]);
+    }, [eventKey, stableCallback, subscribe, subscribeMultiple]);
 }
 
 // Get all order-related events
