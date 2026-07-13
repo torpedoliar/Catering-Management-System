@@ -24,7 +24,7 @@ mkdir -p $BACKUP_DIR
 TIMESTAMP=$(date +%Y%m%d_%H%M%S)
 BACKUP_FILE="$BACKUP_DIR/db_backup_$TIMESTAMP.sql"
 
-docker-compose exec -T db pg_dump -U postgres catering_db > "$BACKUP_FILE" 2>/dev/null
+docker compose exec -T db pg_dump -U postgres catering_db > "$BACKUP_FILE" 2>/dev/null
 if [ -s "$BACKUP_FILE" ]; then
     echo "✓ Database backed up to: $BACKUP_FILE"
 else
@@ -55,7 +55,7 @@ fi
 # Step 5: Rebuild (Done FIRST to prevent downtime if build fails)
 echo ""
 echo "[5/6] Rebuilding (this may take 2-5 minutes)..."
-docker-compose build --no-cache
+docker compose build --no-cache
 if [ $? -ne 0 ]; then
     echo "ERROR: Build failed! Aborting update."
     exit 1
@@ -65,22 +65,22 @@ echo "✓ Build completed"
 # Step 6: Stop and remove old containers (Safe now because build succeeded)
 echo ""
 echo "[6/6] Recreating containers..."
-docker-compose down --remove-orphans || true
+docker compose down --remove-orphans || true
 
 # Step 7: Start containers
-docker-compose up -d
+docker compose up -d
 echo "✓ Containers started"
 sleep 5
 
 # Write update marker inside backend container
-docker-compose exec -T backend sh -c 'echo "true" > /tmp/update_restart_marker' 2>/dev/null || true
+docker compose exec -T backend sh -c 'echo "true" > /tmp/update_restart_marker' 2>/dev/null || true
 
 sleep 5
 
 # Sync database schema
 echo ""
 echo "Syncing database schema..."
-docker-compose exec -T backend npx prisma db push --accept-data-loss 2>&1
+docker compose exec -T backend npx prisma db push --accept-data-loss 2>&1
 if [ $? -eq 0 ]; then
     echo "✓ Database schema synced"
 else
@@ -89,13 +89,13 @@ fi
 
 # Generate Prisma client
 echo "Generating Prisma client..."
-docker-compose exec -T backend npx prisma generate 2>&1
+docker compose exec -T backend npx prisma generate 2>&1
 echo "✓ Prisma client generated"
 
 # Restart backend to ensure it picks up the regenerated Prisma Client and new Database Schema
 echo ""
 echo "Restarting backend to apply schema changes..."
-docker-compose restart backend
+docker compose restart backend
 echo "✓ Backend restarted successfully"
 
 # Restart Nginx Proxy Manager to clear cached Docker internal IPs
@@ -120,6 +120,6 @@ echo "  Application: http://localhost:8443"
 echo "  Backup file: $BACKUP_FILE"
 echo ""
 echo "  To restore if needed:"
-echo "  cat $BACKUP_FILE | docker-compose exec -T db psql -U postgres catering_db"
+echo "  cat $BACKUP_FILE | docker compose exec -T db psql -U postgres catering_db"
 echo ""
 
