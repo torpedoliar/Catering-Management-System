@@ -660,6 +660,14 @@ router.post('/import', authMiddleware, adminMiddleware, apiRateLimitMiddleware('
             });
         }
 
+        // Invalidate canteen cache if canteens were created or users were imported/updated
+        // This ensures the canteen list and user counts per canteen are up to date in the UI
+        if (results.canteensCreated > 0 || results.created > 0 || results.updated > 0) {
+            const { cacheService } = await import('../services/cache.service');
+            await cacheService.delete('canteens:active');
+            await cacheService.delete('canteens:all');
+        }
+
         res.json({
             message: `Imported ${results.created} new, updated ${results.updated} users (${results.failed} failed)`,
             results,
