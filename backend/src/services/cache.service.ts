@@ -9,6 +9,8 @@ class CacheService {
     private client: RedisClientType | null = null;
     private isReady = false;
     private readonly DEFAULT_TTL = 3600; // 1 hour
+    // FIX-H2: In-flight fetch deduplication (prevents cache stampede)
+    private inflightFetches: Map<string, Promise<any>> = new Map();
 
     async connect() {
         if (this.isReady && this.client) {
@@ -77,7 +79,6 @@ class CacheService {
         try {
             const ttl = options?.ttl || this.DEFAULT_TTL;
             await this.client.setEx(key, ttl, JSON.stringify(value));
-            console.log(`[Cache] Set key: ${key} (TTL: ${ttl}s)`);
             return true;
         } catch (error) {
             console.error(`[Cache] Set error for key ${key}:`, error);
@@ -99,11 +100,9 @@ class CacheService {
                 const keys = await this.client.keys(pattern);
                 if (keys.length > 0) {
                     await this.client.del(keys);
-                    console.log(`[Cache] Deleted ${keys.length} keys matching ${pattern}`);
                 }
             } else {
                 await this.client.del(pattern);
-                console.log(`[Cache] Deleted key: ${pattern}`);
             }
             return true;
         } catch (error) {
@@ -122,7 +121,6 @@ class CacheService {
 
         try {
             await this.client.flushDb();
-            console.log('[Cache] Database cleared');
             return true;
         } catch (error) {
             console.error('[Cache] Clear error:', error);
@@ -132,6 +130,8 @@ class CacheService {
 
     /**
      * Wrapper for get-or-set pattern.
+     * FIX-H2: Per-key Promise deduplication prevents cache stampede.
+     * When TTL expires, only 1 request fetches; others await the same Promise.
      */
     async getOrSet<T>(
         key: string,
@@ -141,20 +141,31 @@ class CacheService {
         // Try to get from cache first
         const cached = await this.get<T>(key);
         if (cached !== null) {
-            console.log(`[Cache] Hit: ${key}`);
             return cached;
         }
 
-        // Cache miss - fetch data
-        console.log(`[Cache] Miss: ${key}`);
-        const data = await fetchFn();
+        // FIX-H2: Check if another request is already fetching this key
+        const inflight = this.inflightFetches.get(key);
+        if (inflight) {
+            return inflight as Promise<T>;
+        }
 
-        // Store in cache (fire and forget - don't await)
-        this.set(key, data, options).catch(err =>
-            console.error(`[Cache] Background set failed for ${key}:`, err)
-        );
+        // We're the first — start fetch and store the Promise
+        const fetchPromise = fetchFn()
+            .then(async (data) => {
+                // Store in cache (fire and forget - don't await)
+                this.set(key, data, options).catch(err =>
+                    console.error(`[Cache] Background set failed for ${key}:`, err)
+                );
+                return data;
+            })
+            .finally(() => {
+                // Clean up inflight entry
+                this.inflightFetches.delete(key);
+            });
 
-        return data;
+        this.inflightFetches.set(key, fetchPromise);
+        return fetchPromise;
     }
 
     isConnected(): boolean {

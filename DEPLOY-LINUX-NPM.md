@@ -352,7 +352,38 @@ Klik **Save** → Selesai! Lanjut ke **7.5 SSL**.
 3. Paste konfigurasi ini di **Custom Nginx Configuration**:
 
 ```nginx
-# SSE Support - WAJIB untuk realtime
+# ============================================
+# Nginx Proxy Manager — Advanced Configuration
+# Catering Management System (HalloFood)
+# ============================================
+#
+# Paste this into: NPM > Proxy Host > Advanced Tab
+#
+# DESIGN RATIONALE:
+# - Uses `more_set_headers` (openresty headers-more module) instead of `add_header`
+# - `add_header` at server-level is NOT inherited by location blocks that have
+#   their own `add_header` — this is why SPA root was missing security headers.
+# - `more_set_headers` works at output-filter level and ALWAYS applies regardless
+#   of location block inheritance rules. It also replaces rather than duplicates.
+# - Security headers are ONLY injected here. Express does NOT set any.
+#
+
+# ─── Security Headers (R-001 / F-001) ───
+# Applied to ALL responses: SPA root HTML, API, SSE, static assets
+# Uses more_set_headers to bypass Nginx add_header inheritance limitations
+more_set_headers "Strict-Transport-Security: max-age=31536000; includeSubDomains";
+more_set_headers "Content-Security-Policy: default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src 'self' https://fonts.gstatic.com; img-src 'self' data: blob:; connect-src 'self'; frame-ancestors 'none'";
+more_set_headers "X-Frame-Options: DENY";
+more_set_headers "X-Content-Type-Options: nosniff";
+more_set_headers "Referrer-Policy: strict-origin-when-cross-origin";
+more_set_headers "Permissions-Policy: camera=(self), microphone=(), geolocation=()";
+
+# ─── Technology Disclosure Suppression (R-005 / F-005) ───
+more_clear_headers "X-Powered-By";
+more_clear_headers "Server";
+more_clear_headers "X-Served-By";
+
+# ─── SSE Endpoint (R-002: ticket-based auth) ───
 location /api/sse {
     proxy_pass http://catering-backend:3012;
     proxy_http_version 1.1;
@@ -362,22 +393,32 @@ location /api/sse {
     proxy_set_header Connection '';
     proxy_set_header Host $host;
     proxy_set_header X-Real-IP $remote_addr;
+    proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+    proxy_set_header X-Forwarded-Proto $scheme;
     chunked_transfer_encoding off;
 }
 
-# API dengan upload support
+# ─── API Routes ───
 location /api/ {
     proxy_pass http://catering-backend:3012;
     proxy_http_version 1.1;
     proxy_set_header Host $host;
     proxy_set_header X-Real-IP $remote_addr;
+    proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+    proxy_set_header X-Forwarded-Proto $scheme;
     client_max_body_size 50M;
     proxy_read_timeout 300;
 }
 
-# Static uploads
+# ─── Static Uploads ───
 location /uploads/ {
     proxy_pass http://catering-backend:3012/uploads/;
+    proxy_http_version 1.1;
+    proxy_set_header Host $host;
+    proxy_set_header X-Real-IP $remote_addr;
+    proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+
+    proxy_cache_valid 200 1d;
     expires 1d;
     add_header Cache-Control "public, immutable";
 }

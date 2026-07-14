@@ -94,3 +94,25 @@ Namun, **JIKA Anda mengubah App ID**, ikuti langkah berikut agar push notificati
 
 ## 7. Hal Lainnya Yang Berkaitan
 *   Jika **Web-Push Notification** (notifikasi dari browser langsung) diklaim tidak muncul setelah ganti domain, sarankan karyawan Anda membersihkan *Cache* browser aplikasinya lalu Re-login. Hal ini dikarenakan pergantian URL memaksa browser mendaftarkan *Vapid Key PushSubscription* baru pada *service worker*.
+
+## 8. Troubleshooting (Masalah Pasca Ganti Domain)
+
+### A. Login Gagal / Error 502 Bad Gateway pada API
+Jika halaman web bisa dibuka namun saat login gagal dan muncul error **502 Bad Gateway** di console browser, ini **BUKAN** karena backend Anda rusak. 
+
+Penyebab utamanya adalah **Nginx Proxy Manager (NPM) men-cache IP internal lama** dari container backend. Ketika Anda menjalankan `docker compose down` dan `up -d` (Langkah 5), container backend mendapatkan IP internal Docker yang baru. Namun, konfigurasi *Advanced* di NPM (`proxy_pass http://catering-backend:3012;`) masih mencoba mengirim traffic ke IP yang lama.
+
+**Solusi:**
+Anda harus me-restart service Nginx Proxy Manager agar ia membaca ulang IP terbaru backend.
+Cara termudah: Buka dashboard NPM Anda -> Edit *Proxy Host* domain Anda -> Langsung klik **Save** tanpa merubah apapun. Tindakan ini akan memaksa Nginx melakukan *reload* dan memperbaiki koneksi API secara instan.
+
+### B. Error Console: `Content Security Policy directive...` (Cloudflare)
+Jika Anda menggunakan **Cloudflare** sebagai DNS proxy (awan orange menyala) dan mengaktifkan fitur seperti *Web Analytics* atau *Rocket Loader*, Anda mungkin akan melihat banyak tulisan merah panjang terkait pemblokiran script (CSP) di console browser.
+
+Aplikasi secara ketat menolak masuknya script pihak ketiga. Untuk mengatasinya, buka pengaturan **Advanced** pada Proxy Host NPM Anda, cari baris header `Content-Security-Policy`, dan ganti baris tersebut menjadi:
+
+```nginx
+more_set_headers "Content-Security-Policy: default-src 'self'; script-src 'self' 'unsafe-inline' https://static.cloudflareinsights.com; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src 'self' https://fonts.gstatic.com; img-src 'self' data: blob:; connect-src 'self' https://cloudflareinsights.com; frame-ancestors 'none'";
+```
+
+Perubahan ini melonggarkan keamanan khusus untuk domain `cloudflareinsights.com` agar fitur analytics dan rocket loader Cloudflare Anda dapat bekerja normal tanpa diblokir oleh aplikasi.

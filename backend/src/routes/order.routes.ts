@@ -1300,6 +1300,7 @@ router.post('/process-noshows', authMiddleware, adminMiddleware, async (req: Aut
 });
 
 // Export transactions (Admin only) - Enhanced with Cost Analysis
+// FIX-H4: Cursor-based pagination to prevent OOM on large datasets
 router.get('/export', authMiddleware, adminMiddleware, async (req: AuthRequest, res: Response) => {
     try {
         const { startDate, endDate, status } = req.query;
@@ -1312,23 +1313,28 @@ router.get('/export', authMiddleware, adminMiddleware, async (req: AuthRequest, 
         }
         if (status) where.status = status;
 
-        const orders = await prisma.order.findMany({
-            where,
-            include: {
-                user: true,
-                shift: true,
-                canteen: true,
-            },
-            orderBy: [{ orderDate: 'desc' }, { orderTime: 'desc' }],
-        });
+        // FIX-H4: Collect checkedInByIds in batches first (lightweight query)
+        const checkedInByIds = new Set<string>();
+        let cidCursor: string | undefined;
+        const CID_BATCH = 1000;
+        do {
+            const cidBatch = await prisma.order.findMany({
+                where: { ...where, checkedInById: { not: null } },
+                select: { checkedInById: true },
+                orderBy: { id: 'asc' },
+                take: CID_BATCH,
+                ...(cidCursor ? { skip: 1, cursor: { id: cidCursor } } : {}),
+            });
+            for (const o of cidBatch) {
+                if (o.checkedInById) checkedInByIds.add(o.checkedInById);
+            }
+            cidCursor = cidBatch.length === CID_BATCH ? cidBatch[cidBatch.length - 1].checkedInById! : undefined;
+        } while (cidCursor);
 
-        // Get all canteen/admin users who processed check-ins
-        const checkedInByIds = [...new Set(orders.map(o => o.checkedInById).filter(Boolean))] as string[];
         const canteenUsersMap = new Map<string, { name: string; externalId: string }>();
-
-        if (checkedInByIds.length > 0) {
+        if (checkedInByIds.size > 0) {
             const canteenUsers = await prisma.user.findMany({
-                where: { id: { in: checkedInByIds } },
+                where: { id: { in: [...checkedInByIds] } },
                 select: { id: true, name: true, externalId: true }
             });
             canteenUsers.forEach(u => canteenUsersMap.set(u.id, { name: u.name, externalId: u.externalId }));
@@ -1353,13 +1359,16 @@ router.get('/export', authMiddleware, adminMiddleware, async (req: AuthRequest, 
         titleCell.alignment = { horizontal: 'center', vertical: 'middle' };
         worksheet.getRow(1).height = 30;
 
+        // FIX-H4: Count total orders for info row (lightweight query)
+        const totalOrdersCount = await prisma.order.count({ where });
+
         // Info Row
         worksheet.mergeCells('A2:S2');
         const infoCell = worksheet.getCell('A2');
         const dateRange = startDate && endDate
             ? `Periode: ${new Date(startDate as string).toLocaleDateString('id-ID', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' })} - ${new Date(endDate as string).toLocaleDateString('id-ID', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' })}`
             : `Diekspor: ${getNow().toLocaleDateString('id-ID', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric', hour: '2-digit', minute: '2-digit' })}`;
-        infoCell.value = `${dateRange} | Total: ${orders.length} transaksi`;
+        infoCell.value = `${dateRange} | Total: ${totalOrdersCount} transaksi`;
         infoCell.font = { italic: true, size: 10, color: { argb: 'FF666666' } };
         infoCell.alignment = { horizontal: 'center', vertical: 'middle' };
         worksheet.getRow(2).height = 20;
@@ -1431,6 +1440,14 @@ router.get('/export', authMiddleware, adminMiddleware, async (req: AuthRequest, 
         let totalActualCost = 0;
         let totalWasteCost = 0;
         let totalPendingCost = 0; // Biaya order dengan status ORDERED (menunggu)
+        let rowIndex = 0; // FIX-H4: total row counter for cursor-based pagination
+
+        // FIX-H4: Stats counters (replace orders.filter() calls)
+        let statsTotal = 0;
+        let statsPickedUp = 0;
+        let statsPending = 0;
+        let statsNoShow = 0;
+        let statsCancelled = 0;
 
         // Company cost breakdown
         const companyCosts: Record<string, { orders: number; pickedUp: number; noShow: number; cancelled: number; totalCost: number; wasteCost: number }> = {};
@@ -1438,121 +1455,156 @@ router.get('/export', authMiddleware, adminMiddleware, async (req: AuthRequest, 
         // Shift cost breakdown
         const shiftCosts: Record<string, { name: string; orders: number; pickedUp: number; noShow: number; price: number; totalCost: number; wasteCost: number }> = {};
 
-        // Add data rows
-        orders.forEach((order, index) => {
-            // Use order's historical mealPrice if available, otherwise use shift's current price
-            const mealPrice = Number((order as any).mealPrice) || Number(order.shift.mealPrice) || 25000;
-            let actualCost = 0;
-            let wasteCost = 0;
+        // FIX-H4: Process orders in cursor-based batches of 1000
+        const BATCH_SIZE = 1000;
+        let cursor: string | undefined;
+        let hasMore = true;
 
-            if (order.status === 'PICKED_UP') {
-                actualCost = mealPrice;
-            } else if (order.status === 'NO_SHOW') {
-                wasteCost = mealPrice;
-            } else if (order.status === 'ORDERED') {
-                totalPendingCost += mealPrice;
-            }
-            // Cancelled orders = no cost
-
-            totalMealCost += (order.status !== 'CANCELLED' ? mealPrice : 0);
-            totalActualCost += actualCost;
-            totalWasteCost += wasteCost;
-
-            // Update company breakdown
-            const companyName = order.user.company || 'Tidak Ada';
-            if (!companyCosts[companyName]) {
-                companyCosts[companyName] = { orders: 0, pickedUp: 0, noShow: 0, cancelled: 0, totalCost: 0, wasteCost: 0 };
-            }
-            companyCosts[companyName].orders++;
-            if (order.status === 'PICKED_UP') companyCosts[companyName].pickedUp++;
-            if (order.status === 'NO_SHOW') companyCosts[companyName].noShow++;
-            if (order.status === 'CANCELLED') companyCosts[companyName].cancelled++;
-            companyCosts[companyName].totalCost += (order.status !== 'CANCELLED' ? mealPrice : 0);
-            companyCosts[companyName].wasteCost += wasteCost;
-
-            // Update shift breakdown
-            const shiftId = order.shiftId;
-            if (!shiftCosts[shiftId]) {
-                shiftCosts[shiftId] = { name: order.shift.name, orders: 0, pickedUp: 0, noShow: 0, price: mealPrice, totalCost: 0, wasteCost: 0 };
-            }
-            shiftCosts[shiftId].orders++;
-            if (order.status === 'PICKED_UP') shiftCosts[shiftId].pickedUp++;
-            if (order.status === 'NO_SHOW') shiftCosts[shiftId].noShow++;
-            shiftCosts[shiftId].totalCost += (order.status !== 'CANCELLED' ? mealPrice : 0);
-            shiftCosts[shiftId].wasteCost += wasteCost;
-
-            // Determine who processed this order
-            let processedBy = '-';
-            if (order.status === 'PICKED_UP' && order.checkedInById) {
-                const canteenUser = canteenUsersMap.get(order.checkedInById);
-                processedBy = canteenUser ? canteenUser.name : (order.checkedInBy || '-');
-            } else if (order.status === 'CANCELLED' && order.cancelledBy) {
-                processedBy = order.cancelledBy;
-            } else if (order.status === 'NO_SHOW') {
-                processedBy = 'Sistem (Auto)';
-            }
-
-            // Generate notes based on status
-            let notes = '';
-            if (order.status === 'NO_SHOW') notes = 'Kerugian makanan';
-            else if (order.status === 'CANCELLED') notes = 'Tidak dikenakan biaya';
-            else if (order.status === 'PICKED_UP') notes = 'Diambil';
-            else if (order.status === 'ORDERED') notes = 'Menunggu';
-
-            const row = worksheet.addRow({
-                no: index + 1,
-                externalId: order.user.externalId,
-                name: order.user.name,
-                company: order.user.company || '-',
-                division: order.user.division || '-',
-                department: order.user.department || '-',
-                shift: order.shift.name,
-                shiftTime: `${order.shift.startTime} - ${order.shift.endTime}`,
-                orderDate: order.orderDate.toLocaleDateString('id-ID', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' }),
-                orderTime: order.orderTime.toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit', second: '2-digit' }),
-                canteen: order.canteen?.name || '-',
-                status: statusLabels[order.status] || order.status,
-                mealPrice: mealPrice,
-                actualCost: actualCost,
-                wasteCost: wasteCost,
-                checkInDate: order.checkInTime ? order.checkInTime.toLocaleDateString('id-ID', { weekday: 'short', year: 'numeric', month: 'short', day: 'numeric' }) : '-',
-                checkInTime: order.checkInTime ? order.checkInTime.toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit', second: '2-digit' }) : '-',
-                processedBy: processedBy,
-                cancelReason: order.cancelReason || '-',
-                notes: notes
+        while (hasMore) {
+            const batch = await prisma.order.findMany({
+                where,
+                include: {
+                    user: true,
+                    shift: true,
+                    canteen: true,
+                },
+                orderBy: [{ orderDate: 'desc' }, { orderTime: 'desc' }],
+                take: BATCH_SIZE,
+                ...(cursor ? { skip: 1, cursor: { id: cursor } } : {}),
             });
 
-            // Format currency columns
-            [12, 13, 14].forEach(colNum => {
-                const cell = row.getCell(colNum);
-                cell.numFmt = '"Rp "#,##0';
-            });
+            if (batch.length < BATCH_SIZE) {
+                hasMore = false;
+            }
+            if (batch.length > 0) {
+                cursor = batch[batch.length - 1].id;
+            }
 
-            // Alternate row colors
-            const bgColor = index % 2 === 0 ? 'FFF9FAFB' : 'FFFFFFFF';
-            row.eachCell((cell, colNumber) => {
-                cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: bgColor } };
-                cell.border = {
-                    top: { style: 'thin', color: { argb: 'FFE5E7EB' } },
-                    bottom: { style: 'thin', color: { argb: 'FFE5E7EB' } },
-                    left: { style: 'thin', color: { argb: 'FFE5E7EB' } },
-                    right: { style: 'thin', color: { argb: 'FFE5E7EB' } }
-                };
-                cell.alignment = { vertical: 'middle' };
-                if ([1, 7, 8, 10, 11, 12, 13, 14, 15, 16].includes(colNumber)) {
-                    cell.alignment = { horizontal: 'center', vertical: 'middle' };
+            // Process this batch
+            for (const order of batch) {
+                // Use order's historical mealPrice if available, otherwise use shift's current price
+                const mealPrice = Number((order as any).mealPrice) || Number(order.shift.mealPrice) || 25000;
+                let actualCost = 0;
+                let wasteCost = 0;
+
+                if (order.status === 'PICKED_UP') {
+                    actualCost = mealPrice;
+                    statsPickedUp++;
+                    statsTotal++;
+                } else if (order.status === 'NO_SHOW') {
+                    wasteCost = mealPrice;
+                    statsNoShow++;
+                    statsTotal++;
+                } else if (order.status === 'ORDERED') {
+                    totalPendingCost += mealPrice;
+                    statsPending++;
+                    statsTotal++;
+                } else if (order.status === 'CANCELLED') {
+                    statsCancelled++;
                 }
-            });
 
-            // Color status cell
-            const statusCell = row.getCell(11);
-            statusCell.font = { bold: true, color: { argb: statusColors[order.status] || 'FF333333' } };
+                totalMealCost += (order.status !== 'CANCELLED' ? mealPrice : 0);
+                totalActualCost += actualCost;
+                totalWasteCost += wasteCost;
 
-            // Highlight waste cost in red
-            if (wasteCost > 0) {
-                row.getCell(14).font = { bold: true, color: { argb: 'FFEF4444' } };
+                // Update company breakdown
+                const companyName = order.user.company || 'Tidak Ada';
+                if (!companyCosts[companyName]) {
+                    companyCosts[companyName] = { orders: 0, pickedUp: 0, noShow: 0, cancelled: 0, totalCost: 0, wasteCost: 0 };
+                }
+                companyCosts[companyName].orders++;
+                if (order.status === 'PICKED_UP') companyCosts[companyName].pickedUp++;
+                if (order.status === 'NO_SHOW') companyCosts[companyName].noShow++;
+                if (order.status === 'CANCELLED') companyCosts[companyName].cancelled++;
+                companyCosts[companyName].totalCost += (order.status !== 'CANCELLED' ? mealPrice : 0);
+                companyCosts[companyName].wasteCost += wasteCost;
+
+                // Update shift breakdown
+                const shiftId = order.shiftId;
+                if (!shiftCosts[shiftId]) {
+                    shiftCosts[shiftId] = { name: order.shift.name, orders: 0, pickedUp: 0, noShow: 0, price: mealPrice, totalCost: 0, wasteCost: 0 };
+                }
+                shiftCosts[shiftId].orders++;
+                if (order.status === 'PICKED_UP') shiftCosts[shiftId].pickedUp++;
+                if (order.status === 'NO_SHOW') shiftCosts[shiftId].noShow++;
+                shiftCosts[shiftId].totalCost += (order.status !== 'CANCELLED' ? mealPrice : 0);
+                shiftCosts[shiftId].wasteCost += wasteCost;
+
+                // Determine who processed this order
+                let processedBy = '-';
+                if (order.status === 'PICKED_UP' && order.checkedInById) {
+                    const canteenUser = canteenUsersMap.get(order.checkedInById);
+                    processedBy = canteenUser ? canteenUser.name : (order.checkedInBy || '-');
+                } else if (order.status === 'CANCELLED' && order.cancelledBy) {
+                    processedBy = order.cancelledBy;
+                } else if (order.status === 'NO_SHOW') {
+                    processedBy = 'Sistem (Auto)';
+                }
+
+                // Generate notes based on status
+                let notes = '';
+                if (order.status === 'NO_SHOW') notes = 'Kerugian makanan';
+                else if (order.status === 'CANCELLED') notes = 'Tidak dikenakan biaya';
+                else if (order.status === 'PICKED_UP') notes = 'Diambil';
+                else if (order.status === 'ORDERED') notes = 'Menunggu';
+
+                const row = worksheet.addRow({
+                    no: rowIndex + 1,
+                    externalId: order.user.externalId,
+                    name: order.user.name,
+                    company: order.user.company || '-',
+                    division: order.user.division || '-',
+                    department: order.user.department || '-',
+                    shift: order.shift.name,
+                    shiftTime: `${order.shift.startTime} - ${order.shift.endTime}`,
+                    orderDate: order.orderDate.toLocaleDateString('id-ID', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' }),
+                    orderTime: order.orderTime.toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit', second: '2-digit' }),
+                    canteen: order.canteen?.name || '-',
+                    status: statusLabels[order.status] || order.status,
+                    mealPrice: mealPrice,
+                    actualCost: actualCost,
+                    wasteCost: wasteCost,
+                    checkInDate: order.checkInTime ? order.checkInTime.toLocaleDateString('id-ID', { weekday: 'short', year: 'numeric', month: 'short', day: 'numeric' }) : '-',
+                    checkInTime: order.checkInTime ? order.checkInTime.toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit', second: '2-digit' }) : '-',
+                    processedBy: processedBy,
+                    cancelReason: order.cancelReason || '-',
+                    notes: notes
+                });
+
+                // Format currency columns
+                [12, 13, 14].forEach(colNum => {
+                    const cell = row.getCell(colNum);
+                    cell.numFmt = '"Rp "#,##0';
+                });
+
+                // Alternate row colors
+                const bgColor = rowIndex % 2 === 0 ? 'FFF9FAFB' : 'FFFFFFFF';
+                row.eachCell((cell, colNumber) => {
+                    cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: bgColor } };
+                    cell.border = {
+                        top: { style: 'thin', color: { argb: 'FFE5E7EB' } },
+                        bottom: { style: 'thin', color: { argb: 'FFE5E7EB' } },
+                        left: { style: 'thin', color: { argb: 'FFE5E7EB' } },
+                        right: { style: 'thin', color: { argb: 'FFE5E7EB' } }
+                    };
+                    cell.alignment = { vertical: 'middle' };
+                    if ([1, 7, 8, 10, 11, 12, 13, 14, 15, 16].includes(colNumber)) {
+                        cell.alignment = { horizontal: 'center', vertical: 'middle' };
+                    }
+                });
+
+                // Color status cell
+                const statusCell = row.getCell(11);
+                statusCell.font = { bold: true, color: { argb: statusColors[order.status] || 'FF333333' } };
+
+                // Highlight waste cost in red
+                if (wasteCost > 0) {
+                    row.getCell(14).font = { bold: true, color: { argb: 'FFEF4444' } };
+                }
+
+                rowIndex++;
             }
-        });
+        }
 
         // ========== SHEET 2: RINGKASAN BIAYA ==========
         const summarySheet = workbook.addWorksheet('Ringkasan Biaya', {
@@ -1572,13 +1624,13 @@ router.get('/export', authMiddleware, adminMiddleware, async (req: AuthRequest, 
         summarySheet.getCell('A2').font = { italic: true, size: 10, color: { argb: 'FF666666' } };
         summarySheet.getCell('A2').alignment = { horizontal: 'center' };
 
-        // Cost Summary Cards
+        // Cost Summary Cards — FIX-H4: use counters from batch loop
         const stats = {
-            total: orders.filter(o => o.status !== 'CANCELLED').length,
-            pickedUp: orders.filter(o => o.status === 'PICKED_UP').length,
-            pending: orders.filter(o => o.status === 'ORDERED').length,
-            noShow: orders.filter(o => o.status === 'NO_SHOW').length,
-            cancelled: orders.filter(o => o.status === 'CANCELLED').length
+            total: statsTotal,
+            pickedUp: statsPickedUp,
+            pending: statsPending,
+            noShow: statsNoShow,
+            cancelled: statsCancelled
         };
 
         const wasteRate = stats.total > 0 ? Math.round((stats.noShow / stats.total) * 100) : 0;

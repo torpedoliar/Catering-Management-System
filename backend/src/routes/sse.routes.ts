@@ -82,7 +82,7 @@ router.get('/', (req: Request, res: Response) => {
     // Add client to SSE manager with server-verified identity
     sseManager.addClient(clientId, tabId, res, userId, role);
 
-    // Send heartbeat every 10 seconds to keep connection alive
+    // Send heartbeat every 30 seconds to keep connection alive (FIX-H1: reduced from 10s)
     const heartbeat = setInterval(() => {
         try {
             res.write(`event: heartbeat\ndata: ${JSON.stringify({
@@ -94,7 +94,7 @@ router.get('/', (req: Request, res: Response) => {
             clearInterval(heartbeat);
             sseManager.removeClient(clientId);
         }
-    }, 10000);
+    }, 30000);
 
     // Handle client disconnect
     req.on('close', () => {

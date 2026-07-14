@@ -7,7 +7,7 @@ import { logBlacklist, getRequestContext } from '../services/audit.service';
 import { cancelOrdersForBlacklistedUser } from '../services/noshow.service';
 import { ErrorMessages } from '../utils/errorMessages';
 import { prisma } from '../lib/prisma';
-import { getCachedSettings } from '../services/cache.service';
+import { getCachedSettings, cacheService } from '../services/cache.service';
 import { checkAndExpireBlacklists } from '../middleware/blacklist.middleware';
 
 const router = Router();
@@ -175,6 +175,9 @@ router.post('/', authMiddleware, adminMiddleware, async (req: AuthRequest, res: 
         // Cancel all pending orders for this blacklisted user
         const cancelResult = await cancelOrdersForBlacklistedUser(userId, getNow(), endDate);
 
+        // FIX-H3: Invalidate blacklist cache for this user
+        await cacheService.delete(`blacklist:active:${userId}`);
+
         res.status(201).json({
             ...blacklist,
             cancelledOrders: cancelResult.cancelledCount,
@@ -283,6 +286,9 @@ router.post('/:id/unblock', authMiddleware, adminMiddleware, async (req: AuthReq
             timestamp: getNow().toISOString(),
         });
 
+        // FIX-H3: Invalidate blacklist cache for this user
+        await cacheService.delete(`blacklist:active:${blacklist.userId}`);
+
         res.json({ message: 'User unblocked successfully', blacklist });
     } catch (error) {
         console.error('Unblock error:', error);
@@ -305,6 +311,9 @@ router.put('/:id', authMiddleware, adminMiddleware, async (req: AuthRequest, res
                 user: { select: { name: true, externalId: true } },
             },
         });
+
+        // FIX-H3: Invalidate blacklist cache for this user
+        await cacheService.delete(`blacklist:active:${blacklist.userId}`);
 
         res.json(blacklist);
     } catch (error) {
@@ -430,6 +439,9 @@ router.post('/reset-strikes/:userId', authMiddleware, adminMiddleware, async (re
             autoUnblocked,
             timestamp: getNow().toISOString(),
         });
+
+        // FIX-H3: Invalidate blacklist cache for this user
+        await cacheService.delete(`blacklist:active:${userId}`);
 
         res.json({
             message: autoUnblocked

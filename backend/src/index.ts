@@ -179,6 +179,7 @@ async function shutdown(signal: string) {
 
         // 5. Close services in reverse-startup order
         await logServerStop(`${signal} received`);
+        try { await sseManager.disconnect(); } catch (e) { console.error('[shutdown] sse pub/sub:', e); }
         try { await cacheService.disconnect(); } catch (e) { console.error('[shutdown] cacheService:', e); }
         try { await redisService.disconnect(); } catch (e) { console.error('[shutdown] redis:', e); }
         try { await prisma.$disconnect(); } catch (e) { console.error('[shutdown] prisma:', e); }
@@ -205,6 +206,9 @@ app.listen(PORT, async () => {
 
     // Initialize Cache Service
     await cacheService.connect();
+
+    // FIX-H1: Initialize SSE Redis pub/sub for cluster awareness
+    await sseManager.initPubSub();
 
     // Initialize NTP service
     await initNTPService();
