@@ -124,13 +124,10 @@ router.post('/', authMiddleware, blockVendorMiddleware, blacklistMiddleware, api
             });
         }
 
-        // Get shift for cutoff validation
-        const shift = await prisma.shift.findUnique({ where: { id: shiftId } });
+        // FIX-L3: Use shift already fetched by cutoffMiddleware (avoids double DB query)
+        const shift = (req as any).shift;
         if (!shift) {
             return res.status(404).json({ error: ErrorMessages.SHIFT_NOT_FOUND });
-        }
-        if (!shift.isActive) {
-            return res.status(400).json({ error: ErrorMessages.SHIFT_INACTIVE });
         }
 
         // Calculate cutoff time for the selected date

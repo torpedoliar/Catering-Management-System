@@ -1,53 +1,22 @@
-import { createClient, RedisClientType } from 'redis';
 import { prisma } from '../lib/prisma';
+import { redisService } from './redis.service';
 
 interface CacheOptions {
     ttl?: number; // Time to live in seconds
 }
 
 class CacheService {
-    private client: RedisClientType | null = null;
-    private isReady = false;
     private readonly DEFAULT_TTL = 3600; // 1 hour
     // FIX-H2: In-flight fetch deduplication (prevents cache stampede)
     private inflightFetches: Map<string, Promise<any>> = new Map();
 
-    async connect() {
-        if (this.isReady && this.client) {
-            return this.client;
-        }
+    // FIX-M1: Use redisService client instead of own connection
+    private get client() {
+        return redisService.getClient();
+    }
 
-        try {
-            this.client = createClient({
-                url: process.env.REDIS_URL || 'redis://catering-redis:6379',
-                socket: {
-                    reconnectStrategy: (retries: number) => {
-                        if (retries > 10) {
-                            console.error('[Cache] Max reconnection attempts reached');
-                            return new Error('Max reconnection attempts');
-                        }
-                        return Math.min(retries * 100, 3000);
-                    }
-                }
-            }) as RedisClientType;
-
-            this.client.on('error', (err: Error) => {
-                console.error('[Cache] Error:', err);
-                this.isReady = false;
-            });
-
-            this.client.on('ready', () => {
-                console.log('[Cache] Ready');
-                this.isReady = true;
-            });
-
-            await this.client.connect();
-            return this.client;
-        } catch (error) {
-            console.error('[Cache] Connection failed:', error);
-            this.isReady = false;
-            return null;
-        }
+    private get isReady() {
+        return redisService.isReady();
     }
 
     /**
@@ -88,6 +57,7 @@ class CacheService {
 
     /**
      * Delete a cached key or pattern.
+     * FIX-M2: Uses SCAN instead of KEYS for production safety.
      */
     async delete(pattern: string): Promise<boolean> {
         if (!this.isReady || !this.client) {
@@ -95,12 +65,16 @@ class CacheService {
         }
 
         try {
-            // If pattern contains wildcard, delete all matching keys
             if (pattern.includes('*')) {
-                const keys = await this.client.keys(pattern);
-                if (keys.length > 0) {
-                    await this.client.del(keys);
-                }
+                // FIX-M2: Use SCAN cursor iteration instead of KEYS (O(n) blocking)
+                let cursor = 0;
+                do {
+                    const result = await this.client.scan(cursor, { MATCH: pattern, COUNT: 100 });
+                    cursor = result.cursor;
+                    if (result.keys.length > 0) {
+                        await this.client.del(result.keys);
+                    }
+                } while (cursor !== 0);
             } else {
                 await this.client.del(pattern);
             }
@@ -172,12 +146,9 @@ class CacheService {
         return this.isReady && this.client !== null;
     }
 
+    // FIX-M1: disconnect is now a no-op — redisService owns the connection
     async disconnect() {
-        if (this.client) {
-            await this.client.quit();
-            this.isReady = false;
-            this.client = null;
-        }
+        // No-op: redisService manages the Redis lifecycle
     }
 }
 

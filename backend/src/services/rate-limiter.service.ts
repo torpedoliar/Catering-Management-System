@@ -1,17 +1,5 @@
 import { redisService } from './redis.service';
 
-interface RateLimitInfo {
-    attempts: number;
-    firstAttemptTime: number;
-    lockedUntil?: number;
-}
-
-interface RateLimitResult {
-    allowed: boolean;
-    remainingTime?: number;
-    reason?: string;
-}
-
 const MAX_ATTEMPTS = 5;
 const LOCKOUT_DURATION_SECONDS = 60; // 1 minute
 const WINDOW_DURATION_SECONDS = 300; // 5 minutes
@@ -25,9 +13,16 @@ class RateLimiterService {
         return `login:attempt:ip:${ip}`;
     }
 
-    async checkRateLimit(externalId: string, ip: string): Promise<RateLimitResult> {
+    private getUserLockKey(externalId: string): string {
+        return `login:lock:user:${externalId}`;
+    }
+
+    private getIPLockKey(ip: string): string {
+        return `login:lock:ip:${ip}`;
+    }
+
+    async checkRateLimit(externalId: string, ip: string): Promise<{ allowed: boolean; remainingTime?: number; reason?: string }> {
         if (!redisService.isReady()) {
-            console.warn('[RateLimiter] Redis not available, allowing request');
             return { allowed: true };
         }
 
@@ -37,19 +32,13 @@ class RateLimiterService {
         }
 
         try {
-            // Check both user and IP rate limits
             const [userCheck, ipCheck] = await Promise.all([
-                this.checkKey(this.getUserKey(externalId), client),
-                this.checkKey(this.getIPKey(ip), client)
+                this.checkKey(this.getUserKey(externalId), this.getUserLockKey(externalId), client),
+                this.checkKey(this.getIPKey(ip), this.getIPLockKey(ip), client)
             ]);
 
-            if (!userCheck.allowed) {
-                return userCheck;
-            }
-
-            if (!ipCheck.allowed) {
-                return ipCheck;
-            }
+            if (!userCheck.allowed) return userCheck;
+            if (!ipCheck.allowed) return ipCheck;
 
             return { allowed: true };
         } catch (error) {
@@ -58,28 +47,16 @@ class RateLimiterService {
         }
     }
 
-    private async checkKey(key: string, client: any): Promise<RateLimitResult> {
-        const data = await client.get(key);
-        if (!data) {
-            return { allowed: true };
-        }
-
-        const info: RateLimitInfo = JSON.parse(data);
-        const now = Date.now();
-
-        // If locked, check if lock has expired
-        if (info.lockedUntil && info.lockedUntil > now) {
-            const remainingSeconds = Math.ceil((info.lockedUntil - now) / 1000);
+    // FIX-M6: Atomic check — no get-parse-modify-set race
+    private async checkKey(attemptsKey: string, lockKey: string, client: any): Promise<{ allowed: boolean; remainingTime?: number; reason?: string }> {
+        // Check lock first (atomic GET)
+        const lockTTL = await client.ttl(lockKey);
+        if (lockTTL > 0) {
             return {
                 allowed: false,
-                remainingTime: remainingSeconds,
-                reason: `Terlalu banyak percobaan login. Coba lagi dalam ${remainingSeconds} detik.`
+                remainingTime: lockTTL,
+                reason: `Terlalu banyak percobaan login. Coba lagi dalam ${lockTTL} detik.`
             };
-        }
-
-        // If window expired, allow
-        if (now - info.firstAttemptTime > WINDOW_DURATION_SECONDS * 1000) {
-            return { allowed: true };
         }
 
         return { allowed: true };
@@ -97,49 +74,30 @@ class RateLimiterService {
 
         try {
             await Promise.all([
-                this.incrementKey(this.getUserKey(externalId), client),
-                this.incrementKey(this.getIPKey(ip), client)
+                this.incrementKey(this.getUserKey(externalId), this.getUserLockKey(externalId), client),
+                this.incrementKey(this.getIPKey(ip), this.getIPLockKey(ip), client)
             ]);
         } catch (error) {
             console.error('[RateLimiter] Error recording failed attempt:', error);
         }
     }
 
-    private async incrementKey(key: string, client: any): Promise<void> {
-        const data = await client.get(key);
-        const now = Date.now();
-        let info: RateLimitInfo;
+    // FIX-M6: Atomic INCR + EXPIRE — no race condition
+    private async incrementKey(attemptsKey: string, lockKey: string, client: any): Promise<void> {
+        // Atomic increment
+        const count = await client.incr(attemptsKey);
 
-        if (!data) {
-            info = {
-                attempts: 1,
-                firstAttemptTime: now
-            };
-        } else {
-            info = JSON.parse(data);
-
-            // Reset if window expired
-            if (now - info.firstAttemptTime > WINDOW_DURATION_SECONDS * 1000) {
-                info = {
-                    attempts: 1,
-                    firstAttemptTime: now
-                };
-            } else {
-                info.attempts += 1;
-
-                // Lock if max attempts reached
-                if (info.attempts >= MAX_ATTEMPTS) {
-                    info.lockedUntil = now + (LOCKOUT_DURATION_SECONDS * 1000);
-                }
-            }
+        // Set expiry on first attempt (atomic: key just created by INCR)
+        if (count === 1) {
+            await client.expire(attemptsKey, WINDOW_DURATION_SECONDS);
         }
 
-        // Set with TTL
-        const ttl = info.lockedUntil
-            ? LOCKOUT_DURATION_SECONDS
-            : WINDOW_DURATION_SECONDS;
-
-        await client.setEx(key, ttl, JSON.stringify(info));
+        // Lock if max attempts reached
+        if (count >= MAX_ATTEMPTS) {
+            await client.set(lockKey, '1', { EX: LOCKOUT_DURATION_SECONDS });
+            // Clean up attempts key
+            await client.del(attemptsKey);
+        }
     }
 
     async resetAttempts(externalId: string, ip: string): Promise<void> {
@@ -155,7 +113,9 @@ class RateLimiterService {
         try {
             await Promise.all([
                 client.del(this.getUserKey(externalId)),
-                client.del(this.getIPKey(ip))
+                client.del(this.getIPKey(ip)),
+                client.del(this.getUserLockKey(externalId)),
+                client.del(this.getIPLockKey(ip))
             ]);
         } catch (error) {
             console.error('[RateLimiter] Error resetting attempts:', error);
@@ -178,8 +138,8 @@ class RateLimiterService {
                 client.get(this.getIPKey(ip))
             ]);
 
-            const userAttempts = userData ? JSON.parse(userData).attempts : 0;
-            const ipAttempts = ipData ? JSON.parse(ipData).attempts : 0;
+            const userAttempts = userData ? parseInt(userData, 10) : 0;
+            const ipAttempts = ipData ? parseInt(ipData, 10) : 0;
 
             return {
                 user: Math.max(0, MAX_ATTEMPTS - userAttempts),
@@ -207,8 +167,8 @@ class RateLimiterService {
                 client.get(this.getIPKey(ip))
             ]);
 
-            const userAttempts = userData ? JSON.parse(userData).attempts : 0;
-            const ipAttempts = ipData ? JSON.parse(ipData).attempts : 0;
+            const userAttempts = userData ? parseInt(userData, 10) : 0;
+            const ipAttempts = ipData ? parseInt(ipData, 10) : 0;
 
             return { user: userAttempts, ip: ipAttempts };
         } catch (error) {

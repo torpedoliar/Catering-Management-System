@@ -77,110 +77,112 @@ export class NotificationService {
             // 2. Broadcast via SSE (so the Bell icon updates immediately if they are online)
             sseManager.broadcastToUser(userId, 'notification:new', { notification });
 
-            // 3. Dispatch Web Push and FCM if configured
-            const subs = await prisma.pushSubscription.findMany({
-                where: { userId }
+            // FIX-M5: Fire-and-forget push dispatch (non-blocking)
+            // DB write + SSE are done; push delivery is best-effort
+            setImmediate(() => {
+                this.dispatchPush(userId, title, message, related, resolvedType, resolvedId, type).catch(err =>
+                    console.error('[NotificationService] Background push dispatch error:', err)
+                );
             });
-
-            if (subs.length > 0) {
-                const webSubs = subs.filter(s => s.endpoint && s.p256dh && s.auth);
-                const fcmSubs = subs.filter(s => s.fcmToken);
-
-                // 3a. Dispatch Web Push
-                if (publicVapidKey && privateVapidKey && webSubs.length > 0) {
-                    const payload = JSON.stringify({
-                        title,
-                        body: message,
-                        icon: '/vite.svg', // Assuming standard public icon
-                        data: {
-                            // FE-NOTIF-NAV: pre-resolved deep link so the SW has
-                            // the right path on cold-tap without waiting for the
-                            // SPA to mount and re-derive the route.
-                            url: getNotificationDeepLink(related),
-                            relatedId: resolvedId,
-                            relatedType: resolvedType,
-                        }
-                    });
-
-                    const sendPromises = webSubs.map(sub => {
-                        const pushSub = {
-                            endpoint: sub.endpoint!,
-                            keys: {
-                                p256dh: sub.p256dh!,
-                                auth: sub.auth!
-                            }
-                        };
-                        return webpush.sendNotification(pushSub, payload).catch(async (err) => {
-                            // If gone (410) or not found (404), the user unsubscribed natively, delete from DB
-                            if (err.statusCode === 410 || err.statusCode === 404) {
-                                console.log('[PushService] Removing expired subscription:', sub.endpoint);
-                                await prisma.pushSubscription.delete({ where: { id: sub.id } }).catch(() => {});
-                            } else {
-                                console.error('[PushService] Failed sending to client:', err);
-                            }
-                        });
-                    });
-
-                    await Promise.allSettled(sendPromises);
-                }
-
-                // 3b. Dispatch FCM Native Push
-                if (admin.apps.length > 0 && fcmSubs.length > 0) {
-                    const tokens = fcmSubs.map(s => s.fcmToken!);
-
-                    const fcmPayload = {
-                        notification: {
-                            title,
-                            body: message,
-                        },
-                        data: {
-                            // FE-NOTIF-NAV: same shape as Web-Push. The native
-                            // tap handler reads `data.url` and dispatches the
-                            // SPA route via window CustomEvent.
-                            url: getNotificationDeepLink(related),
-                            relatedId: resolvedId ?? '',
-                            relatedType: resolvedType ?? '',
-                            type: type || 'INFO',
-                        },
-                        android: {
-                            priority: 'high' as const,
-                            notification: {
-                                sound: 'default',
-                                channelId: 'default',
-                            }
-                        },
-                        apns: {
-                            payload: {
-                                aps: {
-                                    sound: 'default',
-                                }
-                            }
-                        },
-                        tokens: tokens
-                    };
-
-                    try {
-                        const response = await admin.messaging().sendEachForMulticast(fcmPayload);
-                        response.responses.forEach((res, idx) => {
-                            if (!res.success) {
-                                if (res.error?.code === 'messaging/invalid-registration-token' ||
-                                    res.error?.code === 'messaging/registration-token-not-registered') {
-                                    console.log('[PushService] Removing expired FCM token:', tokens[idx]);
-                                    prisma.pushSubscription.deleteMany({ where: { fcmToken: tokens[idx] } }).catch(() => {});
-                                } else {
-                                    console.error('[PushService] FCM send error:', res.error);
-                                }
-                            }
-                        });
-                    } catch (error) {
-                         console.error('[PushService] FCM Multicast error:', error instanceof Error ? error.message : error);
-                    }
-                }
-            }
 
             return notification;
         } catch (error) {
             console.error('[NotificationService] Error notifying user:', error);
+        }
+    }
+
+    /**
+     * FIX-M5: Push dispatch in background (Web Push + FCM).
+     * Called via setImmediate() after DB write + SSE broadcast.
+     */
+    private static async dispatchPush(
+        userId: string,
+        title: string,
+        message: string,
+        related: NotificationRelated | undefined,
+        resolvedType: string | null,
+        resolvedId: string | null,
+        type: NotificationType
+    ) {
+        const subs = await prisma.pushSubscription.findMany({
+            where: { userId }
+        });
+
+        if (subs.length === 0) return;
+
+        const webSubs = subs.filter(s => s.endpoint && s.p256dh && s.auth);
+        const fcmSubs = subs.filter(s => s.fcmToken);
+
+        // Dispatch Web Push
+        if (publicVapidKey && privateVapidKey && webSubs.length > 0) {
+            const payload = JSON.stringify({
+                title,
+                body: message,
+                icon: '/vite.svg',
+                data: {
+                    url: getNotificationDeepLink(related),
+                    relatedId: resolvedId,
+                    relatedType: resolvedType,
+                }
+            });
+
+            const sendPromises = webSubs.map(sub => {
+                const pushSub = {
+                    endpoint: sub.endpoint!,
+                    keys: {
+                        p256dh: sub.p256dh!,
+                        auth: sub.auth!
+                    }
+                };
+                return webpush.sendNotification(pushSub, payload).catch(async (err) => {
+                    if (err.statusCode === 410 || err.statusCode === 404) {
+                        await prisma.pushSubscription.delete({ where: { id: sub.id } }).catch(() => {});
+                    } else {
+                        console.error('[PushService] Failed sending to client:', err);
+                    }
+                });
+            });
+
+            await Promise.allSettled(sendPromises);
+        }
+
+        // Dispatch FCM Native Push
+        if (admin.apps.length > 0 && fcmSubs.length > 0) {
+            const tokens = fcmSubs.map(s => s.fcmToken!);
+
+            const fcmPayload = {
+                notification: { title, body: message },
+                data: {
+                    url: getNotificationDeepLink(related),
+                    relatedId: resolvedId ?? '',
+                    relatedType: resolvedType ?? '',
+                    type: type || 'INFO',
+                },
+                android: {
+                    priority: 'high' as const,
+                    notification: { sound: 'default', channelId: 'default' }
+                },
+                apns: {
+                    payload: { aps: { sound: 'default' } }
+                },
+                tokens
+            };
+
+            try {
+                const response = await admin.messaging().sendEachForMulticast(fcmPayload);
+                response.responses.forEach((res, idx) => {
+                    if (!res.success) {
+                        if (res.error?.code === 'messaging/invalid-registration-token' ||
+                            res.error?.code === 'messaging/registration-token-not-registered') {
+                            prisma.pushSubscription.deleteMany({ where: { fcmToken: tokens[idx] } }).catch(() => {});
+                        } else {
+                            console.error('[PushService] FCM send error:', res.error);
+                        }
+                    }
+                });
+            } catch (error) {
+                console.error('[PushService] FCM Multicast error:', error instanceof Error ? error.message : error);
+            }
         }
     }
 

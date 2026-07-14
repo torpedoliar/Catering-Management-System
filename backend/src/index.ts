@@ -75,8 +75,8 @@ app.use(cors({
 }));
 app.use(compression()); // Enable gzip compression
 app.use(cookieParser()); // R-005: Parse cookies for HttpOnly refresh token
-app.use(express.json());
-app.use(express.urlencoded({ extended: true }));
+app.use(express.json({ limit: '1mb' })); // FIX-L1: Limit request body size
+app.use(express.urlencoded({ extended: true, limit: '1mb' }));
 app.use('/uploads', express.static(path.join(__dirname, '../uploads')));
 
 // Trust proxy for proper IP detection (behind reverse proxy/load balancer)
@@ -204,8 +204,7 @@ app.listen(PORT, async () => {
     // Initialize Redis
     await redisService.connect();
 
-    // Initialize Cache Service
-    await cacheService.connect();
+    // FIX-M1: Cache Service now uses redisService.getClient() directly — no separate connect()
 
     // FIX-H1: Initialize SSE Redis pub/sub for cluster awareness
     await sseManager.initPubSub();

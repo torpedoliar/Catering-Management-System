@@ -133,33 +133,31 @@ export const OrderService = {
                 return result;
             }
 
-            console.log(`[OrderService] Cancelling ${pendingOrders.length} orders for user ${userId}. Reason: ${reason}`);
+            const orderIds = pendingOrders.map(o => o.id);
 
-            // Cancel each order
-            for (const order of pendingOrders) {
-                await prisma.order.update({
-                    where: { id: order.id },
-                    data: {
-                        status: 'CANCELLED',
-                        cancelledBy,
-                        cancelReason: reason,
-                    },
+            // FIX-M4: Batch cancel in single transaction
+            await prisma.$transaction(async (tx) => {
+                // 1. Batch update all orders to CANCELLED
+                await tx.order.updateMany({
+                    where: { id: { in: orderIds } },
+                    data: { status: 'CANCELLED', cancelledBy, cancelReason: reason },
                 });
 
-                // Create notification message for user
-                // Even if user is deleted, we record this for audit/history
-                await prisma.message.create({
-                    data: {
+                // 2. Batch create notification messages
+                await tx.message.createMany({
+                    data: pendingOrders.map(order => ({
                         orderId: order.id,
                         shiftId: order.shiftId,
                         userId,
-                        type: 'CANCELLATION',
+                        type: 'CANCELLATION' as const,
                         content: `Pesanan tanggal ${order.orderDate.toLocaleDateString('id-ID')} dibatalkan. Alasan: ${reason}`,
                         orderDate: order.orderDate,
-                    },
+                    })),
                 });
+            });
 
-                // Log audit
+            // 3. Post-transaction: audit logs + SSE broadcasts (fire-and-forget)
+            for (const order of pendingOrders) {
                 await createAuditLog(null, {
                     action: AuditAction.ORDER_CANCELLED,
                     entity: 'Order',
@@ -178,14 +176,12 @@ export const OrderService = {
                     },
                 });
 
-                result.cancelledCount++;
                 result.cancelledOrders.push({
                     orderId: order.id,
                     orderDate: order.orderDate,
                     shiftName: order.shift.name,
                 });
 
-                // Broadcast event
                 sseManager.broadcast('order:cancelled', {
                     orderId: order.id,
                     userId,
@@ -197,6 +193,7 @@ export const OrderService = {
                 });
             }
 
+            result.cancelledCount = pendingOrders.length;
             return result;
         } catch (error) {
             console.error('[OrderService] Error cancelling user orders:', error);
@@ -217,21 +214,6 @@ export const OrderService = {
         };
 
         try {
-            // Cutoff date is the LAST allowed date. So we cancel anything GT (greater than) cutoffDate
-            // But usually cutoffDate is a Date object set to 00:00:00 of the last valid day
-            // So we want to keep orders ON cutoffDate.
-            // We cancel orders where orderDate > cutoffDate.
-            // Wait, Prisma 'gt' comparison on Dates.
-            // If cutoffDate is "2023-12-20 00:00:00", keeping 20th means orderDate < "2023-12-21".
-            // Implementation detail: The caller should pass the CORRECT boundary.
-            // Let's assume passed cutoffDate is the "Max Valid Date" (inclusive).
-
-            // To be safe: we want to Find Many where orderDate > cutoffDate.
-            // But we need to be careful with times. Orders usually store 00:00:00Z.
-            // So if cutoffDate is set to T+2 days (00:00:00), we want to keep T+2.
-            // We cancel T+3 onwards.
-            // So logic: orderDate > cutoffDate.
-
             const pendingOrders = await prisma.order.findMany({
                 where: {
                     status: 'ORDERED',
@@ -247,11 +229,12 @@ export const OrderService = {
                 return result;
             }
 
-            console.log(`[OrderService] Cancelling ${pendingOrders.length} orders beyond ${cutoffDate.toISOString()}. Reason: ${reason}`);
+            const orderIds = pendingOrders.map(o => o.id);
 
-            for (const order of pendingOrders) {
-                await prisma.order.update({
-                    where: { id: order.id },
+            // FIX-M4: Batch cancel in single transaction
+            await prisma.$transaction(async (tx) => {
+                await tx.order.updateMany({
+                    where: { id: { in: orderIds } },
                     data: {
                         status: 'CANCELLED',
                         cancelledBy: 'System (Policy Change)',
@@ -259,19 +242,20 @@ export const OrderService = {
                     },
                 });
 
-                // Create notification message
-                await prisma.message.create({
-                    data: {
+                await tx.message.createMany({
+                    data: pendingOrders.map(order => ({
                         orderId: order.id,
                         shiftId: order.shiftId,
                         userId: order.user.id,
-                        type: 'CANCELLATION',
+                        type: 'CANCELLATION' as const,
                         content: `Pesanan tanggal ${order.orderDate.toLocaleDateString('id-ID')} dibatalkan karena perubahan kebijakan batas waktu pemesanan.`,
                         orderDate: order.orderDate,
-                    },
+                    })),
                 });
+            });
 
-                // Log audit
+            // Post-transaction: audit logs + SSE broadcasts
+            for (const order of pendingOrders) {
                 await createAuditLog(null, {
                     action: AuditAction.ORDER_CANCELLED,
                     entity: 'Order',
@@ -289,10 +273,8 @@ export const OrderService = {
                     },
                 });
 
-                result.cancelledCount++;
                 result.affectedUsers.add(order.user.name);
 
-                // Broadcast event
                 sseManager.broadcast('order:cancelled', {
                     orderId: order.id,
                     userId: order.user.id,
@@ -304,6 +286,7 @@ export const OrderService = {
                 });
             }
 
+            result.cancelledCount = pendingOrders.length;
             return result;
         } catch (error) {
             console.error('[OrderService] Error cancelling orders beyond date:', error);

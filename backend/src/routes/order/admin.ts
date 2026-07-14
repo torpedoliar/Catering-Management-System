@@ -129,29 +129,51 @@ router.post('/process-noshows', authMiddleware, adminMiddleware, async (req: Aut
 
         const results = { processed: 0, blacklisted: [] as string[] };
 
+        if (noShowOrders.length === 0) {
+            res.json({ message: 'No shows to process', results });
+            return;
+        }
+
+        // FIX-M3: Group orders by userId for batch processing
+        const ordersByUser = new Map<string, typeof noShowOrders>();
         for (const order of noShowOrders) {
-            await prisma.order.update({
-                where: { id: order.id },
+            const existing = ordersByUser.get(order.userId) || [];
+            existing.push(order);
+            ordersByUser.set(order.userId, existing);
+        }
+
+        const orderIds = noShowOrders.map(o => o.id);
+        const context = getRequestContext(req);
+
+        // FIX-M3: Batch operations in single transaction
+        const userUpdates = await prisma.$transaction(async (tx) => {
+            // 1. Batch update all orders to NO_SHOW
+            await tx.order.updateMany({
+                where: { id: { in: orderIds } },
                 data: { status: 'NO_SHOW' },
             });
 
-            const updatedUser = await prisma.user.update({
-                where: { id: order.userId },
-                data: { noShowCount: { increment: 1 } },
-            });
+            // 2. Increment noShowCount for each affected user, collect updated counts
+            const updates: Array<{ userId: string; user: any; orderCount: number }> = [];
+            for (const [userId, userOrders] of ordersByUser) {
+                const updatedUser = await tx.user.update({
+                    where: { id: userId },
+                    data: { noShowCount: { increment: userOrders.length } },
+                });
+                updates.push({ userId, user: updatedUser, orderCount: userOrders.length });
+            }
 
-            // D-3: log the no-show mark. Without this, the audit trail
-            // has no record of which admin ran process-noshows and what
-            // changed — the noshow.service.ts path logs, but admin.ts
-            // is the new path called from the admin UI.
-            const context = getRequestContext(req);
-            await logOrder('ORDER_NOSHOW', req.user || null, { ...order, status: 'NO_SHOW' }, context);
+            return updates;
+        });
 
-            results.processed++;
+        // 3. Post-transaction: blacklist checks, audit logs, SSE broadcasts
+        for (const { userId, user: updatedUser } of userUpdates) {
+            const userOrders = ordersByUser.get(userId)!;
 
+            // Check blacklist threshold
             if (updatedUser.noShowCount >= strikeThreshold) {
                 const existingBlacklist = await prisma.blacklist.findFirst({
-                    where: { userId: order.userId, isActive: true },
+                    where: { userId, isActive: true },
                 });
 
                 if (!existingBlacklist) {
@@ -160,24 +182,22 @@ router.post('/process-noshows', authMiddleware, adminMiddleware, async (req: Aut
 
                     const blacklist = await prisma.blacklist.create({
                         data: {
-                            userId: order.userId,
+                            userId,
                             reason: `Accumulated ${updatedUser.noShowCount} no-shows`,
                             endDate,
                         },
                     });
 
-                    // D-3: log the blacklist event. Same audit-trail gap
-                    // as the noshow mark above.
                     await logBlacklist('USER_BLACKLISTED', req.user || null, updatedUser, context, {
                         blacklist,
-                        previousStrikes: updatedUser.noShowCount - 1,
-                        metadata: { source: 'process-noshows', triggerOrderId: order.id },
+                        previousStrikes: updatedUser.noShowCount - userOrders.length,
+                        metadata: { source: 'process-noshows' },
                     });
 
                     results.blacklisted.push(updatedUser.externalId);
 
                     sseManager.broadcast('user:blacklisted', {
-                        userId: order.userId,
+                        userId,
                         userName: updatedUser.name,
                         noShowCount: updatedUser.noShowCount,
                         timestamp: getNow().toISOString(),
@@ -185,13 +205,19 @@ router.post('/process-noshows', authMiddleware, adminMiddleware, async (req: Aut
                 }
             }
 
-            sseManager.broadcast('order:noshow', {
-                orderId: order.id,
-                userId: order.userId,
-                userName: order.user.name,
-                noShowCount: order.user.noShowCount + 1,
-                timestamp: getNow().toISOString(),
-            });
+            // Audit log + SSE broadcast per order
+            for (const order of userOrders) {
+                await logOrder('ORDER_NOSHOW', req.user || null, { ...order, status: 'NO_SHOW' }, context);
+                results.processed++;
+
+                sseManager.broadcast('order:noshow', {
+                    orderId: order.id,
+                    userId,
+                    userName: order.user.name,
+                    noShowCount: updatedUser.noShowCount,
+                    timestamp: getNow().toISOString(),
+                });
+            }
         }
 
         res.json({
