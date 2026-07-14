@@ -1320,7 +1320,7 @@ router.get('/export', authMiddleware, adminMiddleware, async (req: AuthRequest, 
         do {
             const cidBatch = await prisma.order.findMany({
                 where: { ...where, checkedInById: { not: null } },
-                select: { checkedInById: true },
+                select: { id: true, checkedInById: true },
                 orderBy: { id: 'asc' },
                 take: CID_BATCH,
                 ...(cidCursor ? { skip: 1, cursor: { id: cidCursor } } : {}),
@@ -1328,7 +1328,7 @@ router.get('/export', authMiddleware, adminMiddleware, async (req: AuthRequest, 
             for (const o of cidBatch) {
                 if (o.checkedInById) checkedInByIds.add(o.checkedInById);
             }
-            cidCursor = cidBatch.length === CID_BATCH ? cidBatch[cidBatch.length - 1].checkedInById! : undefined;
+            cidCursor = cidBatch.length === CID_BATCH ? cidBatch[cidBatch.length - 1].id : undefined;
         } while (cidCursor);
 
         const canteenUsersMap = new Map<string, { name: string; externalId: string }>();

@@ -207,6 +207,7 @@ class SSEManager {
         this.clients.forEach((client) => {
             try {
                 client.response.write(message);
+                client.lastActivity = getNow(); // FIX-H1: keep alive for idle timeout
             } catch (error) {
                 // Client disconnected
             }
