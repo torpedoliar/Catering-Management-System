@@ -133,13 +133,16 @@ class RateLimiterService {
         }
 
         try {
-            const [userData, ipData] = await Promise.all([
+            const [userData, ipData, userLockTTL, ipLockTTL] = await Promise.all([
                 client.get(this.getUserKey(externalId)),
-                client.get(this.getIPKey(ip))
+                client.get(this.getIPKey(ip)),
+                client.ttl(this.getUserLockKey(externalId)),
+                client.ttl(this.getIPLockKey(ip)),
             ]);
 
-            const userAttempts = userData ? parseInt(userData, 10) : 0;
-            const ipAttempts = ipData ? parseInt(ipData, 10) : 0;
+            // If locked, show 0 remaining (not MAX_ATTEMPTS)
+            const userAttempts = userLockTTL > 0 ? MAX_ATTEMPTS : (userData ? parseInt(userData, 10) : 0);
+            const ipAttempts = ipLockTTL > 0 ? MAX_ATTEMPTS : (ipData ? parseInt(ipData, 10) : 0);
 
             return {
                 user: Math.max(0, MAX_ATTEMPTS - userAttempts),
