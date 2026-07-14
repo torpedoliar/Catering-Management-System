@@ -17,6 +17,20 @@ services:
       POSTGRES_USER: postgres
       POSTGRES_PASSWORD: ${DB_PASSWORD:-your_secure_password_here}
       POSTGRES_DB: catering_db
+    command: >
+      postgres
+      -c shared_buffers=256MB
+      -c effective_cache_size=768MB
+      -c work_mem=16MB
+      -c maintenance_work_mem=128MB
+      -c wal_buffers=16MB
+      -c checkpoint_completion_target=0.9
+      -c max_wal_size=2GB
+      -c min_wal_size=512MB
+      -c random_page_cost=1.1
+      -c effective_io_concurrency=200
+      -c max_connections=200
+      -c statement_timeout=30000
     volumes:
       - postgres_data:/var/lib/postgresql/data
     healthcheck:
@@ -24,6 +38,13 @@ services:
       interval: 5s
       timeout: 5s
       retries: 5
+    deploy:
+      resources:
+        limits:
+          memory: 1G
+          cpus: '1.5'
+        reservations:
+          memory: 512M
     networks:
       - catering-network
 
@@ -40,7 +61,10 @@ services:
       NODE_ENV: production
       PORT: 3012
       DATABASE_URL: postgresql://postgres:${DB_PASSWORD:-your_secure_password_here}@db:5432/catering_db?schema=public
-      DB_POOL_SIZE: "50"
+      DB_POOL_SIZE: "20"
+      PM2_INSTANCES: "2"
+      UV_THREADPOOL_SIZE: "16"
+      REDIS_URL: redis://catering-redis:6379
       JWT_SECRET: ${JWT_SECRET:-your_jwt_secret_here_change_in_production}
       JWT_REFRESH_SECRET: ${JWT_REFRESH_SECRET:-your_jwt_refresh_secret_here_change_in_production}
       CORS_ORIGIN: ${CORS_ORIGIN:-*}
@@ -55,6 +79,19 @@ services:
         condition: service_healthy
       redis:
         condition: service_healthy
+    deploy:
+      resources:
+        limits:
+          memory: 1G
+          cpus: '1.5'
+        reservations:
+          memory: 256M
+    healthcheck:
+      test: ["CMD-SHELL", "wget --quiet --tries=1 --spider http://localhost:3012/api/health || exit 1"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 60s
     networks:
       - catering-network
 
@@ -75,6 +112,11 @@ services:
       - /app/node_modules
     depends_on:
       - backend
+    deploy:
+      resources:
+        limits:
+          memory: 128M
+          cpus: '0.5'
     networks:
       - catering-network
 
@@ -85,7 +127,15 @@ services:
     restart: unless-stopped
     expose:
       - "6379"
-    command: redis-server --appendonly yes --appendfilename "appendonly.aof"
+    command: >
+      redis-server
+      --appendonly yes
+      --appendfilename "appendonly.aof"
+      --maxmemory 200mb
+      --maxmemory-policy allkeys-lru
+      --save ""
+      --tcp-backlog 511
+      --hz 10
     volumes:
       - redis_data:/data
     healthcheck:
@@ -93,6 +143,11 @@ services:
       interval: 5s
       timeout: 3s
       retries: 5
+    deploy:
+      resources:
+        limits:
+          memory: 256M
+          cpus: '0.5'
     networks:
       - catering-network
   # NOTE: Nginx service removed - use Nginx Proxy Manager instead

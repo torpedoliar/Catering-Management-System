@@ -29,9 +29,12 @@ module.exports = {
         // Production: gunakan compiled JavaScript
         script: 'dist/index.js',
 
-        // Cluster mode: gunakan semua CPU cores
-        instances: process.env.PM2_INSTANCES || 'max',
+        // Cluster mode: 2 workers (optimal untuk 8GB RAM, overridable via PM2_INSTANCES env)
+        instances: parseInt(process.env.PM2_INSTANCES, 10) || 2,
         exec_mode: 'cluster',
+
+        // V8 heap tuning — cap at 768MB per worker (leave room for non-heap memory)
+        node_args: '--max-old-space-size=768 --max-semi-space-size=64',
 
         // Memory management
         max_memory_restart: '1G',
@@ -39,16 +42,18 @@ module.exports = {
         // Watch disabled untuk production
         watch: false,
 
-        // Auto-restart configuration
+        // Auto-restart with exponential backoff (100ms → 200ms → 400ms → ... → 15s)
         autorestart: true,
-        restart_delay: 1000,
+        exp_backoff_restart_delay: 100,
         max_restarts: 10,
 
         // Environment variables
+        // TZ untuk PM2 log timestamps. Runtime TZ di-override ke UTC oleh index.ts (Fake UTC pattern)
+        // Aplikasi handle GMT+7 via time.service.ts getNow() bukan via system TZ
         env: {
             NODE_ENV: 'production',
             PORT: 3012,
-            TZ: 'Asia/Jakarta'
+            TZ: 'Asia/Jakarta',
         },
 
         // Logging
