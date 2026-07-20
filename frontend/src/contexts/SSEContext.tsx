@@ -1,5 +1,5 @@
 import { createContext, useContext, useEffect, useState, ReactNode, useCallback, useRef } from 'react';
-import { useAuth } from './AuthContext';
+import { useAuth, api } from './AuthContext';
 import toast from 'react-hot-toast';
 import { Capacitor } from '@capacitor/core';
 
@@ -222,21 +222,10 @@ export function SSEProvider({ children }: { children: ReactNode }) {
         isConnectingRef.current = true;
 
         try {
-            // R-002: Obtain SSE ticket via authenticated endpoint
-            const ticketRes = await fetch(`${API_URL}/api/sse/ticket`, {
-                method: 'POST',
-                headers: {
-                    'Authorization': `Bearer ${token}`,
-                    'Content-Type': 'application/json',
-                },
-                credentials: 'include',
-            });
-
-            if (!ticketRes.ok) {
-                throw new Error(`SSE ticket request failed: ${ticketRes.status}`);
-            }
-
-            const { ticket } = await ticketRes.json();
+            // R-002: Obtain SSE ticket via authenticated endpoint using axios (api) 
+            // This ensures the 401 interceptor can automatically refresh the token if expired
+            const ticketRes = await api.post('/api/sse/ticket');
+            const ticket = ticketRes.data.ticket;
 
             // R-002: Connect with server-validated ticket instead of raw userId/role
             const url = `${API_URL}/api/sse?ticket=${encodeURIComponent(ticket)}&tabId=${TAB_ID}`;
