@@ -118,6 +118,7 @@ export async function processNoShows(): Promise<NoShowResult> {
             console.error('[NoShow Service] Settings row "default" not found');
             return result;
         }
+        const autoBlacklistEnabled = settings.autoBlacklistEnabled ?? true;
         const blacklistStrikes = settings.blacklistStrikes;
         const blacklistDuration = settings.blacklistDuration;
 
@@ -153,109 +154,119 @@ export async function processNoShows(): Promise<NoShowResult> {
                 },
             });
 
-            // Increment user's no-show count
-            const updatedUser = await prisma.user.update({
-                where: { id: order.userId },
-                data: { noShowCount: { increment: 1 } },
-            });
+            let currentNoShowCount = order.user.noShowCount;
 
-            if (!result.affectedUsers.includes(updatedUser.name)) {
-                result.affectedUsers.push(updatedUser.name);
-            }
-
-            console.log(`[NoShow Service] User ${updatedUser.name} now has ${updatedUser.noShowCount} no-shows`);
-
-            // 🔔 Push notification to user about their strike
-            await NotificationService.notifyUser(
-                updatedUser.id,
-                '⚠️ Pelanggaran: Tidak Ambil Makan',
-                `Pesanan ${order.shift.name} Anda hari ini tidak diambil. Strike ke-${updatedUser.noShowCount}. Setelah ${blacklistStrikes} strike, akun akan diblokir.`,
-                'WARNING',
-                { id: order.id, type: 'ORDER' }
-            );
-
-            // Check if user should be blacklisted
-            if (updatedUser.noShowCount >= blacklistStrikes && !usersBlacklistedThisBatch.has(updatedUser.id)) {
-
-                // Check if already blacklisted in database
-                const existingBlacklist = await prisma.blacklist.findFirst({
-                    where: {
-                        userId: updatedUser.id,
-                        isActive: true,
-                        OR: [
-                            { endDate: null },
-                            { endDate: { gt: getNow() } },
-                        ],
-                    },
+            // Only increment strike and check blacklist if autoBlacklistEnabled is true
+            if (autoBlacklistEnabled) {
+                // Increment user's no-show count
+                const updatedUser = await prisma.user.update({
+                    where: { id: order.userId },
+                    data: { noShowCount: { increment: 1 } },
                 });
+                currentNoShowCount = updatedUser.noShowCount;
 
-                if (!existingBlacklist) {
-                    // Create blacklist entry
-                    const endDate = getNow();
-                    endDate.setDate(endDate.getDate() + blacklistDuration);
+                if (!result.affectedUsers.includes(updatedUser.name)) {
+                    result.affectedUsers.push(updatedUser.name);
+                }
 
-                    const blacklist = await prisma.blacklist.create({
-                        data: {
+                console.log(`[NoShow Service] User ${updatedUser.name} now has ${updatedUser.noShowCount} no-shows`);
+
+                // 🔔 Push notification to user about their strike
+                await NotificationService.notifyUser(
+                    updatedUser.id,
+                    '⚠️ Pelanggaran: Tidak Ambil Makan',
+                    `Pesanan ${order.shift.name} Anda hari ini tidak diambil. Strike ke-${updatedUser.noShowCount}. Setelah ${blacklistStrikes} strike, akun akan diblokir.`,
+                    'WARNING',
+                    { id: order.id, type: 'ORDER' }
+                );
+
+                // Check if user should be blacklisted
+                if (updatedUser.noShowCount >= blacklistStrikes && !usersBlacklistedThisBatch.has(updatedUser.id)) {
+
+                    // Check if already blacklisted in database
+                    const existingBlacklist = await prisma.blacklist.findFirst({
+                        where: {
                             userId: updatedUser.id,
-                            reason: `Automatic blacklist: ${updatedUser.noShowCount} no-shows (threshold: ${blacklistStrikes})`,
-                            endDate,
-                        },
-                        include: {
-                            user: { select: { name: true, externalId: true } },
-                        },
-                    });
-
-                    // Track this user to prevent duplicate blacklists in this batch
-                    usersBlacklistedThisBatch.add(updatedUser.id);
-
-                    result.newBlacklists++;
-
-                    // Log audit for auto-blacklist
-                    await createAuditLog(null, {
-                        action: AuditAction.USER_BLACKLISTED,
-                        entity: 'Blacklist',
-                        entityId: blacklist.id,
-                        entityName: updatedUser.name,
-                        description: `User ${updatedUser.name} auto-blacklisted after ${updatedUser.noShowCount} no-shows`,
-                        metadata: {
-                            userId: updatedUser.id,
-                            userName: updatedUser.name,
-                            noShowCount: updatedUser.noShowCount,
-                            threshold: blacklistStrikes,
-                            endDate: endDate.toISOString(),
-                            processedBy: 'System Scheduler',
+                            isActive: true,
+                            OR: [
+                                { endDate: null },
+                                { endDate: { gt: getNow() } },
+                            ],
                         },
                     });
 
-                    console.log(`[NoShow Service] User ${updatedUser.name} has been blacklisted until ${endDate.toLocaleDateString()}`);
+                    if (!existingBlacklist) {
+                        // Create blacklist entry
+                        const endDate = getNow();
+                        endDate.setDate(endDate.getDate() + blacklistDuration);
 
-                    // 🔔 Push notification to user about being blocked
-                    const endDateStr = endDate.toLocaleDateString('id-ID', { day: 'numeric', month: 'long', year: 'numeric' });
-                    await NotificationService.notifyUser(
-                        updatedUser.id,
-                        '🚫 Akun Diblokir',
-                        `Akun Anda telah diblokir hingga ${endDateStr} karena ${updatedUser.noShowCount} kali tidak ambil makan. Semua pesanan aktif dibatalkan otomatis.`,
-                        'DANGER',
-                        { id: blacklist.id, type: 'BLACKLIST' }
-                    );
+                        const blacklist = await prisma.blacklist.create({
+                            data: {
+                                userId: updatedUser.id,
+                                reason: `Automatic blacklist: ${updatedUser.noShowCount} no-shows (threshold: ${blacklistStrikes})`,
+                                endDate,
+                            },
+                            include: {
+                                user: { select: { name: true, externalId: true } },
+                            },
+                        });
 
-                    // 🔔 Push notification to all Admins
-                    await NotificationService.notifyAdmins(
-                        '🚫 User Auto-Blacklist',
-                        `${updatedUser.name} (${updatedUser.noShowCount} strike) diblokir otomatis hingga ${endDateStr}.`,
-                        'DANGER',
-                        { id: blacklist.id, type: 'BLACKLIST' }
-                    );
+                        // Track this user to prevent duplicate blacklists in this batch
+                        usersBlacklistedThisBatch.add(updatedUser.id);
 
-                    // Broadcast blacklist event
-                    sseManager.broadcast('user:blacklisted', {
-                        blacklist,
-                        timestamp: getNow().toISOString(),
-                        reason: 'auto_noshow',
-                    });
+                        result.newBlacklists++;
 
-                    // Cancel all pending orders for this blacklisted user
-                    await cancelOrdersForBlacklistedUser(updatedUser.id, getNow(), endDate);
+                        // Log audit for auto-blacklist
+                        await createAuditLog(null, {
+                            action: AuditAction.USER_BLACKLISTED,
+                            entity: 'Blacklist',
+                            entityId: blacklist.id,
+                            entityName: updatedUser.name,
+                            description: `User ${updatedUser.name} auto-blacklisted after ${updatedUser.noShowCount} no-shows`,
+                            metadata: {
+                                userId: updatedUser.id,
+                                userName: updatedUser.name,
+                                noShowCount: updatedUser.noShowCount,
+                                threshold: blacklistStrikes,
+                                endDate: endDate.toISOString(),
+                                processedBy: 'System Scheduler',
+                            },
+                        });
+
+                        console.log(`[NoShow Service] User ${updatedUser.name} has been blacklisted until ${endDate.toLocaleDateString()}`);
+
+                        // 🔔 Push notification to user about being blocked
+                        const endDateStr = endDate.toLocaleDateString('id-ID', { day: 'numeric', month: 'long', year: 'numeric' });
+                        await NotificationService.notifyUser(
+                            updatedUser.id,
+                            '🚫 Akun Diblokir',
+                            `Akun Anda telah diblokir hingga ${endDateStr} karena ${updatedUser.noShowCount} kali tidak ambil makan. Semua pesanan aktif dibatalkan otomatis.`,
+                            'DANGER',
+                            { id: blacklist.id, type: 'BLACKLIST' }
+                        );
+
+                        // 🔔 Push notification to all Admins
+                        await NotificationService.notifyAdmins(
+                            '🚫 User Auto-Blacklist',
+                            `${updatedUser.name} (${updatedUser.noShowCount} strike) diblokir otomatis hingga ${endDateStr}.`,
+                            'DANGER',
+                            { id: blacklist.id, type: 'BLACKLIST' }
+                        );
+
+                        // Broadcast blacklist event
+                        sseManager.broadcast('user:blacklisted', {
+                            blacklist,
+                            timestamp: getNow().toISOString(),
+                            reason: 'auto_noshow',
+                        });
+
+                        // Cancel all pending orders for this blacklisted user
+                        await cancelOrdersForBlacklistedUser(updatedUser.id, getNow(), endDate);
+                    }
+                }
+            } else {
+                if (!result.affectedUsers.includes(order.user.name)) {
+                    result.affectedUsers.push(order.user.name);
                 }
             }
 
@@ -265,7 +276,7 @@ export async function processNoShows(): Promise<NoShowResult> {
                 userId: order.userId,
                 userName: order.user.name,
                 shiftName: order.shift.name,
-                noShowCount: updatedUser.noShowCount,
+                noShowCount: currentNoShowCount,
                 timestamp: getNow().toISOString(),
             });
         }

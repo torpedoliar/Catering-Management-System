@@ -102,10 +102,15 @@ router.put('/', authMiddleware, adminMiddleware, async (req: AuthRequest, res: R
             // W4 (F-3 / Wave 4 admin UI): admin can flip token-rotation
             // on/off here. Validation: must be a boolean.
             enableTokenRotation,
+            autoBlacklistEnabled,
+            adminPassword,
         } = req.body;
 
         if (enableTokenRotation !== undefined && typeof enableTokenRotation !== 'boolean') {
             return res.status(400).json({ error: 'enableTokenRotation must be a boolean' });
+        }
+        if (autoBlacklistEnabled !== undefined && typeof autoBlacklistEnabled !== 'boolean') {
+            return res.status(400).json({ error: 'autoBlacklistEnabled must be a boolean' });
         }
 
         // Validate per-shift mode values
@@ -142,6 +147,30 @@ router.put('/', authMiddleware, adminMiddleware, async (req: AuthRequest, res: R
         // Get old settings for audit
         const oldSettings = await prisma.settings.findUnique({ where: { id: 'default' } });
 
+        // If turning autoBlacklistEnabled ON from OFF, require admin password verification & reset all users' noShowCount
+        if (autoBlacklistEnabled === true && oldSettings?.autoBlacklistEnabled === false) {
+            if (!adminPassword) {
+                return res.status(400).json({ error: 'Password admin diperlukan untuk menyalakan fitur Auto-Blacklist' });
+            }
+
+            const adminUser = await prisma.user.findUnique({ where: { id: req.user?.id } });
+            if (!adminUser) {
+                return res.status(401).json({ error: 'Pengguna Admin tidak ditemukan' });
+            }
+
+            const bcrypt = (await import('bcryptjs')).default;
+            const isPasswordValid = await bcrypt.compare(adminPassword, adminUser.password);
+            if (!isPasswordValid) {
+                return res.status(401).json({ error: 'Password admin tidak valid' });
+            }
+
+            // Reset noShowCount for all users to 0
+            await prisma.user.updateMany({
+                data: { noShowCount: 0 },
+            });
+            console.log('[Settings] autoBlacklistEnabled activated: reset noShowCount for all users to 0');
+        }
+
         const settings = await prisma.settings.upsert({
             where: { id: 'default' },
             update: {
@@ -158,6 +187,7 @@ router.put('/', authMiddleware, adminMiddleware, async (req: AuthRequest, res: R
                 ...(blacklistDuration !== undefined && { blacklistDuration }),
                 ...(enforceCanteenCheckin !== undefined && { enforceCanteenCheckin }),
                 ...(enableTokenRotation !== undefined && { enableTokenRotation }),
+                ...(autoBlacklistEnabled !== undefined && { autoBlacklistEnabled }),
             },
             create: {
                 id: 'default',
@@ -172,6 +202,7 @@ router.put('/', authMiddleware, adminMiddleware, async (req: AuthRequest, res: R
                 maxWeeksAhead: maxWeeksAhead || 1,
                 blacklistStrikes: blacklistStrikes || 3,
                 blacklistDuration: blacklistDuration || 7,
+                autoBlacklistEnabled: autoBlacklistEnabled ?? true,
             },
         });
 

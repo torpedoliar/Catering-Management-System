@@ -124,6 +124,7 @@ router.post('/process-noshows', authMiddleware, adminMiddleware, async (req: Aut
         });
 
         const settings = await getCachedSettings();
+        const autoBlacklistEnabled = settings?.autoBlacklistEnabled ?? true;
         const strikeThreshold = settings?.blacklistStrikes || 3;
         const blacklistDuration = settings?.blacklistDuration || 7;
 
@@ -153,13 +154,18 @@ router.post('/process-noshows', authMiddleware, adminMiddleware, async (req: Aut
                 data: { status: 'NO_SHOW' },
             });
 
-            // 2. Increment noShowCount for each affected user, collect updated counts
+            // 2. Increment noShowCount for each affected user (only if autoBlacklistEnabled is true)
             const updates: Array<{ userId: string; user: any; orderCount: number }> = [];
             for (const [userId, userOrders] of ordersByUser) {
-                const updatedUser = await tx.user.update({
-                    where: { id: userId },
-                    data: { noShowCount: { increment: userOrders.length } },
-                });
+                let updatedUser;
+                if (autoBlacklistEnabled) {
+                    updatedUser = await tx.user.update({
+                        where: { id: userId },
+                        data: { noShowCount: { increment: userOrders.length } },
+                    });
+                } else {
+                    updatedUser = await tx.user.findUnique({ where: { id: userId } });
+                }
                 updates.push({ userId, user: updatedUser, orderCount: userOrders.length });
             }
 
@@ -170,8 +176,8 @@ router.post('/process-noshows', authMiddleware, adminMiddleware, async (req: Aut
         for (const { userId, user: updatedUser } of userUpdates) {
             const userOrders = ordersByUser.get(userId)!;
 
-            // Check blacklist threshold
-            if (updatedUser.noShowCount >= strikeThreshold) {
+            // Check blacklist threshold (only if autoBlacklistEnabled is true)
+            if (autoBlacklistEnabled && updatedUser.noShowCount >= strikeThreshold) {
                 const existingBlacklist = await prisma.blacklist.findFirst({
                     where: { userId, isActive: true },
                 });

@@ -1,6 +1,6 @@
 import { useState, useEffect, useCallback } from 'react';
 import { useSearchParams } from 'react-router-dom';
-import { Settings, Lock, Eye, EyeOff, Check, AlertCircle, Clock, Shield, Server, RefreshCw, User, CalendarDays, Ban, AlertOctagon } from 'lucide-react';
+import { Settings, Lock, Eye, EyeOff, Check, AlertCircle, Clock, Shield, Server, RefreshCw, User, CalendarDays, Ban, AlertOctagon, AlertTriangle } from 'lucide-react';
 import { format } from 'date-fns';
 import { formatDateTimeShortWIB } from '../utils/timezone';
 import toast from 'react-hot-toast';
@@ -13,6 +13,7 @@ interface SystemSettings {
     cutoffHours: number;
     blacklistStrikes: number;
     blacklistDuration: number;
+    autoBlacklistEnabled?: boolean;
     maxOrderDaysAhead: number;
     ntpEnabled: boolean;
     ntpServer: string;
@@ -76,6 +77,10 @@ export default function SettingsPage() {
 
     const [blacklistStrikes, setBlacklistStrikes] = useState(3);
     const [blacklistDuration, setBlacklistDuration] = useState(7);
+    const [autoBlacklistEnabled, setAutoBlacklistEnabled] = useState(true);
+    const [initialAutoBlacklistEnabled, setInitialAutoBlacklistEnabled] = useState(true);
+    const [showPasswordModal, setShowPasswordModal] = useState(false);
+    const [adminPasswordInput, setAdminPasswordInput] = useState('');
 
     // FE-NOTIF-NAV: blacklist banner. Shown to the user when the
     // `/api/auth/me` payload flags `isBlacklisted`. Also handles the
@@ -198,6 +203,8 @@ export default function SettingsPage() {
                 setMaxWeeksAhead(data.maxWeeksAhead || 1);
                 setBlacklistStrikes(data.blacklistStrikes || 3);
                 setBlacklistDuration(data.blacklistDuration || 7);
+                setAutoBlacklistEnabled(data.autoBlacklistEnabled ?? true);
+                setInitialAutoBlacklistEnabled(data.autoBlacklistEnabled ?? true);
             }
 
             if (ntpRes.data) {
@@ -297,9 +304,18 @@ export default function SettingsPage() {
     };
 
     const handleSaveSystemSettings = async () => {
+        if (autoBlacklistEnabled && !initialAutoBlacklistEnabled) {
+            setShowPasswordModal(true);
+            return;
+        }
+
+        await saveSystemSettings(false);
+    };
+
+    const saveSystemSettings = async (withAdminPassword = false) => {
         setSavingSystem(true);
         try {
-            const response = await api.put('/api/settings', {
+            const payload: any = {
                 cutoffMode,
                 cutoffDays,
                 cutoffHours,
@@ -311,10 +327,25 @@ export default function SettingsPage() {
                 maxWeeksAhead,
                 blacklistStrikes,
                 blacklistDuration,
-            });
+                autoBlacklistEnabled,
+            };
+
+            if (withAdminPassword) {
+                payload.adminPassword = adminPasswordInput;
+            }
+
+            const response = await api.put('/api/settings', payload);
 
             setSettings(response.data);
-            toast.success('Pengaturan sistem berhasil disimpan');
+            setAutoBlacklistEnabled(response.data.autoBlacklistEnabled ?? true);
+            setInitialAutoBlacklistEnabled(response.data.autoBlacklistEnabled ?? true);
+            setShowPasswordModal(false);
+            setAdminPasswordInput('');
+            toast.success(
+                withAdminPassword
+                    ? 'Auto-Blacklist diaktifkan & strike seluruh user di-reset ke 0'
+                    : 'Pengaturan sistem berhasil disimpan'
+            );
         } catch (error: any) {
             toast.error(error.response?.data?.error || 'Gagal menyimpan pengaturan sistem');
         } finally {
@@ -746,6 +777,27 @@ export default function SettingsPage() {
 
 
 
+                                    {/* Auto Blacklist Toggle Switch */}
+                                    <div className="flex items-center justify-between p-4 bg-dark-card-secondary rounded-xl border border-white/5">
+                                        <div>
+                                            <h4 className="text-callout font-medium text-white">Status Fitur Auto-Blacklist (Strike)</h4>
+                                            <p className="text-caption text-dark-text-secondary mt-0.5">
+                                                {autoBlacklistEnabled 
+                                                    ? 'Aktif: Penilaian strike & pemblokiran otomatis berjalan untuk pesanan tidak diambil'
+                                                    : 'Nonaktif: Strike mati, user tidak akan mendapat strike saat tidak mengambil pesanan'}
+                                            </p>
+                                        </div>
+                                        <label className="relative inline-flex items-center cursor-pointer">
+                                            <input
+                                                type="checkbox"
+                                                checked={autoBlacklistEnabled}
+                                                onChange={(e) => setAutoBlacklistEnabled(e.target.checked)}
+                                                className="sr-only peer"
+                                            />
+                                            <div className="w-11 h-6 bg-slate-700 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full rtl:peer-checked:after:-translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:start-[2px] after:bg-white after:border-slate-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-apple-blue"></div>
+                                        </label>
+                                    </div>
+
                                     <div>
                                         <label className="block text-callout font-medium text-dark-text-secondary mb-2">
                                             Batas Tidak Diambil (Strike)
@@ -811,6 +863,57 @@ export default function SettingsPage() {
                             </div>
                         </>
                     )}
+        {showPasswordModal && (
+            <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm p-4">
+                <div className="bg-dark-card border border-white/10 rounded-2xl p-6 max-w-md w-full shadow-2xl">
+                    <h3 className="text-title-3 font-semibold text-white mb-2 flex items-center gap-2">
+                        <AlertTriangle className="w-5 h-5 text-amber-400" />
+                        Konfirmasi Mengaktifkan Auto-Blacklist
+                    </h3>
+                    <p className="text-callout text-dark-text-secondary mb-4">
+                        Menyalakan fitur Auto-Blacklist akan <strong className="text-amber-400 font-semibold">mereset strike (no-show) seluruh pengguna menjadi 0</strong>. Masukkan password admin Anda untuk melanjutkan.
+                    </p>
+                    <div className="mb-6">
+                        <label className="block text-caption font-medium text-dark-text-secondary mb-1.5">
+                            Password Admin
+                        </label>
+                        <input
+                            type="password"
+                            value={adminPasswordInput}
+                            onChange={(e) => setAdminPasswordInput(e.target.value)}
+                            placeholder="Masukkan password admin"
+                            className="input-field"
+                            autoFocus
+                            onKeyDown={(e) => {
+                                if (e.key === 'Enter' && adminPasswordInput) {
+                                    saveSystemSettings(true);
+                                }
+                            }}
+                        />
+                    </div>
+                    <div className="flex justify-end gap-3">
+                        <button
+                            type="button"
+                            onClick={() => {
+                                setShowPasswordModal(false);
+                                setAdminPasswordInput('');
+                            }}
+                            className="btn-secondary px-4 py-2"
+                        >
+                            Batal
+                        </button>
+                        <button
+                            type="button"
+                            disabled={!adminPasswordInput || savingSystem}
+                            onClick={() => saveSystemSettings(true)}
+                            className="btn-primary bg-amber-500 hover:bg-amber-600 border-amber-500 text-slate-950 font-medium px-4 py-2"
+                        >
+                            {savingSystem ? 'Memproses...' : 'OK, Aktifkan & Reset Strike'}
+                        </button>
+                    </div>
+                </div>
+            </div>
+        )}
                 </>
             )}
         </div>

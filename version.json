@@ -1,8 +1,13 @@
 {
-    "version": "2.7.0",
-    "releaseDate": "2026-07-14",
+    "version": "2.8.0",
+    "releaseDate": "2026-07-22",
     "minDatabaseVersion": "1.2.0",
     "changelog": [
+        "=== 2.8.0 (2026-07-22) — Mode ON/OFF Auto-Blacklist & Strike Reset ===",
+        "Feature: Added ON/OFF toggle mode for Auto-Blacklist no-show strike system in Admin Settings.",
+        "Feature: When auto-blacklist is OFF, orders are marked as NO_SHOW for record-keeping, but user strikes (noShowCount) do not increment and auto-blacklist is bypassed.",
+        "Security & Admin: Enabling Auto-Blacklist (OFF -> ON) requires Admin password confirmation modal and resets all user strikes (noShowCount) to 0.",
+        "",
         "=== 2.7.0 (2026-07-14) — Performance overhaul for 5000 user/day target ===",
         "Infrastructure: Phase 1 — PostgreSQL tuning (shared_buffers=256MB, max_connections=200, work_mem=16MB)",
         "Infrastructure: Phase 1 — Redis maxmemory=200MB with allkeys-lru eviction",

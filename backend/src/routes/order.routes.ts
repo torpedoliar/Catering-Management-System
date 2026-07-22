@@ -1228,6 +1228,7 @@ router.post('/process-noshows', authMiddleware, adminMiddleware, async (req: Aut
         });
 
         const settings = await getCachedSettings();
+        const autoBlacklistEnabled = settings?.autoBlacklistEnabled ?? true;
         const strikeThreshold = settings?.blacklistStrikes || 3;
         const blacklistDuration = settings?.blacklistDuration || 7;
 
@@ -1240,53 +1241,64 @@ router.post('/process-noshows', authMiddleware, adminMiddleware, async (req: Aut
                 data: { status: 'NO_SHOW' },
             });
 
-            // Increment user's no-show count
-            const updatedUser = await prisma.user.update({
-                where: { id: order.userId },
-                data: { noShowCount: { increment: 1 } },
-            });
-
             results.processed++;
 
-            // Check if user should be blacklisted
-            if (updatedUser.noShowCount >= strikeThreshold) {
-                // Check if already blacklisted
-                const existingBlacklist = await prisma.blacklist.findFirst({
-                    where: { userId: order.userId, isActive: true },
+            if (autoBlacklistEnabled) {
+                // Increment user's no-show count
+                const updatedUser = await prisma.user.update({
+                    where: { id: order.userId },
+                    data: { noShowCount: { increment: 1 } },
                 });
 
-                if (!existingBlacklist) {
-                    const endDate = getNow();
-                    endDate.setDate(endDate.getDate() + blacklistDuration);
+                // Check if user should be blacklisted
+                if (updatedUser.noShowCount >= strikeThreshold) {
+                    // Check if already blacklisted
+                    const existingBlacklist = await prisma.blacklist.findFirst({
+                        where: { userId: order.userId, isActive: true },
+                    });
 
-                    await prisma.blacklist.create({
-                        data: {
+                    if (!existingBlacklist) {
+                        const endDate = getNow();
+                        endDate.setDate(endDate.getDate() + blacklistDuration);
+
+                        await prisma.blacklist.create({
+                            data: {
+                                userId: order.userId,
+                                reason: `Accumulated ${updatedUser.noShowCount} no-shows`,
+                                endDate,
+                            },
+                        });
+
+                        results.blacklisted.push(updatedUser.externalId);
+
+                        // Broadcast blacklist event
+                        sseManager.broadcast('user:blacklisted', {
                             userId: order.userId,
-                            reason: `Accumulated ${updatedUser.noShowCount} no-shows`,
-                            endDate,
-                        },
-                    });
-
-                    results.blacklisted.push(updatedUser.externalId);
-
-                    // Broadcast blacklist event
-                    sseManager.broadcast('user:blacklisted', {
-                        userId: order.userId,
-                        userName: updatedUser.name,
-                        noShowCount: updatedUser.noShowCount,
-                        timestamp: getNow().toISOString(),
-                    });
+                            userName: updatedUser.name,
+                            noShowCount: updatedUser.noShowCount,
+                            timestamp: getNow().toISOString(),
+                        });
+                    }
                 }
-            }
 
-            // Broadcast no-show event
-            sseManager.broadcast('order:noshow', {
-                orderId: order.id,
-                userId: order.userId,
-                userName: order.user.name,
-                noShowCount: order.user.noShowCount + 1,
-                timestamp: getNow().toISOString(),
-            });
+                // Broadcast no-show event
+                sseManager.broadcast('order:noshow', {
+                    orderId: order.id,
+                    userId: order.userId,
+                    userName: order.user.name,
+                    noShowCount: updatedUser.noShowCount,
+                    timestamp: getNow().toISOString(),
+                });
+            } else {
+                // Broadcast no-show event without incrementing
+                sseManager.broadcast('order:noshow', {
+                    orderId: order.id,
+                    userId: order.userId,
+                    userName: order.user.name,
+                    noShowCount: order.user.noShowCount,
+                    timestamp: getNow().toISOString(),
+                });
+            }
         }
 
         res.json({
