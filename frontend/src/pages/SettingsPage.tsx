@@ -778,23 +778,38 @@ export default function SettingsPage() {
 
 
                                     {/* Auto Blacklist Toggle Switch */}
-                                    <div className="flex items-center justify-between p-4 bg-dark-card-secondary rounded-xl border border-white/5">
-                                        <div>
-                                            <h4 className="text-callout font-medium text-white">Status Fitur Auto-Blacklist (Strike)</h4>
-                                            <p className="text-caption text-dark-text-secondary mt-0.5">
+                                    <div className={`flex items-center justify-between p-4 rounded-xl border transition-all duration-300 ${
+                                        autoBlacklistEnabled 
+                                            ? 'bg-emerald-500/10 border-emerald-500/30 shadow-lg shadow-emerald-500/5' 
+                                            : 'bg-rose-500/10 border-rose-500/30 shadow-lg shadow-rose-500/5'
+                                    }`}>
+                                        <div className="flex-1 pr-4">
+                                            <div className="flex items-center gap-2 mb-1">
+                                                <h4 className="text-callout font-medium text-white">Status Fitur Auto-Blacklist (Strike)</h4>
+                                                {autoBlacklistEnabled ? (
+                                                    <span className="px-2.5 py-0.5 text-xs font-semibold rounded-full bg-emerald-500/20 text-emerald-400 border border-emerald-500/30 animate-pulse">
+                                                        ● AKTIF
+                                                    </span>
+                                                ) : (
+                                                    <span className="px-2.5 py-0.5 text-xs font-semibold rounded-full bg-rose-500/20 text-rose-400 border border-rose-500/30">
+                                                        ○ NONAKTIF
+                                                    </span>
+                                                )}
+                                            </div>
+                                            <p className="text-caption text-dark-text-secondary">
                                                 {autoBlacklistEnabled 
-                                                    ? 'Aktif: Penilaian strike & pemblokiran otomatis berjalan untuk pesanan tidak diambil'
-                                                    : 'Nonaktif: Strike mati, user tidak akan mendapat strike saat tidak mengambil pesanan'}
+                                                    ? 'Penilaian strike & pemblokiran otomatis berjalan untuk pesanan tidak diambil'
+                                                    : 'Penilaian strike mati, pengguna tidak akan mendapat strike saat tidak mengambil pesanan'}
                                             </p>
                                         </div>
-                                        <label className="relative inline-flex items-center cursor-pointer">
+                                        <label className="relative inline-flex items-center cursor-pointer select-none">
                                             <input
                                                 type="checkbox"
                                                 checked={autoBlacklistEnabled}
                                                 onChange={(e) => setAutoBlacklistEnabled(e.target.checked)}
                                                 className="sr-only peer"
                                             />
-                                            <div className="w-11 h-6 bg-slate-700 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full rtl:peer-checked:after:-translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:start-[2px] after:bg-white after:border-slate-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-apple-blue"></div>
+                                            <div className="w-12 h-6 bg-rose-500/40 border border-rose-500/30 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full rtl:peer-checked:after:-translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:start-[2px] after:bg-white after:border-slate-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-emerald-500 peer-checked:border-emerald-400 shadow-inner"></div>
                                         </label>
                                     </div>
 
