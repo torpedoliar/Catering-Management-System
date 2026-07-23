@@ -359,6 +359,12 @@ export default function CheckInPage() {
         setIsProcessing(true);
         setLastError(null);
 
+        // Clear input immediately so rapid barcode scanners can buffer the next scan
+        // without getting wiped after this API call finishes.
+        if (method === 'manual') {
+            setSearchInput('');
+        }
+
         try {
             let res;
             const formData = new FormData();
@@ -377,7 +383,7 @@ export default function CheckInPage() {
                 });
             } else {
                 // Send all possible identifiers - backend will check in order: externalId, nik, name
-                const searchValue = searchInput.trim();
+                const searchValue = codeToUse;
                 const isNumeric = /^\d+$/.test(searchValue);
                 const isId = /^[A-Z0-9]+$/i.test(searchValue);
 
@@ -406,11 +412,9 @@ export default function CheckInPage() {
             }
 
             setLastCheckInTime(now);
-            setSearchInput('');
             setCapturedPhoto(null);
             setPendingOrder(null);
             loadStats();
-            setTimeout(() => inputRef.current?.focus(), 100);
         } catch (error: any) {
             const message = error.response?.data?.error || 'Check-in gagal';
 
@@ -425,14 +429,10 @@ export default function CheckInPage() {
                 };
                 setSuccessData(warningResult);
                 setShowSuccessPopup(true);
-                setSearchInput('');
             } else {
                 setLastError(message);
                 toast.error(message);
-                // Clear input on error too for quick retry
-                setSearchInput('');
             }
-            setTimeout(() => inputRef.current?.focus(), 100);
         } finally {
             setIsProcessing(false);
         }
@@ -545,7 +545,7 @@ export default function CheckInPage() {
 
                     <div className="relative mb-6">
                         <Search className="absolute left-4 top-1/2 -translate-y-1/2 w-5 h-5 text-white/40" />
-                        <input ref={inputRef} type="text" placeholder="ID Karyawan / Nama / QR Code..." value={searchInput} onChange={(e) => setSearchInput(e.target.value)} onKeyPress={handleKeyPress} autoFocus className="input-search text-lg h-16" disabled={isProcessing} />
+                        <input ref={inputRef} type="text" placeholder="ID Karyawan / Nama / QR Code..." value={searchInput} onChange={(e) => setSearchInput(e.target.value)} onKeyPress={handleKeyPress} autoFocus className="input-search text-lg h-16" />
                     </div>
 
                     <div className="grid grid-cols-2 gap-4">

@@ -1,6 +1,6 @@
 import { BrowserRouter, Routes, Route, Navigate, Outlet, useNavigate } from 'react-router-dom';
 import { lazy, Suspense, useEffect } from 'react';
-import { Toaster } from 'react-hot-toast';
+import { Toaster, useToasterStore, toast } from 'react-hot-toast';
 import { AuthProvider, useAuth } from './contexts/AuthContext';
 import { SSEProvider } from './contexts/SSEContext';
 
@@ -185,6 +185,22 @@ function GlobalNavListener() {
     return null;
 }
 
+/**
+ * Limits the number of visible toasts on the screen to prevent clutter.
+ */
+function ToastLimit() {
+    const { toasts } = useToasterStore();
+    
+    useEffect(() => {
+        toasts
+            .filter((t) => t.visible)
+            .filter((_, i) => i >= 3) // Keep only 3 most recent
+            .forEach((t) => toast.dismiss(t.id));
+    }, [toasts]);
+    
+    return null;
+}
+
 export default function App() {
     return (
         <BrowserRouter future={{ v7_startTransition: true, v7_relativeSplatPath: true }}>
@@ -192,8 +208,9 @@ export default function App() {
                 <SSEProvider>
                     <GlobalNavListener />
                     <AppRoutes />
+                    <ToastLimit />
                     <Toaster
-                        position="top-right"
+                        position="top-center"
                         toastOptions={{
                             duration: 4000,
                             style: {
