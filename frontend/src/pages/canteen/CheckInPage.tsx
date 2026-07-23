@@ -337,7 +337,13 @@ export default function CheckInPage() {
     }, []);
 
     const handleCheckIn = async (method: 'manual' | 'qr', qrCodeData?: string) => {
-        const codeToUse = qrCodeData || searchInput.trim();
+        // Read directly from the DOM to bypass React's async state updates during rapid scans
+        let domValue = searchInput;
+        if (method === 'manual' && inputRef.current) {
+            domValue = inputRef.current.value;
+        }
+        
+        const codeToUse = qrCodeData || domValue.trim();
 
         if (!codeToUse) {
             if (method === 'qr') {
@@ -362,6 +368,7 @@ export default function CheckInPage() {
         // Clear input immediately so rapid barcode scanners can buffer the next scan
         // without getting wiped after this API call finishes.
         if (method === 'manual') {
+            if (inputRef.current) inputRef.current.value = '';
             setSearchInput('');
         }
 
