@@ -21,7 +21,6 @@ import {
     getRequestContext,
     ErrorMessages,
     apiRateLimitMiddleware,
-    OrderService,
     validate,
     bulkOrderSchema,
     BulkOrderSuccess,

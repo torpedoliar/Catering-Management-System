@@ -52,6 +52,8 @@ prisma/*.db-journal
 
 # Backups (never commit backup files)
 backend/backups/
+*.backup
+*.docker
 
 # Production files (copied from server - do not commit)
 .env.production

@@ -18,7 +18,7 @@ import {
 } from './shared';
 import { getCachedSettings } from '../../services/cache.service';
 import { parseDateToCateringTime } from '../../services/time.service';
-import { parseOrderDate, toOrderDateKey } from '../../utils/orderDate';
+import { toOrderDateKey } from '../../utils/orderDate';
 import { logOrder, logBlacklist, getRequestContext } from '../../services/audit.service';
 
 const router = Router();

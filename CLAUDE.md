@@ -6,10 +6,10 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 Catering Management System — employees order daily meals tied to work shifts; admins/canteen staff process QR check-ins; vendors view pickup stats. Monorepo with two independently-versioned packages:
 
-- `backend/` — Express + TypeScript + Prisma (PostgreSQL) REST API. Version 1.8.9.
-- `frontend/` — React + Vite + TypeScript SPA, wrapped as an Android/iOS app via Capacitor. Version 1.5.2.
+- `backend/` — Express + TypeScript + Prisma (PostgreSQL) REST API. Version 1.9.0.
+- `frontend/` — React + Vite + TypeScript SPA, wrapped as an Android/iOS app via Capacitor. Version 1.6.0.
 
-Root `version.json` is the **app-level** version (2.5.1) surfaced in the UI/update flow — distinct from the two package versions.
+Root `version.json` is the **app-level** version (2.8.0) surfaced in the UI/update flow — distinct from the two package versions.
 
 ## Commands
 
@@ -30,7 +30,7 @@ npx prisma studio         # inspect DB
 ```bash
 npm run dev               # vite on 0.0.0.0:3011
 npm run build             # tsc && vite build
-npm run lint              # eslint (ts,tsx) — max-warnings 0
+npm run lint              # eslint (ts,tsx) — config in .eslintrc.cjs
 npm run cap:build         # build + cap sync android
 npm run cap:build:ios     # build + cap sync ios
 ```
@@ -78,7 +78,7 @@ The 5-agent audit on 2026-06-13 surfaced 140 findings; waves 0-4 of the remediat
 ## Backend structure
 
 - Entry `src/index.ts`: registers all `/api/*` routers, CORS (`credentials: true`), compression, cookie-parser, static `/uploads`, centralized `errorHandler` (last), graceful shutdown, and on-listen init of Redis, cache, NTP, scheduler, token cleanup.
-- Routes under `src/routes/`, one file per domain. **Orders are special**: split into `src/routes/order/` modules (`list`, `create`, `bulk`, `checkin`, `cancel`, `admin`) combined in `order/index.ts`. All those modules import shared deps from `order/shared.ts` (re-exports prisma, middleware, time helpers, services). There is also a legacy `order.routes.ts` mounted on the same `/api/orders` path for stats/export only — both are mounted, order matters.
+- Routes under `src/routes/`, one file per domain. **Orders are special**: split into `src/routes/order/` modules (`list`, `create`, `bulk`, `checkin`, `cancel`, `admin`, `stats`) combined in `order/index.ts`. All those modules import shared deps from `order/shared.ts` (re-exports prisma, middleware, time helpers, services). `order/stats.ts` holds `GET /export`, `GET /stats/range`, `GET /stats/today`. The old `order.routes.ts` that used to be dual-mounted on `/api/orders` was removed — there is now exactly one router on that path.
 - `src/services/` holds cross-cutting logic: `time.service`, `redis.service`, `cache.service` (Redis-backed, e.g. `getCachedSettings`), `audit.service` (`logOrder`, `getRequestContext`), `scheduler` (node-cron no-show processing), `notification.service` (hybrid Web Push + FCM), `rate-limiter.service`.
 - Singleton Prisma client: always import from `src/lib/prisma.ts`.
 

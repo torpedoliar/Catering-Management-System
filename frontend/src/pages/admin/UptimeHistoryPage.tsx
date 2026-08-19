@@ -157,7 +157,6 @@ export default function UptimeHistoryPage() {
         return () => {
             if (interval) clearInterval(interval);
         };
-        // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [autoRefresh, fetchData]); // Include fetchData to ensure fresh reference
 
     const handleExport = async () => {
