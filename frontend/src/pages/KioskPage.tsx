@@ -19,14 +19,24 @@ import {
     Eye,
     EyeOff,
     Sparkles,
+    CheckSquare,
+    Square,
+    Check,
+    AlertCircle,
 } from 'lucide-react';
 
 // Kiosk mode — shared PC in the canteen for ordering meals.
 // Features:
 // - Left: Menu catalog ALWAYS visible (both pre-login and post-login).
-// - Browse menus for upcoming days (up to 7-14 days ahead set by admin).
+// - Multi-day menu browsing (today, tomorrow, and upcoming days).
 // - Click any menu card/image to view enlarged photo and details modal.
-// - Right: Login panel when logged out; switches to simple Order panel when logged in.
+// - Right:
+//   - Pre-login: ID & Password login form.
+//   - Post-login:
+//     * Section 1: "Pesanan Hari Ini" (shows active order badge if already ordered; prevents double-order).
+//     * Section 2: "Pesan Beberapa Hari Kedepan" (multi-select upcoming days in a single session).
+//     * Section 3: Shift & Canteen selection.
+//     * Submit: bulk order creation with full duplicate prevention.
 // - Forced password change supported in-kiosk.
 // - Session end: "Selesai" button + 60s idle (15s countdown) auto-logout.
 // - After order success: short confirmation then immediate auto-logout.
@@ -74,6 +84,23 @@ interface Canteen {
     location: string | null;
 }
 
+interface ExistingOrder {
+    id: string;
+    orderDate: string;
+    status: string;
+    qrCode: string;
+    shift: {
+        id: string;
+        name: string;
+        startTime: string;
+        endTime: string;
+    };
+    canteen?: {
+        id: string;
+        name: string;
+    } | null;
+}
+
 export default function KioskPage() {
     const { user, login, logout, refreshUser } = useAuth();
 
@@ -91,12 +118,17 @@ export default function KioskPage() {
     const [showPassword, setShowPassword] = useState(false);
     const [loginLoading, setLoginLoading] = useState(false);
 
-    // --- Order Form States (When Logged In) ---
+    // --- User Existing Orders (Duplicate Prevention) ---
+    const [existingOrders, setExistingOrders] = useState<Record<string, ExistingOrder>>({});
+    const [ordersLoading, setOrdersLoading] = useState(false);
+
+    // --- Multi-Date Order Selection ---
+    const [selectedDates, setSelectedDates] = useState<string[]>([]);
     const [shifts, setShifts] = useState<Shift[]>([]);
     const [selectedShift, setSelectedShift] = useState('');
     const [canteens, setCanteens] = useState<Canteen[]>([]);
     const [selectedCanteen, setSelectedCanteen] = useState('');
-    const [orderLoading, setOrderLoading] = useState(false);
+    const [shiftsLoading, setShiftsLoading] = useState(false);
     const [isOrdering, setIsOrdering] = useState(false);
     const [orderSuccess, setOrderSuccess] = useState(false);
 
@@ -106,22 +138,22 @@ export default function KioskPage() {
     const countdownTimerRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
     const apiUrl = (import.meta as any).env?.VITE_API_URL || '';
+    const todayKey = getLocalDateString();
+    const tomorrowKey = addDays(todayKey, 1);
 
-    // Load upcoming menus (public endpoint — no auth required).
+    // Load upcoming menus (public endpoint — no auth required)
     const loadMenus = useCallback(async () => {
         setMenusLoading(true);
         try {
             const res = await fetch(`${apiUrl}/api/weekly-menu/upcoming`).then(r => r.json());
             if (res && Array.isArray(res.days) && res.days.length > 0) {
                 setUpcomingDays(res.days);
-                // Ensure selectedDate defaults to first available date or today
                 const today = getLocalDateString();
                 const exists = res.days.some((d: DayMenuResponse) => d.date === selectedDate);
                 if (!exists) {
                     setSelectedDate(res.days[0]?.date || today);
                 }
             } else {
-                // Fallback to /today if upcoming is empty
                 const todayRes = await fetch(`${apiUrl}/api/weekly-menu/today`).then(r => r.json());
                 if (todayRes?.date) {
                     setUpcomingDays([todayRes]);
@@ -129,7 +161,7 @@ export default function KioskPage() {
                 }
             }
         } catch {
-            // Best effort — kiosk still functions even if menu fetch errors
+            // Best effort
         } finally {
             setMenusLoading(false);
         }
@@ -138,6 +170,121 @@ export default function KioskPage() {
     useEffect(() => {
         loadMenus();
     }, [loadMenus]);
+
+    // Load user's existing active orders to prevent double ordering
+    const loadUserOrders = useCallback(async () => {
+        if (!user || user.mustChangePassword) return;
+        setOrdersLoading(true);
+        try {
+            const today = getLocalDateString();
+            const futureEnd = addDays(today, 14);
+            const res = await api.get('/api/orders/my-orders', {
+                params: {
+                    startDate: today,
+                    endDate: futureEnd,
+                    limit: 50,
+                },
+            });
+
+            const map: Record<string, ExistingOrder> = {};
+            if (res.data?.orders && Array.isArray(res.data.orders)) {
+                res.data.orders.forEach((o: any) => {
+                    if (o.status !== 'CANCELLED') {
+                        const key = o.orderDate.slice(0, 10);
+                        map[key] = o;
+                    }
+                });
+            }
+            setExistingOrders(map);
+
+            // Set initial date selection: if today is NOT ordered, select today by default
+            setSelectedDates(prev => {
+                const filtered = prev.filter(d => !map[d]);
+                if (filtered.length > 0) return filtered;
+                if (!map[today]) return [today];
+                return [];
+            });
+        } catch (error) {
+            console.error('Failed to load user orders:', error);
+        } finally {
+            setOrdersLoading(false);
+        }
+    }, [user]);
+
+    // Load shifts and canteens
+    const loadShiftsAndCanteens = useCallback(async () => {
+        if (!user || user.mustChangePassword) return;
+        setShiftsLoading(true);
+        try {
+            const targetDate = selectedDates[0] || selectedDate || todayKey;
+            const [shiftsRes, canteensRes] = await Promise.all([
+                api.get(`/api/shifts/for-user?date=${targetDate}`),
+                api.get('/api/canteens'),
+            ]);
+
+            const loadedShifts: Shift[] = shiftsRes.data.shifts || [];
+            setShifts(loadedShifts);
+
+            // Auto-select first orderable shift if none is selected
+            if (!loadedShifts.some(s => s.id === selectedShift && s.canOrder)) {
+                const firstAvailable = loadedShifts.find(s => s.canOrder);
+                setSelectedShift(firstAvailable?.id || '');
+            }
+
+            const list: Canteen[] = canteensRes.data.canteens || [];
+            setCanteens(list);
+            if (user?.preferredCanteenId && list.some(c => c.id === user.preferredCanteenId)) {
+                setSelectedCanteen(user.preferredCanteenId);
+            } else if (list.length > 0 && !selectedCanteen) {
+                setSelectedCanteen(list[0].id);
+            }
+        } catch (error: any) {
+            handleApiError(error);
+        } finally {
+            setShiftsLoading(false);
+        }
+    }, [user, selectedDates, selectedDate, selectedShift, selectedCanteen, todayKey]);
+
+    useEffect(() => {
+        if (user && !user.mustChangePassword) {
+            void loadUserOrders();
+        }
+    }, [user, loadUserOrders]);
+
+    useEffect(() => {
+        if (user && !user.mustChangePassword) {
+            void loadShiftsAndCanteens();
+        }
+    }, [user, loadShiftsAndCanteens]);
+
+    // Toggle a date selection for ordering (guarded against duplicate order)
+    const toggleDate = (dateKey: string) => {
+        if (existingOrders[dateKey]) {
+            toast.error(`Anda sudah memesan untuk tanggal ${dateKey}`);
+            return;
+        }
+        setSelectedDates(prev =>
+            prev.includes(dateKey)
+                ? prev.filter(d => d !== dateKey)
+                : [...prev, dateKey].sort()
+        );
+    };
+
+    // Quick select all available un-ordered days
+    const selectAllAvailable = () => {
+        const available = upcomingDays
+            .map(d => d.date)
+            .filter(d => !existingOrders[d]);
+        if (available.length === 0) {
+            toast('Semua tanggal sudah dipesan!');
+            return;
+        }
+        setSelectedDates(available);
+    };
+
+    const clearSelections = () => {
+        setSelectedDates([]);
+    };
 
     // Handle Login
     const handleLogin = async (e: React.FormEvent) => {
@@ -166,60 +313,50 @@ export default function KioskPage() {
         }
     };
 
-    // Load shift and canteen data for the selected date when logged in
-    const loadOrderData = useCallback(async () => {
-        if (!user || user.mustChangePassword) return;
-        setOrderLoading(true);
-        try {
-            const [shiftsRes, canteensRes] = await Promise.all([
-                api.get(`/api/shifts/for-user?date=${selectedDate}`),
-                api.get('/api/canteens'),
-            ]);
-            const loadedShifts: Shift[] = shiftsRes.data.shifts || [];
-            setShifts(loadedShifts);
-            // Reset selected shift when date changes if current shift is no longer valid
-            if (!loadedShifts.some(s => s.id === selectedShift && s.canOrder)) {
-                const firstOrderable = loadedShifts.find(s => s.canOrder);
-                setSelectedShift(firstOrderable?.id || '');
-            }
-
-            const list: Canteen[] = canteensRes.data.canteens || [];
-            setCanteens(list);
-            if (user?.preferredCanteenId && list.some(c => c.id === user.preferredCanteenId)) {
-                setSelectedCanteen(user.preferredCanteenId);
-            } else if (list.length > 0 && !selectedCanteen) {
-                setSelectedCanteen(list[0].id);
-            }
-        } catch (error: any) {
-            handleApiError(error);
-        } finally {
-            setOrderLoading(false);
-        }
-    }, [user, selectedDate, selectedShift, selectedCanteen]);
-
-    useEffect(() => {
-        if (user && !user.mustChangePassword) {
-            loadOrderData();
-        }
-    }, [user, loadOrderData]);
-
-    // Handle Order Submission
+    // Handle Multi-Date Order Submission
     const handleOrder = async () => {
+        if (selectedDates.length === 0) {
+            toast.error('Pilih minimal satu tanggal yang ingin dipesan');
+            return;
+        }
         if (!selectedShift) {
             toast.error('Pilih shift terlebih dahulu');
             return;
         }
+
+        // Strict duplicate check before submitting
+        const alreadyOrdered = selectedDates.filter(d => existingOrders[d]);
+        if (alreadyOrdered.length > 0) {
+            toast.error(`Tanggal ${alreadyOrdered.join(', ')} sudah memiliki pesanan aktif!`);
+            return;
+        }
+
         setIsOrdering(true);
         try {
-            await api.post('/api/orders', {
+            const ordersPayload = selectedDates.map(date => ({
+                date,
                 shiftId: selectedShift,
-                orderDate: selectedDate,
+            }));
+
+            const res = await api.post('/api/orders/bulk', {
+                orders: ordersPayload,
                 canteenId: selectedCanteen || null,
             });
-            showSuccess('Pesanan berhasil dibuat!');
-            setOrderSuccess(true);
-            // Selesai otomatis setelah 2.5 detik
-            setTimeout(() => { void finishSession(); }, 2500);
+
+            const summary = res.data?.summary;
+            if (summary && summary.successCount > 0) {
+                showSuccess(`Berhasil membuat pesanan untuk ${summary.successCount} hari!`);
+                setOrderSuccess(true);
+                // Refresh active orders
+                void loadUserOrders();
+                // Selesai otomatis setelah 2.5 detik
+                setTimeout(() => { void finishSession(); }, 2500);
+            } else if (summary && summary.failedCount > 0) {
+                const firstReason = res.data?.failed?.[0]?.reason || 'Gagal membuat pesanan';
+                toast.error(firstReason);
+            } else {
+                toast.error('Gagal membuat pesanan');
+            }
         } catch (error: any) {
             toast.error(error.response?.data?.error || 'Gagal membuat pesanan');
         } finally {
@@ -234,8 +371,10 @@ export default function KioskPage() {
         try {
             await logout();
         } finally {
+            setSelectedDates([]);
             setSelectedShift('');
             setSelectedCanteen('');
+            setExistingOrders({});
             setOrderSuccess(false);
             setPassword('');
             setExternalId('');
@@ -287,10 +426,7 @@ export default function KioskPage() {
         }
     }, [user, armIdleTimer]);
 
-    // Helper: format date label for tabs
-    const todayKey = getLocalDateString();
-    const tomorrowKey = addDays(todayKey, 1);
-
+    // Date formatting helpers
     const getDateTabLabel = (d: DayMenuResponse) => {
         if (d.date === todayKey) return 'Hari Ini';
         if (d.date === tomorrowKey) return 'Besok';
@@ -308,8 +444,14 @@ export default function KioskPage() {
         return dateStr;
     };
 
-    // Find the currently active day's menu
+    // Find the currently viewed day's menu on the left
     const activeDayData = upcomingDays.find(d => d.date === selectedDate) || upcomingDays[0] || null;
+
+    // Filter upcoming days list for Section 2 (excluding today)
+    const futureUpcomingDays = upcomingDays.filter(d => d.date !== todayKey);
+
+    // Check if user already ordered today
+    const todayOrder = existingOrders[todayKey];
 
     // Idle countdown overlay
     const countdownOverlay = countdown !== null && (
@@ -351,7 +493,6 @@ export default function KioskPage() {
                 className="bg-white rounded-3xl max-w-lg w-full overflow-hidden shadow-2xl border border-slate-100 animate-in zoom-in-95 duration-200"
                 onClick={(e) => e.stopPropagation()}
             >
-                {/* Image Section */}
                 <div className="relative bg-slate-950 max-h-[380px] flex items-center justify-center overflow-hidden">
                     {previewMenu.menuItem.imageUrl ? (
                         <img
@@ -374,15 +515,11 @@ export default function KioskPage() {
                     </button>
                 </div>
 
-                {/* Content Section */}
                 <div className="p-6">
-                    <div className="flex items-start justify-between gap-3 mb-2">
-                        <h3 className="text-2xl font-extrabold text-slate-900 leading-tight">
-                            {previewMenu.menuItem.name}
-                        </h3>
-                    </div>
+                    <h3 className="text-2xl font-extrabold text-slate-900 leading-tight mb-2">
+                        {previewMenu.menuItem.name}
+                    </h3>
 
-                    {/* Badges */}
                     <div className="flex flex-wrap items-center gap-2 mb-4">
                         {previewMenu.shiftName && (
                             <span className="px-3 py-1 rounded-full bg-orange-100 text-orange-700 text-xs font-bold">
@@ -401,7 +538,6 @@ export default function KioskPage() {
                         )}
                     </div>
 
-                    {/* Description */}
                     {previewMenu.menuItem.description ? (
                         <p className="text-slate-600 text-sm leading-relaxed mb-4">
                             {previewMenu.menuItem.description}
@@ -410,7 +546,6 @@ export default function KioskPage() {
                         <p className="text-slate-400 text-sm italic mb-4">Tidak ada deskripsi tambahan.</p>
                     )}
 
-                    {/* Notes */}
                     {previewMenu.notes && (
                         <div className="bg-amber-50 rounded-xl p-3 border border-amber-200 text-xs text-amber-900 mb-4">
                             <span className="font-semibold">Catatan Katering: </span>
@@ -418,7 +553,6 @@ export default function KioskPage() {
                         </div>
                     )}
 
-                    {/* Action buttons */}
                     <div className="flex gap-3 pt-2">
                         {user && previewMenu.shiftId && (
                             <button
@@ -452,7 +586,7 @@ export default function KioskPage() {
             {/* =====================================================================
                 LEFT COLUMN: MENU DISPLAY (ALWAYS VISIBLE PRE-LOGIN & POST-LOGIN)
                ===================================================================== */}
-            <div className="flex-1 p-4 md:p-6 lg:p-8 flex flex-col">
+            <div className="flex-1 p-4 md:p-6 lg:p-8 flex flex-col overflow-y-auto">
                 {/* Header Branding */}
                 <div className="flex items-center justify-between gap-4 mb-6">
                     <div className="flex items-center gap-3.5">
@@ -469,27 +603,26 @@ export default function KioskPage() {
                                 </span>
                             </div>
                             <p className="text-sm text-slate-500">
-                                Pilih tanggal untuk melihat menu makanan yang tersedia
+                                Lihat menu makanan harian katering & jadwal shift
                             </p>
                         </div>
                     </div>
                 </div>
 
-                {/* Date Selection Bar (Multi-Day Horizontal Tabs) */}
+                {/* Date Selection Bar (Horizontal Scrollable Tabs) */}
                 <div className="mb-6">
                     <div className="flex items-center gap-2 overflow-x-auto pb-2 scrollbar-thin scrollbar-thumb-slate-300">
                         {upcomingDays.length > 0 ? (
                             upcomingDays.map((dayData) => {
                                 const isSelected = dayData.date === selectedDate;
                                 const isToday = dayData.date === todayKey;
+                                const hasOrder = !!existingOrders[dayData.date];
                                 const count = dayData.menus.length;
 
                                 return (
                                     <button
                                         key={dayData.date}
-                                        onClick={() => {
-                                            setSelectedDate(dayData.date);
-                                        }}
+                                        onClick={() => setSelectedDate(dayData.date)}
                                         className={`flex-shrink-0 px-4 py-2.5 rounded-2xl border text-left transition-all duration-200 ${
                                             isSelected
                                                 ? 'bg-orange-500 text-white border-orange-500 shadow-lg shadow-orange-500/25 scale-[1.02]'
@@ -516,17 +649,29 @@ export default function KioskPage() {
                                             >
                                                 {getDateSubLabel(dayData.date)}
                                             </span>
-                                            <span
-                                                className={`text-[11px] px-1.5 py-0.2 rounded-md font-semibold ${
-                                                    isSelected
-                                                        ? 'bg-white/20 text-white'
-                                                        : count > 0
-                                                        ? 'bg-orange-50 text-orange-600'
-                                                        : 'bg-slate-100 text-slate-400'
-                                                }`}
-                                            >
-                                                {count > 0 ? `${count} Menu` : 'Kosong'}
-                                            </span>
+                                            {hasOrder ? (
+                                                <span
+                                                    className={`text-[10px] px-1.5 py-0.2 rounded-md font-bold ${
+                                                        isSelected
+                                                            ? 'bg-emerald-400 text-slate-900'
+                                                            : 'bg-emerald-100 text-emerald-700'
+                                                    }`}
+                                                >
+                                                    ✓ Dipesan
+                                                </span>
+                                            ) : (
+                                                <span
+                                                    className={`text-[11px] px-1.5 py-0.2 rounded-md font-semibold ${
+                                                        isSelected
+                                                            ? 'bg-white/20 text-white'
+                                                            : count > 0
+                                                            ? 'bg-orange-50 text-orange-600'
+                                                            : 'bg-slate-100 text-slate-400'
+                                                    }`}
+                                                >
+                                                    {count > 0 ? `${count} Menu` : 'Kosong'}
+                                                </span>
+                                            )}
                                         </div>
                                     </button>
                                 );
@@ -644,10 +789,10 @@ export default function KioskPage() {
             </div>
 
             {/* =====================================================================
-                RIGHT COLUMN: LOGIN PANEL (PRE-LOGIN) OR ORDER PANEL (POST-LOGIN)
+                RIGHT COLUMN: LOGIN PANEL (PRE-LOGIN) OR ORDER FORM (POST-LOGIN)
                ===================================================================== */}
             <div
-                className="w-full lg:w-[440px] xl:w-[480px] p-4 md:p-6 lg:p-8 lg:border-l bg-white/60 lg:bg-white flex flex-col justify-between"
+                className="w-full lg:w-[450px] xl:w-[490px] p-4 md:p-6 lg:p-8 lg:border-l bg-white/70 lg:bg-white flex flex-col justify-between overflow-y-auto"
                 style={{ borderColor: 'var(--color-border)' }}
             >
                 {/* CASE 1: FORCED PASSWORD CHANGE */}
@@ -656,11 +801,11 @@ export default function KioskPage() {
                         <ForcePasswordChange onPasswordChanged={refreshUser} />
                     </div>
                 ) : user ? (
-                    /* CASE 2: LOGGED IN — ORDER FORM */
+                    /* CASE 2: LOGGED IN — MULTI-DATE ORDER FORM */
                     <div className="flex flex-col h-full justify-between">
                         <div>
-                            {/* User Header with Logout */}
-                            <div className="flex items-center justify-between pb-5 mb-5 border-b border-slate-100">
+                            {/* User Greeting & Logout Header */}
+                            <div className="flex items-center justify-between pb-4 mb-4 border-b border-slate-100">
                                 <div className="flex items-center gap-3">
                                     <div className="w-11 h-11 rounded-2xl bg-orange-100 text-orange-600 flex items-center justify-center font-bold text-lg shadow-sm">
                                         {user.name.charAt(0).toUpperCase()}
@@ -685,111 +830,210 @@ export default function KioskPage() {
                                 </button>
                             </div>
 
-                            {/* SUCCESS NOTIFICATION */}
+                            {/* SUCCESS SCREEN OVERLAY */}
                             {orderSuccess ? (
-                                <div className="bg-green-50 border border-green-200 rounded-3xl p-8 text-center my-8 animate-in zoom-in-95 duration-200">
-                                    <div className="w-16 h-16 rounded-full bg-green-500 text-white flex items-center justify-center mx-auto mb-4 shadow-lg shadow-green-500/30">
+                                <div className="bg-emerald-50 border border-emerald-200 rounded-3xl p-8 text-center my-6 animate-in zoom-in-95 duration-200">
+                                    <div className="w-16 h-16 rounded-full bg-emerald-500 text-white flex items-center justify-center mx-auto mb-4 shadow-lg shadow-emerald-500/30">
                                         <CheckCircle2 className="w-10 h-10" />
                                     </div>
-                                    <h3 className="text-2xl font-black text-green-900 mb-2">
+                                    <h3 className="text-2xl font-black text-emerald-900 mb-2">
                                         Pesanan Berhasil!
                                     </h3>
-                                    <p className="text-sm text-green-700 leading-relaxed mb-4">
-                                        Pesanan makan Anda untuk tanggal <strong>{selectedDate}</strong> telah tersimpan.
+                                    <p className="text-sm text-emerald-700 leading-relaxed mb-4">
+                                        Pesanan makan Anda untuk tanggal yang dipilih telah tersimpan.
                                         QR Code check-in dapat dilihat di aplikasi HP Anda.
                                     </p>
-                                    <div className="inline-flex items-center gap-2 text-xs font-semibold text-green-600 bg-white/80 px-4 py-2 rounded-full border border-green-200">
+                                    <div className="inline-flex items-center gap-2 text-xs font-semibold text-emerald-600 bg-white/90 px-4 py-2 rounded-full border border-emerald-200">
                                         <Loader2 className="w-3.5 h-3.5 animate-spin" />
                                         <span>Kembali ke layar awal...</span>
                                     </div>
                                 </div>
-                            ) : orderLoading ? (
+                            ) : ordersLoading ? (
                                 <div className="py-20 flex flex-col items-center justify-center">
                                     <Loader2 className="w-8 h-8 animate-spin text-orange-500 mb-2" />
-                                    <p className="text-xs text-slate-400 font-medium">Memeriksa jadwal shift...</p>
+                                    <p className="text-xs text-slate-400 font-medium">Memeriksa status pesanan Anda...</p>
                                 </div>
                             ) : (
-                                /* ORDER FORM */
+                                /* =====================================================
+                                   ORDER SECTIONS: HARI INI vs BEBERAPA HARI KEDEPAN
+                                   ===================================================== */
                                 <div className="space-y-5">
-                                    {/* Date Summary */}
-                                    <div className="bg-slate-50 rounded-2xl p-4 border border-slate-100">
-                                        <div className="text-xs font-semibold text-slate-400 mb-1">
-                                            Tanggal Pesanan Dipilih
-                                        </div>
-                                        <div className="flex items-center justify-between">
-                                            <div className="text-base font-bold text-slate-800 flex items-center gap-2">
+                                    {/* -------------------------------------------------
+                                        SECTION 1: PESANAN HARI INI
+                                       ------------------------------------------------- */}
+                                    <div className="bg-slate-50/80 rounded-2xl p-4 border border-slate-200">
+                                        <div className="flex items-center justify-between mb-2">
+                                            <div className="flex items-center gap-2">
                                                 <Calendar className="w-4 h-4 text-orange-500" />
-                                                <span>
-                                                    {activeDayData?.dayName || ''}, {selectedDate}
+                                                <span className="font-extrabold text-sm text-slate-800">
+                                                    Pesanan Hari Ini
                                                 </span>
                                             </div>
-                                            <span className="text-xs px-2 py-0.5 rounded-full bg-orange-100 text-orange-700 font-semibold">
-                                                {selectedDate === todayKey
-                                                    ? 'Hari Ini'
-                                                    : selectedDate === tomorrowKey
-                                                    ? 'Besok'
-                                                    : 'Mendatang'}
+                                            <span className="text-xs text-slate-500 font-medium">
+                                                {getDateSubLabel(todayKey)}
                                             </span>
                                         </div>
-                                    </div>
 
-                                    {/* Shift Selection */}
-                                    <div>
-                                        <label className="block text-xs font-bold text-slate-600 mb-2 uppercase tracking-wider">
-                                            Pilih Shift Makan
-                                        </label>
-                                        {shifts.length === 0 ? (
-                                            <div className="bg-slate-50 rounded-2xl p-5 text-center text-xs text-slate-400 border border-slate-200">
-                                                Tidak ada shift yang dapat dipesan untuk tanggal ini.
+                                        {todayOrder ? (
+                                            /* User sudah order hari ini — Card Hijau + Lockout (Anti Double-Order) */
+                                            <div className="bg-emerald-50 border border-emerald-200 rounded-xl p-3.5 mt-2">
+                                                <div className="flex items-center justify-between mb-1">
+                                                    <div className="flex items-center gap-1.5 text-emerald-700 font-bold text-xs">
+                                                        <Check className="w-4 h-4" />
+                                                        <span>SUDAH MEMESAN</span>
+                                                    </div>
+                                                    <span className="px-2 py-0.5 rounded-full bg-emerald-100 text-emerald-800 text-[11px] font-extrabold">
+                                                        {todayOrder.shift?.name || 'Shift'}
+                                                    </span>
+                                                </div>
+                                                <p className="text-xs text-emerald-800 leading-relaxed">
+                                                    Jam: {todayOrder.shift?.startTime} – {todayOrder.shift?.endTime} • Kantin: {todayOrder.canteen?.name || 'Utama'}
+                                                </p>
+                                                <p className="text-[11px] text-emerald-600 mt-1 font-medium italic">
+                                                    QR Code tersimpan di HP Anda. Tidak bisa pesan ganda untuk hari ini.
+                                                </p>
                                             </div>
                                         ) : (
-                                            <div className="space-y-2.5">
-                                                {shifts.map((s) => {
-                                                    const isSelected = selectedShift === s.id;
-                                                    return (
-                                                        <button
-                                                            key={s.id}
-                                                            type="button"
-                                                            disabled={!s.canOrder}
-                                                            onClick={() => setSelectedShift(s.id)}
-                                                            className={`w-full p-4 rounded-2xl border text-left transition-all duration-200 flex items-center justify-between ${
-                                                                isSelected
-                                                                    ? 'bg-orange-500 text-white border-orange-500 shadow-md shadow-orange-500/20'
-                                                                    : s.canOrder
-                                                                    ? 'bg-white hover:bg-slate-50 border-slate-200 text-slate-800'
-                                                                    : 'bg-slate-50 border-slate-100 text-slate-400 opacity-60 cursor-not-allowed'
+                                            /* User belum order hari ini — Toggle checkbox */
+                                            <button
+                                                type="button"
+                                                onClick={() => toggleDate(todayKey)}
+                                                className={`w-full mt-2 p-3 rounded-xl border text-left flex items-center justify-between transition-all ${
+                                                    selectedDates.includes(todayKey)
+                                                        ? 'bg-orange-500 text-white border-orange-500 shadow-md shadow-orange-500/20'
+                                                        : 'bg-white hover:bg-slate-50 border-slate-200 text-slate-800'
+                                                }`}
+                                            >
+                                                <div className="flex items-center gap-2.5">
+                                                    {selectedDates.includes(todayKey) ? (
+                                                        <CheckSquare className="w-5 h-5 text-white flex-shrink-0" />
+                                                    ) : (
+                                                        <Square className="w-5 h-5 text-slate-400 flex-shrink-0" />
+                                                    )}
+                                                    <div>
+                                                        <div className="font-bold text-sm">
+                                                            Pesan Makan Hari Ini
+                                                        </div>
+                                                        <div
+                                                            className={`text-xs ${
+                                                                selectedDates.includes(todayKey)
+                                                                    ? 'text-white/80'
+                                                                    : 'text-slate-400'
                                                             }`}
                                                         >
-                                                            <div>
-                                                                <div className="font-bold text-sm">
-                                                                    {s.name}
-                                                                </div>
-                                                                <div
-                                                                    className={`text-xs mt-0.5 ${
-                                                                        isSelected
-                                                                            ? 'text-white/80'
-                                                                            : 'text-slate-400'
-                                                                    }`}
-                                                                >
-                                                                    Jam: {s.startTime} – {s.endTime}
-                                                                </div>
-                                                                {!s.canOrder && (
-                                                                    <div className="text-[11px] text-red-500 mt-1 font-semibold">
-                                                                        Melewati batas cutoff / tidak aktif
-                                                                    </div>
-                                                                )}
-                                                            </div>
+                                                            Klik untuk sertakan hari ini dalam pesanan
+                                                        </div>
+                                                    </div>
+                                                </div>
+                                            </button>
+                                        )}
+                                    </div>
+
+                                    {/* -------------------------------------------------
+                                        SECTION 2: PESAN BEBERAPA HARI KEDEPAN (MULTI-SELECT)
+                                       ------------------------------------------------- */}
+                                    <div>
+                                        <div className="flex items-center justify-between mb-1.5">
+                                            <div>
+                                                <label className="block text-xs font-bold text-slate-700 uppercase tracking-wider">
+                                                    Pesan Beberapa Hari Kedepan
+                                                </label>
+                                                <p className="text-[11px] text-slate-400">
+                                                    Pilih hari yang ingin dipesan (bisa klik beberapa hari sekaligus):
+                                                </p>
+                                            </div>
+                                            <div className="flex items-center gap-1.5 flex-shrink-0">
+                                                <button
+                                                    type="button"
+                                                    onClick={selectAllAvailable}
+                                                    className="text-[11px] font-semibold text-orange-600 hover:text-orange-700 underline px-1"
+                                                >
+                                                    Pilih Semua
+                                                </button>
+                                                <span className="text-slate-300">•</span>
+                                                <button
+                                                    type="button"
+                                                    onClick={clearSelections}
+                                                    className="text-[11px] font-semibold text-slate-400 hover:text-slate-600 underline px-1"
+                                                >
+                                                    Hapus
+                                                </button>
+                                            </div>
+                                        </div>
+
+                                        {futureUpcomingDays.length === 0 ? (
+                                            <div className="bg-slate-50 rounded-2xl p-4 text-center text-xs text-slate-400">
+                                                Belum ada jadwal hari mendatang yang dibuka.
+                                            </div>
+                                        ) : (
+                                            <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 mt-2">
+                                                {futureUpcomingDays.map((dayData) => {
+                                                    const dateStr = dayData.date;
+                                                    const alreadyHasOrder = !!existingOrders[dateStr];
+                                                    const isChecked = selectedDates.includes(dateStr);
+
+                                                    if (alreadyHasOrder) {
+                                                        const existing = existingOrders[dateStr];
+                                                        return (
                                                             <div
-                                                                className={`w-5 h-5 rounded-full border flex items-center justify-center ${
-                                                                    isSelected
-                                                                        ? 'border-white bg-white text-orange-500'
-                                                                        : 'border-slate-300'
+                                                                key={dateStr}
+                                                                className="p-2.5 rounded-xl border border-emerald-200 bg-emerald-50/70 text-emerald-800 text-left flex items-center justify-between opacity-80 cursor-not-allowed"
+                                                                title="Sudah dipesan, tidak dapat dipesan lagi"
+                                                            >
+                                                                <div>
+                                                                    <div className="font-bold text-xs">
+                                                                        {getDateTabLabel(dayData)}
+                                                                    </div>
+                                                                    <div className="text-[11px] text-emerald-600">
+                                                                        {getDateSubLabel(dateStr)}
+                                                                    </div>
+                                                                </div>
+                                                                <span className="text-[10px] font-extrabold bg-emerald-200/80 text-emerald-900 px-2 py-0.5 rounded-md">
+                                                                    ✓ Dipesan ({existing?.shift?.name || ''})
+                                                                </span>
+                                                            </div>
+                                                        );
+                                                    }
+
+                                                    return (
+                                                        <button
+                                                            key={dateStr}
+                                                            type="button"
+                                                            onClick={() => toggleDate(dateStr)}
+                                                            className={`p-2.5 rounded-xl border text-left flex items-center justify-between transition-all ${
+                                                                isChecked
+                                                                    ? 'bg-orange-500 text-white border-orange-500 shadow-sm'
+                                                                    : 'bg-white hover:bg-slate-50 border-slate-200 text-slate-700'
+                                                            }`}
+                                                        >
+                                                            <div className="flex items-center gap-2">
+                                                                {isChecked ? (
+                                                                    <CheckSquare className="w-4 h-4 text-white flex-shrink-0" />
+                                                                ) : (
+                                                                    <Square className="w-4 h-4 text-slate-400 flex-shrink-0" />
+                                                                )}
+                                                                <div>
+                                                                    <div className="font-bold text-xs">
+                                                                        {getDateTabLabel(dayData)}
+                                                                    </div>
+                                                                    <div
+                                                                        className={`text-[11px] ${
+                                                                            isChecked ? 'text-white/80' : 'text-slate-400'
+                                                                        }`}
+                                                                    >
+                                                                        {getDateSubLabel(dateStr)}
+                                                                    </div>
+                                                                </div>
+                                                            </div>
+                                                            <span
+                                                                className={`text-[10px] px-1.5 py-0.5 rounded font-semibold ${
+                                                                    isChecked
+                                                                        ? 'bg-white/20 text-white'
+                                                                        : 'bg-slate-100 text-slate-500'
                                                                 }`}
                                                             >
-                                                                {isSelected && (
-                                                                    <div className="w-2.5 h-2.5 rounded-full bg-orange-500" />
-                                                                )}
-                                                            </div>
+                                                                {dayData.menus.length} Menu
+                                                            </span>
                                                         </button>
                                                     );
                                                 })}
@@ -797,53 +1041,148 @@ export default function KioskPage() {
                                         )}
                                     </div>
 
-                                    {/* Canteen Selection */}
-                                    {canteens.length > 0 && (
+                                    {/* -------------------------------------------------
+                                        SECTION 3: PILIH SHIFT & KANTIN
+                                       ------------------------------------------------- */}
+                                    <div className="pt-2 border-t border-slate-100 space-y-4">
                                         <div>
-                                            <label className="block text-xs font-bold text-slate-600 mb-2 uppercase tracking-wider flex items-center gap-1">
-                                                <MapPin className="w-3.5 h-3.5 text-orange-500" />
-                                                <span>Lokasi Pengambilan / Kantin</span>
-                                            </label>
-                                            <select
-                                                value={selectedCanteen}
-                                                onChange={(e) => setSelectedCanteen(e.target.value)}
-                                                className="input-field w-full py-3 px-4 rounded-xl border border-slate-200 text-sm font-semibold bg-white"
-                                            >
-                                                {canteens.map((c) => (
-                                                    <option key={c.id} value={c.id}>
-                                                        {c.name} {c.location ? `(${c.location})` : ''}
-                                                    </option>
-                                                ))}
-                                            </select>
-                                        </div>
-                                    )}
+                                            <div className="flex items-center justify-between mb-1.5">
+                                                <label className="block text-xs font-bold text-slate-700 uppercase tracking-wider">
+                                                    Pilih Shift Makan
+                                                </label>
+                                                {selectedDates.length > 0 && (
+                                                    <span className="text-[11px] text-orange-600 font-semibold">
+                                                        Untuk {selectedDates.length} hari terpilih
+                                                    </span>
+                                                )}
+                                            </div>
 
-                                    {/* Submit Button */}
-                                    <button
-                                        type="button"
-                                        onClick={handleOrder}
-                                        disabled={!selectedShift || isOrdering}
-                                        className="btn-primary w-full py-4 rounded-2xl text-base font-extrabold flex items-center justify-center gap-2 shadow-xl shadow-orange-500/25 mt-4"
-                                    >
-                                        {isOrdering ? (
-                                            <>
-                                                <Loader2 className="w-5 h-5 animate-spin" />
-                                                <span>Memproses Pesanan...</span>
-                                            </>
-                                        ) : (
-                                            <>
-                                                <Sparkles className="w-5 h-5" />
-                                                <span>Pesan Sekarang</span>
-                                            </>
+                                            {shiftsLoading ? (
+                                                <div className="py-4 text-center text-xs text-slate-400">
+                                                    <Loader2 className="w-4 h-4 animate-spin mx-auto mb-1 text-orange-500" />
+                                                    Memuat shift...
+                                                </div>
+                                            ) : shifts.length === 0 ? (
+                                                <div className="bg-slate-50 rounded-xl p-3 text-center text-xs text-slate-400">
+                                                    Tidak ada shift yang aktif
+                                                </div>
+                                            ) : (
+                                                <div className="space-y-2">
+                                                    {shifts.map((s) => {
+                                                        const isSelected = selectedShift === s.id;
+                                                        return (
+                                                            <button
+                                                                key={s.id}
+                                                                type="button"
+                                                                disabled={!s.canOrder}
+                                                                onClick={() => setSelectedShift(s.id)}
+                                                                className={`w-full p-3 rounded-xl border text-left transition-all flex items-center justify-between ${
+                                                                    isSelected
+                                                                        ? 'bg-orange-500 text-white border-orange-500 shadow-sm'
+                                                                        : s.canOrder
+                                                                        ? 'bg-white hover:bg-slate-50 border-slate-200 text-slate-800'
+                                                                        : 'bg-slate-50 border-slate-100 text-slate-400 opacity-60 cursor-not-allowed'
+                                                                }`}
+                                                            >
+                                                                <div>
+                                                                    <div className="font-bold text-xs">
+                                                                        {s.name}
+                                                                    </div>
+                                                                    <div
+                                                                        className={`text-[11px] ${
+                                                                            isSelected ? 'text-white/80' : 'text-slate-400'
+                                                                        }`}
+                                                                    >
+                                                                        Jam: {s.startTime} – {s.endTime}
+                                                                    </div>
+                                                                    {!s.canOrder && (
+                                                                        <div className="text-[10px] text-red-500 mt-0.5 font-semibold">
+                                                                            Melewati batas cutoff
+                                                                        </div>
+                                                                    )}
+                                                                </div>
+                                                                <div
+                                                                    className={`w-4 h-4 rounded-full border flex items-center justify-center ${
+                                                                        isSelected
+                                                                            ? 'border-white bg-white'
+                                                                            : 'border-slate-300'
+                                                                    }`}
+                                                                >
+                                                                    {isSelected && (
+                                                                        <div className="w-2 h-2 rounded-full bg-orange-500" />
+                                                                    )}
+                                                                </div>
+                                                            </button>
+                                                        );
+                                                    })}
+                                                </div>
+                                            )}
+                                        </div>
+
+                                        {canteens.length > 0 && (
+                                            <div>
+                                                <label className="block text-xs font-bold text-slate-700 mb-1 uppercase tracking-wider flex items-center gap-1">
+                                                    <MapPin className="w-3.5 h-3.5 text-orange-500" />
+                                                    <span>Lokasi Kantin</span>
+                                                </label>
+                                                <select
+                                                    value={selectedCanteen}
+                                                    onChange={(e) => setSelectedCanteen(e.target.value)}
+                                                    className="input-field w-full py-2.5 px-3 rounded-xl border border-slate-200 text-xs font-semibold bg-white"
+                                                >
+                                                    {canteens.map((c) => (
+                                                        <option key={c.id} value={c.id}>
+                                                            {c.name} {c.location ? `(${c.location})` : ''}
+                                                        </option>
+                                                    ))}
+                                                </select>
+                                            </div>
                                         )}
-                                    </button>
+                                    </div>
+
+                                    {/* -------------------------------------------------
+                                        SECTION 4: RINGKASAN & TOMBOL PESAN
+                                       ------------------------------------------------- */}
+                                    <div className="pt-2">
+                                        {selectedDates.length > 0 ? (
+                                            <div className="bg-orange-50/70 border border-orange-200 rounded-xl p-3 text-xs text-orange-900 mb-3">
+                                                <span className="font-bold">Total Pesanan: </span>
+                                                <span>{selectedDates.length} Hari ({selectedDates.map(d => getDateSubLabel(d)).join(', ')})</span>
+                                            </div>
+                                        ) : (
+                                            <div className="bg-slate-50 border border-slate-200 rounded-xl p-3 text-xs text-slate-500 mb-3 flex items-center gap-2">
+                                                <AlertCircle className="w-4 h-4 text-slate-400 flex-shrink-0" />
+                                                <span>Pilih tanggal di atas untuk memesan makanan</span>
+                                            </div>
+                                        )}
+
+                                        <button
+                                            type="button"
+                                            onClick={handleOrder}
+                                            disabled={selectedDates.length === 0 || !selectedShift || isOrdering}
+                                            className="btn-primary w-full py-3.5 rounded-2xl text-base font-extrabold flex items-center justify-center gap-2 shadow-lg shadow-orange-500/20 disabled:opacity-50 disabled:shadow-none"
+                                        >
+                                            {isOrdering ? (
+                                                <>
+                                                    <Loader2 className="w-5 h-5 animate-spin" />
+                                                    <span>Memproses {selectedDates.length} Pesanan...</span>
+                                                </>
+                                            ) : selectedDates.length > 0 ? (
+                                                <>
+                                                    <Sparkles className="w-5 h-5" />
+                                                    <span>Pesan Sekarang ({selectedDates.length} Hari)</span>
+                                                </>
+                                            ) : (
+                                                <span>Pilih Tanggal Pesanan</span>
+                                            )}
+                                        </button>
+                                    </div>
                                 </div>
                             )}
                         </div>
 
-                        {/* Helper tip at bottom */}
-                        <div className="pt-6 text-center text-xs text-slate-400">
-                            Pilih tanggal di sebelah kiri untuk melihat menu & memesan pada hari tersebut.
+                        <div className="pt-4 text-center text-[11px] text-slate-400">
+                            Pilihan menu harian dapat dilihat pada katalog di sebelah kiri.
                         </div>
                     </div>
                 ) : (

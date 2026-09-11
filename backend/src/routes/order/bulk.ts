@@ -26,7 +26,7 @@ import {
     BulkOrderSuccess,
     BulkOrderFailure,
 } from './shared';
-import { parseOrderDate } from '../../utils/orderDate';
+import { parseOrderDate, toOrderDateKey } from '../../utils/orderDate';
 import { createOrderWithCapacityCheck } from '../../services/order.service';
 
 const router = Router();
@@ -87,17 +87,20 @@ router.post('/bulk', authMiddleware, blockVendorMiddleware, blacklistMiddleware,
             : today;
         maxDateForQuery.setDate(maxDateForQuery.getDate() + 1);
 
-        // Batch 1: Fetch existing orders
+        const windowMinDate = new Date(minDate.getTime() - 24 * 3600 * 1000);
+        const windowMaxDate = new Date(maxDateForQuery.getTime() + 24 * 3600 * 1000);
+
+        // Batch 1: Fetch existing orders (expanded window + toOrderDateKey matching)
         const existingOrders = await prisma.order.findMany({
             where: {
                 userId,
-                orderDate: { gte: minDate, lt: maxDateForQuery },
+                orderDate: { gte: windowMinDate, lt: windowMaxDate },
                 status: { not: 'CANCELLED' },
             },
             select: { orderDate: true }
         });
         const existingDatesSet = new Set(
-            existingOrders.map(o => o.orderDate.toISOString().split('T')[0])
+            existingOrders.map(o => toOrderDateKey(o.orderDate))
         );
 
         // Batch 2: Fetch all holidays

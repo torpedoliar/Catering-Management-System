@@ -25,6 +25,7 @@ import {
     cutoffMiddleware,
     parseDateToCateringTime,
 } from './shared';
+import { parseOrderDate, toOrderDateKey } from '../../utils/orderDate';
 import { getCachedSettings } from '../../services/cache.service';
 import { createOrderWithCapacityCheck } from '../../services/order.service';
 
@@ -42,21 +43,17 @@ router.post('/', authMiddleware, blockVendorMiddleware, blacklistMiddleware, api
             return res.status(400).json({ error: ErrorMessages.MISSING_REQUIRED_FIELDS });
         }
 
-        // Parse and validate orderDate
+        // Parse and validate orderDate (Fake UTC midnight)
         let orderDate: Date;
         if (orderDateParam) {
-            // FIX: Use Catering Time (Fake UTC) to ensure "2026-02-18" is always "2026-02-18T00:00:00.000Z"
-            // regardless of server timezone. Matches "Shifted UTC" architecture.
-            orderDate = parseDateToCateringTime(orderDateParam);
-
-            if (isNaN(orderDate.getTime())) {
+            const parsed = parseOrderDate(orderDateParam);
+            if (!parsed) {
                 return res.status(400).json({ error: ErrorMessages.INVALID_ORDER_DATE });
             }
+            orderDate = parsed;
         } else {
             orderDate = getToday();
         }
-
-        orderDate.setHours(0, 0, 0, 0);
 
         // Check if date is in the past
         const today = getToday();
@@ -71,21 +68,22 @@ router.post('/', authMiddleware, blockVendorMiddleware, blacklistMiddleware, api
         const cutoffDays = settings?.cutoffDays || 0;
         const cutoffHours = settings?.cutoffHours || 6;
 
-        // Validate based on cutoff mode
-        // Cutoff validation is now handled by cutoffMiddleware (DRY)
-        // Removed duplicated weekly/per-shift logic here
-
         // Check if user already has an order for this date
-        const nextDay = new Date(orderDate);
-        nextDay.setDate(nextDay.getDate() + 1);
+        // Use +/- 24h window + toOrderDateKey matching to be completely immune to timezone shifts
+        const targetDateKey = orderDateParam || toOrderDateKey(orderDate);
+        const windowStart = new Date(orderDate.getTime() - 24 * 3600 * 1000);
+        const windowEnd = new Date(orderDate.getTime() + 48 * 3600 * 1000);
 
-        const existingOrder = await prisma.order.findFirst({
+        const candidateOrders = await prisma.order.findMany({
             where: {
                 userId,
-                orderDate: { gte: orderDate, lt: nextDay },
                 status: { not: 'CANCELLED' },
+                orderDate: { gte: windowStart, lt: windowEnd },
             },
+            select: { id: true, orderDate: true, status: true }
         });
+
+        const existingOrder = candidateOrders.find(o => toOrderDateKey(o.orderDate) === targetDateKey);
 
         if (existingOrder) {
             return res.status(400).json({ error: ErrorMessages.ORDER_ALREADY_EXISTS });
