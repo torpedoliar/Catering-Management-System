@@ -140,54 +140,79 @@ router.get('/', authMiddleware, async (req: AuthRequest, res: Response) => {
 });
 
 /**
+ * Shared query: get published weekly menus for a catering calendar day.
+ * Used by the public /today and /tomorrow endpoints (kiosk pre-login display).
+ */
+async function getMenusForDay(target: Date) {
+    const week = getWeekNumber(target);
+    const year = target.getFullYear();
+    const dayOfWeek = target.getDay();
+
+    const menus = await prisma.weeklyMenu.findMany({
+        where: { weekNumber: week, year, dayOfWeek },
+        include: {
+            menuItem: {
+                include: {
+                    vendor: {
+                        select: { id: true, name: true, logoUrl: true }
+                    }
+                }
+            },
+            shift: {
+                select: { id: true, name: true, startTime: true, endTime: true }
+            }
+        }
+    });
+
+    return {
+        date: target.toISOString().split('T')[0],
+        dayName: dayNames[dayOfWeek],
+        menus: menus.map(m => ({
+            id: m.id,
+            menuMode: m.menuMode,
+            shiftId: m.shiftId,
+            shiftName: m.shift?.name || null,
+            notes: m.notes,
+            menuItem: {
+                id: m.menuItem.id,
+                name: m.menuItem.name,
+                description: m.menuItem.description,
+                imageUrl: m.menuItem.imageUrl,
+                category: m.menuItem.category,
+                vendor: m.menuItem.vendor
+            }
+        }))
+    };
+}
+
+/**
  * GET /api/weekly-menu/today
- * Get today's menu
+ * Get today's menu (public — used by kiosk pre-login display)
  */
 router.get('/today', async (req: AuthRequest, res: Response) => {
     try {
         const now = getNowJakarta(); // TIMEZONE FIX
-        const week = getWeekNumber(now);
-        const year = now.getFullYear();
-        const dayOfWeek = now.getDay();
-
-        const menus = await prisma.weeklyMenu.findMany({
-            where: { weekNumber: week, year, dayOfWeek },
-            include: {
-                menuItem: {
-                    include: {
-                        vendor: {
-                            select: { id: true, name: true, logoUrl: true }
-                        }
-                    }
-                },
-                shift: {
-                    select: { id: true, name: true, startTime: true, endTime: true }
-                }
-            }
-        });
-
-        res.json({
-            date: now.toISOString().split('T')[0],
-            dayName: dayNames[dayOfWeek],
-            menus: menus.map(m => ({
-                id: m.id,
-                menuMode: m.menuMode,
-                shiftId: m.shiftId,
-                shiftName: m.shift?.name || null,
-                notes: m.notes,
-                menuItem: {
-                    id: m.menuItem.id,
-                    name: m.menuItem.name,
-                    description: m.menuItem.description,
-                    imageUrl: m.menuItem.imageUrl,
-                    category: m.menuItem.category,
-                    vendor: m.menuItem.vendor
-                }
-            }))
-        });
+        res.json(await getMenusForDay(now));
     } catch (error) {
         console.error('Get today menu error:', error);
         res.status(500).json({ error: 'Failed to get today menu' });
+    }
+});
+
+/**
+ * GET /api/weekly-menu/tomorrow
+ * Get tomorrow's menu (public — used by kiosk pre-login display).
+ * Q10 kiosk grilling decision: mirror of /today, no sensitive data.
+ */
+router.get('/tomorrow', async (req: AuthRequest, res: Response) => {
+    try {
+        const now = getNowJakarta(); // TIMEZONE FIX
+        const tomorrow = new Date(now);
+        tomorrow.setDate(now.getDate() + 1);
+        res.json(await getMenusForDay(tomorrow));
+    } catch (error) {
+        console.error('Get tomorrow menu error:', error);
+        res.status(500).json({ error: 'Failed to get tomorrow menu' });
     }
 });
 

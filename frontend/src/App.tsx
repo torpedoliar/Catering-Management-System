@@ -6,6 +6,7 @@ import { SSEProvider } from './contexts/SSEContext';
 
 // Eager loaded pages (need to be available immediately)
 import LoginPage from './pages/LoginPage';
+import KioskPage from './pages/KioskPage';
 import OrderPage from './pages/OrderPage';
 import HistoryPage from './pages/HistoryPage';
 import SettingsPage from './pages/SettingsPage';
@@ -83,6 +84,10 @@ function AppRoutes() {
     return (
         <Routes>
             <Route path="/login" element={<LoginPage />} />
+
+            {/* Kiosk mode: public route, isolated from Layout/nav (grilling 2026-09-11).
+                Pre-login menu display is public; ordering happens after in-kiosk login. */}
+            <Route path="/kiosk" element={<KioskPage />} />
 
             {/* Persistent Layout for all authenticated routes */}
             <Route element={
