@@ -21,8 +21,11 @@ import {
     Sparkles,
     CheckSquare,
     Square,
-    Check,
     AlertCircle,
+    Trash2,
+    ShieldAlert,
+    Info,
+    CalendarCheck,
 } from 'lucide-react';
 
 // Kiosk mode — shared PC in the canteen for ordering meals.
@@ -33,13 +36,13 @@ import {
 // - Right:
 //   - Pre-login: ID & Password login form.
 //   - Post-login:
-//     * Section 1: "Pesanan Hari Ini" (shows active order badge if already ordered; prevents double-order).
-//     * Section 2: "Pesan Beberapa Hari Kedepan" (multi-select upcoming days in a single session).
-//     * Section 3: Shift & Canteen selection.
-//     * Submit: bulk order creation with full duplicate prevention.
+//     * Today is EXCLUDED from ordering (past cutoff). An info badge shows today's order status if any.
+//     * Order section ONLY allows ordering for upcoming days (Besok, Lusa, dst.).
+//     * Canteen location is STRICTLY LOCKED based on user account's preferredCanteenId.
+//     * Cancel Order feature: User can cancel active upcoming/today orders directly from kiosk.
+//     * Session end: Instant transition back to clean login without page refresh (F5).
 // - Forced password change supported in-kiosk.
-// - Session end: "Selesai" button + 60s idle (15s countdown) auto-logout.
-// - After order success: short confirmation then immediate auto-logout.
+// - Anti-abandon: 60s idle (15s countdown) auto-logout.
 
 const IDLE_TIMEOUT_MS = 60_000;
 const COUNTDOWN_SECONDS = 15;
@@ -98,6 +101,7 @@ interface ExistingOrder {
     canteen?: {
         id: string;
         name: string;
+        location?: string | null;
     } | null;
 }
 
@@ -118,16 +122,19 @@ export default function KioskPage() {
     const [showPassword, setShowPassword] = useState(false);
     const [loginLoading, setLoginLoading] = useState(false);
 
-    // --- User Existing Orders (Duplicate Prevention) ---
+    // --- User Existing Orders (Duplicate Prevention & Cancellation) ---
     const [existingOrders, setExistingOrders] = useState<Record<string, ExistingOrder>>({});
     const [ordersLoading, setOrdersLoading] = useState(false);
 
-    // --- Multi-Date Order Selection ---
+    // --- Cancel Modal States ---
+    const [cancelModalOrder, setCancelModalOrder] = useState<ExistingOrder | null>(null);
+    const [isCancelling, setIsCancelling] = useState(false);
+
+    // --- Multi-Date Order Selection (Tomorrow & Future Only) ---
     const [selectedDates, setSelectedDates] = useState<string[]>([]);
     const [shifts, setShifts] = useState<Shift[]>([]);
     const [selectedShift, setSelectedShift] = useState('');
     const [canteens, setCanteens] = useState<Canteen[]>([]);
-    const [selectedCanteen, setSelectedCanteen] = useState('');
     const [shiftsLoading, setShiftsLoading] = useState(false);
     const [isOrdering, setIsOrdering] = useState(false);
     const [orderSuccess, setOrderSuccess] = useState(false);
@@ -171,7 +178,7 @@ export default function KioskPage() {
         loadMenus();
     }, [loadMenus]);
 
-    // Load user's existing active orders to prevent double ordering
+    // Load user's active orders to prevent double ordering and allow cancellation
     const loadUserOrders = useCallback(async () => {
         if (!user || user.mustChangePassword) return;
         setOrdersLoading(true);
@@ -197,11 +204,12 @@ export default function KioskPage() {
             }
             setExistingOrders(map);
 
-            // Set initial date selection: if today is NOT ordered, select today by default
+            // Default selection: tomorrow if available and not yet ordered
             setSelectedDates(prev => {
-                const filtered = prev.filter(d => !map[d]);
+                const filtered = prev.filter(d => !map[d] && d > today);
                 if (filtered.length > 0) return filtered;
-                if (!map[today]) return [today];
+                const tmr = addDays(today, 1);
+                if (!map[tmr]) return [tmr];
                 return [];
             });
         } catch (error) {
@@ -216,7 +224,7 @@ export default function KioskPage() {
         if (!user || user.mustChangePassword) return;
         setShiftsLoading(true);
         try {
-            const targetDate = selectedDates[0] || selectedDate || todayKey;
+            const targetDate = selectedDates[0] || tomorrowKey;
             const [shiftsRes, canteensRes] = await Promise.all([
                 api.get(`/api/shifts/for-user?date=${targetDate}`),
                 api.get('/api/canteens'),
@@ -233,17 +241,12 @@ export default function KioskPage() {
 
             const list: Canteen[] = canteensRes.data.canteens || [];
             setCanteens(list);
-            if (user?.preferredCanteenId && list.some(c => c.id === user.preferredCanteenId)) {
-                setSelectedCanteen(user.preferredCanteenId);
-            } else if (list.length > 0 && !selectedCanteen) {
-                setSelectedCanteen(list[0].id);
-            }
         } catch (error: any) {
             handleApiError(error);
         } finally {
             setShiftsLoading(false);
         }
-    }, [user, selectedDates, selectedDate, selectedShift, selectedCanteen, todayKey]);
+    }, [user, selectedDates, tomorrowKey, selectedShift]);
 
     useEffect(() => {
         if (user && !user.mustChangePassword) {
@@ -257,8 +260,16 @@ export default function KioskPage() {
         }
     }, [user, loadShiftsAndCanteens]);
 
-    // Toggle a date selection for ordering (guarded against duplicate order)
+    // Determine the locked canteen for this user based on account preference
+    const userPreferredCanteen = canteens.find(c => c.id === user?.preferredCanteenId) || canteens[0] || null;
+    const lockedCanteenId = user?.preferredCanteenId || userPreferredCanteen?.id || null;
+
+    // Toggle a future date selection for ordering
     const toggleDate = (dateKey: string) => {
+        if (dateKey <= todayKey) {
+            toast.error('Pemesanan untuk hari ini sudah ditutup (cutoff)');
+            return;
+        }
         if (existingOrders[dateKey]) {
             toast.error(`Anda sudah memesan untuk tanggal ${dateKey}`);
             return;
@@ -270,13 +281,13 @@ export default function KioskPage() {
         );
     };
 
-    // Quick select all available un-ordered days
+    // Quick select all future un-ordered days
     const selectAllAvailable = () => {
         const available = upcomingDays
             .map(d => d.date)
-            .filter(d => !existingOrders[d]);
+            .filter(d => d > todayKey && !existingOrders[d]);
         if (available.length === 0) {
-            toast('Semua tanggal sudah dipesan!');
+            toast('Semua tanggal mendatang sudah dipesan!');
             return;
         }
         setSelectedDates(available);
@@ -313,7 +324,7 @@ export default function KioskPage() {
         }
     };
 
-    // Handle Multi-Date Order Submission
+    // Handle Order Submission for Upcoming Days
     const handleOrder = async () => {
         if (selectedDates.length === 0) {
             toast.error('Pilih minimal satu tanggal yang ingin dipesan');
@@ -321,6 +332,13 @@ export default function KioskPage() {
         }
         if (!selectedShift) {
             toast.error('Pilih shift terlebih dahulu');
+            return;
+        }
+
+        // Strict validation: no past or today dates allowed
+        const invalidDates = selectedDates.filter(d => d <= todayKey);
+        if (invalidDates.length > 0) {
+            toast.error('Pemesanan hari ini sudah ditutup. Hanya bisa memesan mulai besok.');
             return;
         }
 
@@ -338,18 +356,18 @@ export default function KioskPage() {
                 shiftId: selectedShift,
             }));
 
+            // Canteen is locked to account preference
             const res = await api.post('/api/orders/bulk', {
                 orders: ordersPayload,
-                canteenId: selectedCanteen || null,
+                canteenId: lockedCanteenId,
             });
 
             const summary = res.data?.summary;
             if (summary && summary.successCount > 0) {
                 showSuccess(`Berhasil membuat pesanan untuk ${summary.successCount} hari!`);
                 setOrderSuccess(true);
-                // Refresh active orders
                 void loadUserOrders();
-                // Selesai otomatis setelah 2.5 detik
+                // Auto logout after 2.5s (transitions smoothly without browser reload)
                 setTimeout(() => { void finishSession(); }, 2500);
             } else if (summary && summary.failedCount > 0) {
                 const firstReason = res.data?.failed?.[0]?.reason || 'Gagal membuat pesanan';
@@ -364,21 +382,42 @@ export default function KioskPage() {
         }
     };
 
-    // Logout and reset kiosk state
+    // Handle Order Cancellation
+    const handleCancelOrder = async () => {
+        if (!cancelModalOrder) return;
+        setIsCancelling(true);
+        try {
+            await api.post(`/api/orders/${cancelModalOrder.id}/cancel`, {
+                reason: 'Dibatalkan melalui Kiosk',
+            });
+            showSuccess(`Pesanan untuk ${cancelModalOrder.orderDate.slice(0, 10)} berhasil dibatalkan`);
+            setCancelModalOrder(null);
+            await loadUserOrders();
+        } catch (error: any) {
+            toast.error(error.response?.data?.error || error.response?.data?.message || 'Gagal membatalkan pesanan');
+        } finally {
+            setIsCancelling(false);
+        }
+    };
+
+    // Instant session finish & clean reset without page reload (F5)
     const finishSession = useCallback(async () => {
         clearIdleTimers();
         setCountdown(null);
+        setSelectedDates([]);
+        setSelectedShift('');
+        setExistingOrders({});
+        setOrderSuccess(false);
+        setPassword('');
+        setExternalId('');
+        setPreviewMenu(null);
+        setCancelModalOrder(null);
+
         try {
             await logout();
+        } catch (error) {
+            console.error('Logout error:', error);
         } finally {
-            setSelectedDates([]);
-            setSelectedShift('');
-            setSelectedCanteen('');
-            setExistingOrders({});
-            setOrderSuccess(false);
-            setPassword('');
-            setExternalId('');
-            setPreviewMenu(null);
             void loadMenus();
         }
     }, [logout, loadMenus]);
@@ -447,10 +486,11 @@ export default function KioskPage() {
     // Find the currently viewed day's menu on the left
     const activeDayData = upcomingDays.find(d => d.date === selectedDate) || upcomingDays[0] || null;
 
-    // Filter upcoming days list for Section 2 (excluding today)
-    const futureUpcomingDays = upcomingDays.filter(d => d.date !== todayKey);
+    // Filter upcoming days list for ordering (ONLY FUTURE DAYS: date > todayKey)
+    const futureUpcomingDays = upcomingDays.filter(d => d.date > todayKey);
 
-    // Check if user already ordered today
+    // Check user's active orders list (for display & cancellation)
+    const activeOrdersList = Object.values(existingOrders).filter(o => o.status === 'ORDERED');
     const todayOrder = existingOrders[todayKey];
 
     // Idle countdown overlay
@@ -477,6 +517,75 @@ export default function KioskPage() {
                         className="btn-secondary flex-1 py-3 text-base"
                     >
                         Selesai
+                    </button>
+                </div>
+            </div>
+        </div>
+    );
+
+    // Modal Cancel Order Confirmation
+    const cancelConfirmationModal = cancelModalOrder && (
+        <div
+            className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/80 backdrop-blur-sm animate-in fade-in duration-200"
+            onClick={() => setCancelModalOrder(null)}
+        >
+            <div
+                className="bg-white rounded-3xl max-w-md w-full p-6 shadow-2xl border border-slate-100 animate-in zoom-in-95 duration-200 text-center"
+                onClick={(e) => e.stopPropagation()}
+            >
+                <div className="w-14 h-14 rounded-full bg-red-100 text-red-600 flex items-center justify-center mx-auto mb-4">
+                    <ShieldAlert className="w-7 h-7" />
+                </div>
+
+                <h3 className="text-xl font-extrabold text-slate-900 mb-2">
+                    Batalkan Pesanan?
+                </h3>
+
+                <p className="text-sm text-slate-600 mb-4 leading-relaxed">
+                    Apakah Anda yakin ingin membatalkan pesanan untuk tanggal{' '}
+                    <strong>{cancelModalOrder.orderDate.slice(0, 10)}</strong>?
+                </p>
+
+                <div className="bg-slate-50 rounded-2xl p-3.5 border border-slate-200 text-left text-xs space-y-1 mb-6">
+                    <div className="flex justify-between">
+                        <span className="text-slate-500">Shift:</span>
+                        <span className="font-bold text-slate-800">{cancelModalOrder.shift?.name}</span>
+                    </div>
+                    <div className="flex justify-between">
+                        <span className="text-slate-500">Jam Shift:</span>
+                        <span className="text-slate-700">{cancelModalOrder.shift?.startTime} – {cancelModalOrder.shift?.endTime}</span>
+                    </div>
+                    {cancelModalOrder.canteen && (
+                        <div className="flex justify-between">
+                            <span className="text-slate-500">Kantin:</span>
+                            <span className="text-slate-700">{cancelModalOrder.canteen.name}</span>
+                        </div>
+                    )}
+                </div>
+
+                <div className="flex gap-3">
+                    <button
+                        type="button"
+                        onClick={() => setCancelModalOrder(null)}
+                        disabled={isCancelling}
+                        className="btn-secondary flex-1 py-3 text-sm font-semibold"
+                    >
+                        Kembali
+                    </button>
+                    <button
+                        type="button"
+                        onClick={handleCancelOrder}
+                        disabled={isCancelling}
+                        className="bg-red-600 hover:bg-red-700 text-white rounded-xl flex-1 py-3 text-sm font-extrabold flex items-center justify-center gap-2 shadow-lg shadow-red-600/20"
+                    >
+                        {isCancelling ? (
+                            <>
+                                <Loader2 className="w-4 h-4 animate-spin" />
+                                <span>Membatalkan...</span>
+                            </>
+                        ) : (
+                            'Ya, Batalkan'
+                        )}
                     </button>
                 </div>
             </div>
@@ -581,6 +690,7 @@ export default function KioskPage() {
     return (
         <div className="min-h-screen flex flex-col lg:flex-row" style={{ background: 'var(--color-bg-secondary)' }}>
             {countdownOverlay}
+            {cancelConfirmationModal}
             {imagePreviewModal}
 
             {/* =====================================================================
@@ -801,7 +911,7 @@ export default function KioskPage() {
                         <ForcePasswordChange onPasswordChanged={refreshUser} />
                     </div>
                 ) : user ? (
-                    /* CASE 2: LOGGED IN — MULTI-DATE ORDER FORM */
+                    /* CASE 2: LOGGED IN — MULTI-DATE ORDER & CANCEL PANEL */
                     <div className="flex flex-col h-full justify-between">
                         <div>
                             {/* User Greeting & Logout Header */}
@@ -839,14 +949,17 @@ export default function KioskPage() {
                                     <h3 className="text-2xl font-black text-emerald-900 mb-2">
                                         Pesanan Berhasil!
                                     </h3>
-                                    <p className="text-sm text-emerald-700 leading-relaxed mb-4">
+                                    <p className="text-sm text-emerald-700 leading-relaxed mb-6">
                                         Pesanan makan Anda untuk tanggal yang dipilih telah tersimpan.
                                         QR Code check-in dapat dilihat di aplikasi HP Anda.
                                     </p>
-                                    <div className="inline-flex items-center gap-2 text-xs font-semibold text-emerald-600 bg-white/90 px-4 py-2 rounded-full border border-emerald-200">
-                                        <Loader2 className="w-3.5 h-3.5 animate-spin" />
-                                        <span>Kembali ke layar awal...</span>
-                                    </div>
+                                    <button
+                                        type="button"
+                                        onClick={() => void finishSession()}
+                                        className="btn-primary w-full py-3 rounded-xl text-sm font-bold shadow-md shadow-orange-500/20"
+                                    >
+                                        Selesai / Keluar Sekarang
+                                    </button>
                                 </div>
                             ) : ordersLoading ? (
                                 <div className="py-20 flex flex-col items-center justify-center">
@@ -854,92 +967,98 @@ export default function KioskPage() {
                                     <p className="text-xs text-slate-400 font-medium">Memeriksa status pesanan Anda...</p>
                                 </div>
                             ) : (
-                                /* =====================================================
-                                   ORDER SECTIONS: HARI INI vs BEBERAPA HARI KEDEPAN
-                                   ===================================================== */
                                 <div className="space-y-5">
                                     {/* -------------------------------------------------
-                                        SECTION 1: PESANAN HARI INI
+                                        SECTION 1: STATUS PESANAN HARI INI (INFO & CANCEL ONLY)
                                        ------------------------------------------------- */}
-                                    <div className="bg-slate-50/80 rounded-2xl p-4 border border-slate-200">
-                                        <div className="flex items-center justify-between mb-2">
-                                            <div className="flex items-center gap-2">
-                                                <Calendar className="w-4 h-4 text-orange-500" />
-                                                <span className="font-extrabold text-sm text-slate-800">
-                                                    Pesanan Hari Ini
+                                    {todayOrder ? (
+                                        <div className="bg-emerald-50 border border-emerald-200 rounded-2xl p-4">
+                                            <div className="flex items-center justify-between mb-2">
+                                                <div className="flex items-center gap-1.5 text-emerald-800 font-bold text-xs">
+                                                    <CalendarCheck className="w-4 h-4 text-emerald-600" />
+                                                    <span>Pesanan Makan Hari Ini</span>
+                                                </div>
+                                                <span className="px-2 py-0.5 rounded-full bg-emerald-200/80 text-emerald-900 text-[10px] font-extrabold">
+                                                    {todayOrder.shift?.name}
                                                 </span>
                                             </div>
-                                            <span className="text-xs text-slate-500 font-medium">
-                                                {getDateSubLabel(todayKey)}
-                                            </span>
-                                        </div>
-
-                                        {todayOrder ? (
-                                            /* User sudah order hari ini — Card Hijau + Lockout (Anti Double-Order) */
-                                            <div className="bg-emerald-50 border border-emerald-200 rounded-xl p-3.5 mt-2">
-                                                <div className="flex items-center justify-between mb-1">
-                                                    <div className="flex items-center gap-1.5 text-emerald-700 font-bold text-xs">
-                                                        <Check className="w-4 h-4" />
-                                                        <span>SUDAH MEMESAN</span>
-                                                    </div>
-                                                    <span className="px-2 py-0.5 rounded-full bg-emerald-100 text-emerald-800 text-[11px] font-extrabold">
-                                                        {todayOrder.shift?.name || 'Shift'}
-                                                    </span>
-                                                </div>
-                                                <p className="text-xs text-emerald-800 leading-relaxed">
-                                                    Jam: {todayOrder.shift?.startTime} – {todayOrder.shift?.endTime} • Kantin: {todayOrder.canteen?.name || 'Utama'}
-                                                </p>
-                                                <p className="text-[11px] text-emerald-600 mt-1 font-medium italic">
-                                                    QR Code tersimpan di HP Anda. Tidak bisa pesan ganda untuk hari ini.
-                                                </p>
+                                            <p className="text-xs text-emerald-700 leading-relaxed">
+                                                Jam: {todayOrder.shift?.startTime} – {todayOrder.shift?.endTime} • {todayOrder.canteen?.name || 'Kantin Utama'}
+                                            </p>
+                                            <div className="mt-3 pt-2.5 border-t border-emerald-200 flex items-center justify-between">
+                                                <span className="text-[11px] text-emerald-600 italic">
+                                                    QR Code tersimpan di HP Anda
+                                                </span>
+                                                <button
+                                                    type="button"
+                                                    onClick={() => setCancelModalOrder(todayOrder)}
+                                                    className="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg bg-red-100 hover:bg-red-200 text-red-700 text-xs font-bold transition"
+                                                >
+                                                    <Trash2 className="w-3 h-3" />
+                                                    <span>Batal Pesanan</span>
+                                                </button>
                                             </div>
-                                        ) : (
-                                            /* User belum order hari ini — Toggle checkbox */
-                                            <button
-                                                type="button"
-                                                onClick={() => toggleDate(todayKey)}
-                                                className={`w-full mt-2 p-3 rounded-xl border text-left flex items-center justify-between transition-all ${
-                                                    selectedDates.includes(todayKey)
-                                                        ? 'bg-orange-500 text-white border-orange-500 shadow-md shadow-orange-500/20'
-                                                        : 'bg-white hover:bg-slate-50 border-slate-200 text-slate-800'
-                                                }`}
-                                            >
-                                                <div className="flex items-center gap-2.5">
-                                                    {selectedDates.includes(todayKey) ? (
-                                                        <CheckSquare className="w-5 h-5 text-white flex-shrink-0" />
-                                                    ) : (
-                                                        <Square className="w-5 h-5 text-slate-400 flex-shrink-0" />
-                                                    )}
-                                                    <div>
-                                                        <div className="font-bold text-sm">
-                                                            Pesan Makan Hari Ini
-                                                        </div>
-                                                        <div
-                                                            className={`text-xs ${
-                                                                selectedDates.includes(todayKey)
-                                                                    ? 'text-white/80'
-                                                                    : 'text-slate-400'
-                                                            }`}
-                                                        >
-                                                            Klik untuk sertakan hari ini dalam pesanan
-                                                        </div>
-                                                    </div>
-                                                </div>
-                                            </button>
-                                        )}
-                                    </div>
+                                        </div>
+                                    ) : (
+                                        <div className="bg-slate-50 border border-slate-200 rounded-2xl p-3 text-xs text-slate-500 flex items-center gap-2">
+                                            <Info className="w-4 h-4 text-slate-400 flex-shrink-0" />
+                                            <span>Pemesanan hari ini telah melewati cutoff. Silakan pesan untuk hari-hari berikutnya.</span>
+                                        </div>
+                                    )}
 
                                     {/* -------------------------------------------------
-                                        SECTION 2: PESAN BEBERAPA HARI KEDEPAN (MULTI-SELECT)
+                                        SECTION 2: DAFTAR PESANAN AKTIF MENDATANG (CANCEL MODE)
+                                       ------------------------------------------------- */}
+                                    {activeOrdersList.filter(o => o.orderDate.slice(0, 10) > todayKey).length > 0 && (
+                                        <div className="bg-amber-50/70 border border-amber-200/80 rounded-2xl p-3.5">
+                                            <div className="flex items-center justify-between mb-2">
+                                                <span className="font-bold text-xs text-amber-900 uppercase tracking-wider">
+                                                    Pesanan Mendatang Anda
+                                                </span>
+                                                <span className="text-[11px] font-semibold text-amber-700">
+                                                    {activeOrdersList.filter(o => o.orderDate.slice(0, 10) > todayKey).length} Hari
+                                                </span>
+                                            </div>
+                                            <div className="space-y-2">
+                                                {activeOrdersList
+                                                    .filter(o => o.orderDate.slice(0, 10) > todayKey)
+                                                    .map(order => (
+                                                        <div
+                                                            key={order.id}
+                                                            className="bg-white rounded-xl p-2.5 border border-amber-200/60 flex items-center justify-between shadow-2xs"
+                                                        >
+                                                            <div>
+                                                                <div className="font-bold text-xs text-slate-800">
+                                                                    {getDateSubLabel(order.orderDate.slice(0, 10))}
+                                                                </div>
+                                                                <div className="text-[11px] text-slate-500">
+                                                                    {order.shift?.name} ({order.shift?.startTime} – {order.shift?.endTime})
+                                                                </div>
+                                                            </div>
+                                                            <button
+                                                                type="button"
+                                                                onClick={() => setCancelModalOrder(order)}
+                                                                className="px-2 py-1 rounded-lg text-red-600 hover:bg-red-50 text-[11px] font-bold border border-red-200 transition"
+                                                            >
+                                                                Batalkan
+                                                            </button>
+                                                        </div>
+                                                    ))}
+                                            </div>
+                                        </div>
+                                    )}
+
+                                    {/* -------------------------------------------------
+                                        SECTION 3: PESAN BEBERAPA HARI KEDEPAN (STARTING TOMORROW)
                                        ------------------------------------------------- */}
                                     <div>
                                         <div className="flex items-center justify-between mb-1.5">
                                             <div>
                                                 <label className="block text-xs font-bold text-slate-700 uppercase tracking-wider">
-                                                    Pesan Beberapa Hari Kedepan
+                                                    Pesan Makanan (Mulai Besok)
                                                 </label>
                                                 <p className="text-[11px] text-slate-400">
-                                                    Pilih hari yang ingin dipesan (bisa klik beberapa hari sekaligus):
+                                                    Pilih hari yang ingin dipesan (bisa beberapa hari sekaligus):
                                                 </p>
                                             </div>
                                             <div className="flex items-center gap-1.5 flex-shrink-0">
@@ -977,8 +1096,7 @@ export default function KioskPage() {
                                                         return (
                                                             <div
                                                                 key={dateStr}
-                                                                className="p-2.5 rounded-xl border border-emerald-200 bg-emerald-50/70 text-emerald-800 text-left flex items-center justify-between opacity-80 cursor-not-allowed"
-                                                                title="Sudah dipesan, tidak dapat dipesan lagi"
+                                                                className="p-2.5 rounded-xl border border-emerald-200 bg-emerald-50/70 text-emerald-800 text-left flex items-center justify-between opacity-85"
                                                             >
                                                                 <div>
                                                                     <div className="font-bold text-xs">
@@ -1042,7 +1160,7 @@ export default function KioskPage() {
                                     </div>
 
                                     {/* -------------------------------------------------
-                                        SECTION 3: PILIH SHIFT & KANTIN
+                                        SECTION 4: PILIH SHIFT
                                        ------------------------------------------------- */}
                                     <div className="pt-2 border-t border-slate-100 space-y-4">
                                         <div>
@@ -1119,29 +1237,32 @@ export default function KioskPage() {
                                             )}
                                         </div>
 
-                                        {canteens.length > 0 && (
-                                            <div>
-                                                <label className="block text-xs font-bold text-slate-700 mb-1 uppercase tracking-wider flex items-center gap-1">
-                                                    <MapPin className="w-3.5 h-3.5 text-orange-500" />
-                                                    <span>Lokasi Kantin</span>
-                                                </label>
-                                                <select
-                                                    value={selectedCanteen}
-                                                    onChange={(e) => setSelectedCanteen(e.target.value)}
-                                                    className="input-field w-full py-2.5 px-3 rounded-xl border border-slate-200 text-xs font-semibold bg-white"
-                                                >
-                                                    {canteens.map((c) => (
-                                                        <option key={c.id} value={c.id}>
-                                                            {c.name} {c.location ? `(${c.location})` : ''}
-                                                        </option>
-                                                    ))}
-                                                </select>
+                                        {/* -------------------------------------------------
+                                            SECTION 5: LOKASI KANTIN (LOCKED TO ACCOUNT PREFERENCE)
+                                           ------------------------------------------------- */}
+                                        <div>
+                                            <div className="text-xs font-bold text-slate-700 mb-1.5 uppercase tracking-wider flex items-center gap-1">
+                                                <MapPin className="w-3.5 h-3.5 text-orange-500" />
+                                                <span>Lokasi Kantin Pengambilan</span>
                                             </div>
-                                        )}
+                                            <div className="bg-slate-50 border border-slate-200 rounded-2xl p-3.5 flex items-center justify-between">
+                                                <div>
+                                                    <div className="font-extrabold text-sm text-slate-800">
+                                                        {userPreferredCanteen?.name || 'Kantin Utama'}
+                                                    </div>
+                                                    <div className="text-[11px] text-slate-400">
+                                                        {userPreferredCanteen?.location || 'Sesuai lokasi kerja Anda'}
+                                                    </div>
+                                                </div>
+                                                <span className="text-[10px] px-2.5 py-1 rounded-full bg-slate-200 text-slate-700 font-bold tracking-wide">
+                                                    Terkunci di Akun
+                                                </span>
+                                            </div>
+                                        </div>
                                     </div>
 
                                     {/* -------------------------------------------------
-                                        SECTION 4: RINGKASAN & TOMBOL PESAN
+                                        SECTION 6: RINGKASAN & TOMBOL PESAN
                                        ------------------------------------------------- */}
                                     <div className="pt-2">
                                         {selectedDates.length > 0 ? (

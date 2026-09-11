@@ -229,6 +229,7 @@ router.post('/login', validate(loginSchema), async (req, res) => {
                 department: user.department,
                 role: user.role,
                 mustChangePassword: user.mustChangePassword,
+                preferredCanteenId: user.preferredCanteenId,
             },
         };
 
