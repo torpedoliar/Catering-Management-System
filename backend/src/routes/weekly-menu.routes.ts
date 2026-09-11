@@ -3,6 +3,7 @@ import { prisma } from '../lib/prisma';
 import { AuthRequest, authMiddleware, adminMiddleware } from '../middleware/auth.middleware';
 import { sseManager } from '../controllers/sse.controller';
 import { getNow } from '../services/time.service';
+import { getCachedSettings } from '../services/cache.service';
 import { toZonedTime } from 'date-fns-tz';
 
 const TIMEZONE = 'Asia/Jakarta';
@@ -141,7 +142,7 @@ router.get('/', authMiddleware, async (req: AuthRequest, res: Response) => {
 
 /**
  * Shared query: get published weekly menus for a catering calendar day.
- * Used by the public /today and /tomorrow endpoints (kiosk pre-login display).
+ * Used by the public /today, /tomorrow, /upcoming, and /day endpoints (kiosk display).
  */
 async function getMenusForDay(target: Date) {
     const week = getWeekNumber(target);
@@ -164,8 +165,13 @@ async function getMenusForDay(target: Date) {
         }
     });
 
+    const y = target.getFullYear();
+    const m = String(target.getMonth() + 1).padStart(2, '0');
+    const d = String(target.getDate()).padStart(2, '0');
+    const dateKey = `${y}-${m}-${d}`;
+
     return {
-        date: target.toISOString().split('T')[0],
+        date: dateKey,
         dayName: dayNames[dayOfWeek],
         menus: menus.map(m => ({
             id: m.id,
@@ -187,7 +193,7 @@ async function getMenusForDay(target: Date) {
 
 /**
  * GET /api/weekly-menu/today
- * Get today's menu (public — used by kiosk pre-login display)
+ * Get today's menu (public — used by kiosk display)
  */
 router.get('/today', async (req: AuthRequest, res: Response) => {
     try {
@@ -201,8 +207,7 @@ router.get('/today', async (req: AuthRequest, res: Response) => {
 
 /**
  * GET /api/weekly-menu/tomorrow
- * Get tomorrow's menu (public — used by kiosk pre-login display).
- * Q10 kiosk grilling decision: mirror of /today, no sensitive data.
+ * Get tomorrow's menu (public — used by kiosk display).
  */
 router.get('/tomorrow', async (req: AuthRequest, res: Response) => {
     try {
@@ -213,6 +218,56 @@ router.get('/tomorrow', async (req: AuthRequest, res: Response) => {
     } catch (error) {
         console.error('Get tomorrow menu error:', error);
         res.status(500).json({ error: 'Failed to get tomorrow menu' });
+    }
+});
+
+/**
+ * GET /api/weekly-menu/upcoming
+ * Get published weekly menus for upcoming days (public — used by kiosk).
+ * Supports viewing several days ahead (default to maxOrderDaysAhead or 7, clamped 1..14).
+ */
+router.get('/upcoming', async (req: AuthRequest, res: Response) => {
+    try {
+        const settings = await getCachedSettings();
+        const requestedDays = parseInt(req.query.days as string, 10);
+        const maxDays = Math.min(
+            Math.max(Number.isInteger(requestedDays) ? requestedDays : (settings?.maxOrderDaysAhead || 7), 1),
+            14
+        );
+        const now = getNowJakarta(); // TIMEZONE FIX
+
+        const days = [];
+        for (let i = 0; i < maxDays; i++) {
+            const target = new Date(now);
+            target.setDate(now.getDate() + i);
+            days.push(await getMenusForDay(target));
+        }
+
+        res.json({ days, maxDays });
+    } catch (error) {
+        console.error('Get upcoming menus error:', error);
+        res.status(500).json({ error: 'Failed to get upcoming menus' });
+    }
+});
+
+/**
+ * GET /api/weekly-menu/day
+ * Get published weekly menu for a specific date (public — query ?date=YYYY-MM-DD).
+ */
+router.get('/day', async (req: AuthRequest, res: Response) => {
+    try {
+        const dateStr = req.query.date as string;
+        let target: Date;
+        if (dateStr && /^\d{4}-\d{2}-\d{2}$/.test(dateStr)) {
+            const [y, m, d] = dateStr.split('-').map(Number);
+            target = new Date(y, m - 1, d);
+        } else {
+            target = getNowJakarta();
+        }
+        res.json(await getMenusForDay(target));
+    } catch (error) {
+        console.error('Get day menu error:', error);
+        res.status(500).json({ error: 'Failed to get day menu' });
     }
 });
 
