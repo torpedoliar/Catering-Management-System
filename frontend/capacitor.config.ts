@@ -6,7 +6,7 @@ const config: CapacitorConfig = {
   webDir: 'dist',
   server: {
     // Load from production URL directly (WebView wrapper approach)
-    url: 'https://hallofood.santosjayaabadi.co.id',
+    url: 'https://cms.santosjayaabadi.id',
     cleartext: false,
     // Use https scheme to avoid WebView buffering SSE responses
     androidScheme: 'https',

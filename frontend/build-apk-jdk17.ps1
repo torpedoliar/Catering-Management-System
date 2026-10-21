@@ -19,7 +19,7 @@ Write-Host ""
 
 # Step 1: Web Build
 Write-Host "[1/3] Building web assets..." -ForegroundColor Yellow
-npm run build
+npm run build -- --mode capacitor
 if ($LASTEXITCODE -ne 0) { 
     Write-Host "❌ Web build failed!" -ForegroundColor Red
     exit 1 

@@ -6,7 +6,7 @@ echo.
 
 REM Step 1: Build web assets
 echo [1/4] Building web assets...
-call npm run build
+call npm run build -- --mode capacitor
 if errorlevel 1 (
     echo ERROR: Web build failed!
     pause

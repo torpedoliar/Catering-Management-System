@@ -69,3 +69,6 @@ backend/firebase-service-account.json
 frontend/android/app/google-services.json
 frontend/ios/App/App/GoogleService-Info.plist
 tree_output.txt
+
+# Generated knowledge graph (graphify output)
+graphify-out/
