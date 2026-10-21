@@ -1,8 +1,16 @@
 {
-    "version": "2.8.0",
-    "releaseDate": "2026-07-22",
+    "version": "2.8.1",
+    "releaseDate": "2026-10-22",
     "minDatabaseVersion": "1.2.0",
     "changelog": [
+        "=== 2.8.1 (2026-10-22) — Android Edge-to-Edge Status Bar Fix ===",
+        "Fix: Android header no longer collides with the status bar (jam system & ikon notifikasi menimpa header aplikasi).",
+        "Root cause: targetSdk 36 (Android 15+) enforces edge-to-edge; the window no longer reserves status bar space and setStatusBarColor() became a no-op. Capacitor 5 has no edge-to-edge support, so the WebView drew underneath the status bar.",
+        "Fix: MainActivity insets the content view by the system bar insets (status bar, display cutout, IME) and paints the leftover strip with the app status bar colour #0f172a; status bar icons are forced light so they stay legible.",
+        "Mobile: APK now points to cms.santosjayaabadi.id (previous hallofood.santosjayaabadi.co.id host is no longer serving).",
+        "Build: vite build now runs with --mode capacitor so .env.capacitor is actually applied (it was tracked but never loaded, leaving the native app on relative /api paths).",
+        "No backend change. No database migration.",
+        "",
         "=== 2.8.0 (2026-07-22) — Mode ON/OFF Auto-Blacklist & Strike Reset ===",
         "Feature: Added ON/OFF toggle mode for Auto-Blacklist no-show strike system in Admin Settings.",
         "Feature: When auto-blacklist is OFF, orders are marked as NO_SHOW for record-keeping, but user strikes (noShowCount) do not increment and auto-blacklist is bypassed.",
