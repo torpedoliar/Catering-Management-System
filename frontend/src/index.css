@@ -711,15 +711,6 @@ select {
   opacity: 0.6;
 }
 
-/* ==================== QR CODE ==================== */
-.qr-container {
-  background: white;
-  border-radius: var(--radius-xl);
-  padding: 1.5rem;
-  box-shadow: var(--shadow-lg);
-  display: inline-block;
-}
-
 /* ==================== MODALS ==================== */
 .modal-backdrop {
   position: fixed;

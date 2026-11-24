@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback, useMemo, useRef } from 'react';
-import { QRCodeSVG } from 'qrcode.react';
+import OrderBarcode from '../components/OrderBarcode';
 import { useAuth, api } from '../contexts/AuthContext';
 import { useSSE, useSSERefresh, ORDER_EVENTS, USER_EVENTS, HOLIDAY_EVENTS, SHIFT_EVENTS, SETTINGS_EVENTS } from '../contexts/SSEContext';
 import { Clock, AlertTriangle, CheckCircle2, Ban, Loader2, Download, Wifi, XCircle, Sparkles, CalendarDays, Check, X, MapPin } from 'lucide-react';
@@ -326,9 +326,9 @@ export default function OrderPage() {
         setShowCancelModal(true);
     };
 
-    const downloadQRCode = () => {
+    const downloadBarcode = () => {
         if (!todayOrder) return;
-        const svg = document.getElementById('qr-code-svg');
+        const svg = document.getElementById('order-barcode-svg');
         if (!svg) return;
 
         const svgData = new XMLSerializer().serializeToString(svg);
@@ -341,7 +341,7 @@ export default function OrderPage() {
             canvas.height = img.height;
             ctx?.drawImage(img, 0, 0);
             const link = document.createElement('a');
-            link.download = `catering-qr-${todayOrder.qrCode}.png`;
+            link.download = `catering-barcode-${todayOrder.qrCode}.png`;
             link.href = canvas.toDataURL('image/png');
             link.click();
         };
@@ -539,7 +539,7 @@ export default function OrderPage() {
                 </div>
             )}
 
-            {/* Existing Order / QR Code Card */}
+            {/* Existing Order / Barcode Card */}
             {todayOrder && (
                 <div className="card text-center py-6 relative overflow-hidden mb-6">
                     {/* Background decoration */}
@@ -565,29 +565,23 @@ export default function OrderPage() {
                             </div>
                         </div>
 
-                        <div className="bg-white/50 rounded-xl p-4 border border-white/60 backdrop-blur-sm flex flex-col md:flex-row items-center gap-6">
-                            {/* QR Code (Smaller) */}
+                        <div className="bg-white/50 rounded-xl p-4 border border-white/60 backdrop-blur-sm space-y-4">
+                            {/* Barcode (Code 128) */}
                             {todayOrder.status === 'ORDERED' && (
-                                <div className="qr-container bg-white p-2 rounded-xl shadow-sm">
-                                    <QRCodeSVG
-                                        id="qr-code-svg"
-                                        value={todayOrder.qrCode}
-                                        size={100}
-                                        level="H"
-                                        includeMargin
-                                    />
+                                <div className="bg-white rounded-lg p-2 shadow-sm">
+                                    <OrderBarcode id="order-barcode-svg" value={todayOrder.qrCode} />
                                 </div>
                             )}
 
-                            <div className="flex-1 text-left">
+                            <div className="text-left">
                                 <p className="font-semibold text-[#1a1f37] text-lg">{todayOrder.shift.name}</p>
                                 <p className="text-slate-500">{todayOrder.shift.startTime} - {todayOrder.shift.endTime}</p>
 
                                 {todayOrder.status === 'ORDERED' && (
                                     <div className="flex gap-2 mt-4">
-                                        <button onClick={downloadQRCode} className="px-3 py-1.5 bg-white border border-slate-200 rounded-lg text-sm text-slate-600 hover:bg-slate-50 flex items-center gap-2 transition-colors">
+                                        <button onClick={downloadBarcode} className="px-3 py-1.5 bg-white border border-slate-200 rounded-lg text-sm text-slate-600 hover:bg-slate-50 flex items-center gap-2 transition-colors">
                                             <Download className="w-4 h-4" />
-                                            Simpan QR
+                                            Simpan Barcode
                                         </button>
                                         {!isCancelLocked(todayOrder) ? (
                                             <button onClick={openCancelModal} className="px-3 py-1.5 bg-red-50 border border-red-100 rounded-lg text-sm text-red-600 hover:bg-red-100 flex items-center gap-2 transition-colors">

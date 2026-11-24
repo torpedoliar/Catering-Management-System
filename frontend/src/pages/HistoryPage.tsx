@@ -5,7 +5,7 @@ import { useSSERefresh, ORDER_EVENTS } from '../contexts/SSEContext';
 import { format } from 'date-fns';
 import { formatDateTimeShortWIB } from '../utils/timezone';
 import { Calendar, ChevronLeft, ChevronRight, Loader2, X, CheckCircle, XCircle, Clock, Ban, History, MessageSquare, Send, MapPin, Upload, ShieldAlert, ShieldCheck, ShieldX } from 'lucide-react';
-import { QRCodeSVG } from 'qrcode.react';
+import OrderBarcode from '../components/OrderBarcode';
 import toast from 'react-hot-toast';
 
 interface Order {
@@ -344,15 +344,10 @@ export default function HistoryPage() {
 
                         {/* Body */}
                         <div className="p-6">
-                            {/* QR Code for active orders */}
+                            {/* Barcode for active orders */}
                             {selectedOrder.status === 'ORDERED' && selectedOrder.qrCode && (
-                                <div className="qr-container mx-auto mb-6">
-                                    <QRCodeSVG
-                                        value={selectedOrder.qrCode}
-                                        size={180}
-                                        level="H"
-                                        includeMargin
-                                    />
+                                <div className="bg-white rounded-xl p-3 mx-auto mb-6 shadow-sm">
+                                    <OrderBarcode value={selectedOrder.qrCode} />
                                 </div>
                             )}
 

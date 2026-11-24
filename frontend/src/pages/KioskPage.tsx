@@ -951,7 +951,7 @@ export default function KioskPage() {
                                     </h3>
                                     <p className="text-sm text-emerald-700 leading-relaxed mb-6">
                                         Pesanan makan Anda untuk tanggal yang dipilih telah tersimpan.
-                                        QR Code check-in dapat dilihat di aplikasi HP Anda.
+                                        Barcode check-in dapat dilihat di aplikasi HP Anda.
                                     </p>
                                     <button
                                         type="button"
@@ -987,7 +987,7 @@ export default function KioskPage() {
                                             </p>
                                             <div className="mt-3 pt-2.5 border-t border-emerald-200 flex items-center justify-between">
                                                 <span className="text-[11px] text-emerald-600 italic">
-                                                    QR Code tersimpan di HP Anda
+                                                    Barcode tersimpan di HP Anda
                                                 </span>
                                                 <button
                                                     type="button"

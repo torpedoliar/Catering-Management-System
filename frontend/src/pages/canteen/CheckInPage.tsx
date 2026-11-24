@@ -304,7 +304,8 @@ export default function CheckInPage() {
                     { facingMode: 'environment' },
                     {
                         fps: 10,
-                        qrbox: { width: 250, height: 250 },
+                        // No qrbox: a 1D barcode spans nearly the whole frame, and
+                        // cropping to a square box cuts it in half.
                     },
                     (decodedText) => {
                         // QR Code found - process check-in
@@ -351,7 +352,7 @@ export default function CheckInPage() {
                 openQRScanner();
                 return;
             } else {
-                toast.error('Masukkan ID Karyawan, Nama, atau QR Code');
+                toast.error('Masukkan ID Karyawan, Nama, atau Barcode');
             }
             return;
         }
@@ -362,12 +363,19 @@ export default function CheckInPage() {
             return;
         }
 
+        // USB barcode scanners type the code then press Enter, which arrives
+        // here as 'manual'. Route order codes (ORDER-...) to the QR endpoint so
+        // laser scans of the 1D barcode work — otherwise they'd be looked up as
+        // an employee name/id and fail with "user not found".
+        const isOrderCode = /^ORDER-/i.test(codeToUse);
+        if (isOrderCode) method = 'qr';
+
         setIsProcessing(true);
         setLastError(null);
 
         // Clear input immediately so rapid barcode scanners can buffer the next scan
         // without getting wiped after this API call finishes.
-        if (method === 'manual') {
+        if (!qrCodeData) {
             if (inputRef.current) inputRef.current.value = '';
             setSearchInput('');
         }
@@ -541,7 +549,7 @@ export default function CheckInPage() {
                             </div>
                             <div>
                                 <h2 className="text-2xl font-bold text-white">Check-In</h2>
-                                <p className="text-white/50">Scan QR atau masukkan ID karyawan</p>
+                                <p className="text-white/50">Scan barcode atau masukkan ID karyawan</p>
                             </div>
                         </div>
                         <button onClick={togglePhotoSetting} className={`px-4 py-2 rounded-xl border flex items-center gap-2 transition-all ${photoEnabled ? 'bg-success/20 border-success/40 text-success' : 'bg-white/5 border-white/20 text-white/60'}`}>
@@ -552,7 +560,7 @@ export default function CheckInPage() {
 
                     <div className="relative mb-6">
                         <Search className="absolute left-4 top-1/2 -translate-y-1/2 w-5 h-5 text-white/40" />
-                        <input ref={inputRef} type="text" placeholder="ID Karyawan / Nama / QR Code..." value={searchInput} onChange={(e) => setSearchInput(e.target.value)} onKeyPress={handleKeyPress} autoFocus className="input-search text-lg h-16" />
+                        <input ref={inputRef} type="text" placeholder="ID Karyawan / Nama / Barcode..." value={searchInput} onChange={(e) => setSearchInput(e.target.value)} onKeyPress={handleKeyPress} autoFocus className="input-search text-lg h-16" />
                     </div>
 
                     <div className="grid grid-cols-2 gap-4">
@@ -560,7 +568,7 @@ export default function CheckInPage() {
                             {isProcessing ? (<><Loader2 className="w-5 h-5 animate-spin" />Memproses...</>) : (<><CheckCircle2 className="w-5 h-5" />Ambil Makan</>)}
                         </button>
                         <button onClick={() => handleCheckIn('qr')} disabled={isProcessing} className="btn-primary h-14 flex items-center justify-center gap-3 text-base font-semibold">
-                            {isProcessing ? (<><Loader2 className="w-5 h-5 animate-spin" />Memproses...</>) : (<><ScanLine className="w-5 h-5" />Scan QR</>)}
+                            {isProcessing ? (<><Loader2 className="w-5 h-5 animate-spin" />Memproses...</>) : (<><ScanLine className="w-5 h-5" />Scan Barcode</>)}
                         </button>
                     </div>
 
@@ -580,7 +588,7 @@ export default function CheckInPage() {
                         <p className="text-sm text-white/60">
                             <strong className="text-white">Petunjuk:</strong><br />
                             • Ketik ID atau nama untuk <span className="text-success">check-in manual</span><br />
-                            • Scan atau ketik kode untuk <span className="text-primary-400">QR check-in</span><br />
+                            • Scan atau ketik kode untuk <span className="text-primary-400">barcode check-in</span><br />
                             • Tekan <kbd className="px-2 py-0.5 bg-white/10 rounded text-xs">Enter</kbd> untuk check-in cepat
                         </p>
                     </div>
@@ -634,8 +642,8 @@ export default function CheckInPage() {
                                     <ScanLine className="w-6 h-6 text-primary-400" />
                                 </div>
                                 <div>
-                                    <h3 className="text-xl font-bold text-white">Scan QR Code</h3>
-                                    <p className="text-white/50 text-sm">Arahkan kamera ke QR pesanan</p>
+                                    <h3 className="text-xl font-bold text-white">Scan Barcode / QR</h3>
+                                    <p className="text-white/50 text-sm">Arahkan kamera ke barcode pesanan</p>
                                 </div>
                             </div>
                             <button
@@ -649,7 +657,7 @@ export default function CheckInPage() {
                         <div
                             ref={qrContainerRef}
                             id="qr-reader"
-                            className="w-full aspect-square bg-black rounded-2xl overflow-hidden"
+                            className="w-full aspect-video bg-black rounded-2xl overflow-hidden"
                         />
 
                         <div className="flex gap-4">
@@ -664,7 +672,7 @@ export default function CheckInPage() {
 
                         <div className="p-4 rounded-xl bg-white/5 border border-white/10 text-center">
                             <p className="text-white/60 text-sm">
-                                Pastikan QR code terlihat jelas dalam kotak scan
+                                Pastikan barcode terlihat jelas dalam kotak scan
                             </p>
                         </div>
                     </div>

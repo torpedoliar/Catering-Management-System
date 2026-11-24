@@ -20,7 +20,7 @@ export default defineConfig({
                     // UI libraries
                     ui: ['lucide-react', 'react-hot-toast'],
                     // Utility libraries
-                    utils: ['date-fns', 'axios', 'qrcode.react'],
+                    utils: ['date-fns', 'axios', 'jsbarcode'],
                 },
             },
         },
