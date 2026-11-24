@@ -17,6 +17,7 @@ import {
     AuthRequest,
     authMiddleware,
     adminMiddleware,
+    canteenMiddleware,
     getNow,
     getToday,
     getTomorrow,
@@ -694,8 +695,8 @@ router.get('/stats/range', authMiddleware, adminMiddleware, async (req: AuthRequ
     }
 });
 
-// Get order statistics (Admin only) - Enhanced with company, department, and risk users
-router.get('/stats/today', authMiddleware, adminMiddleware, async (req: AuthRequest, res: Response) => {
+// Get order statistics (Admin/Canteen) - Enhanced with company, department, and risk users
+router.get('/stats/today', authMiddleware, canteenMiddleware, async (req: AuthRequest, res: Response) => {
     try {
         const today = getToday();
         const tomorrow = getTomorrow();
