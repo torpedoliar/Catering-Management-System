@@ -25,6 +25,8 @@ interface CheckInResult {
         };
         shift: { name: string };
         canteen?: { id: string; name: string; location: string | null };
+        canteenId?: string | null;
+        checkedInBy?: string | null;
     };
     checkInBy?: string;
     checkInTime?: Date | string;
@@ -176,7 +178,7 @@ function CheckInResultPopup({ show, data, onClose }: CheckInResultPopupProps) {
 }
 
 export default function CheckInPage() {
-    const { isConnected, connectedClients } = useSSE();
+    const { isConnected, connectedClients, subscribe } = useSSE();
     const [searchInput, setSearchInput] = useState('');
     const [isProcessing, setIsProcessing] = useState(false);
     const [showSuccessPopup, setShowSuccessPopup] = useState(false);
@@ -186,6 +188,18 @@ export default function CheckInPage() {
     // Camera decoders and double-Enter can fire the same code twice; remember
     // the last one so the second call can be ignored.
     const lastScanRef = useRef({ code: '', at: 0 });
+    // Every operator at a counter must see who was just served, not only the
+    // device that scanned. The SSE broadcast and the HTTP response for the
+    // same check-in race each other, so remember which orders already got a
+    // popup on this device and let whichever arrives first win.
+    const shownOrderIdsRef = useRef<Set<string>>(new Set());
+    const markShown = (orderId: string): boolean => {
+        const seen = shownOrderIdsRef.current;
+        if (seen.has(orderId)) return false;
+        seen.add(orderId);
+        if (seen.size > 200) shownOrderIdsRef.current = new Set(Array.from(seen).slice(-100));
+        return true;
+    };
     const [currentTime, setCurrentTime] = useState(new Date());
     const inputRef = useRef<HTMLInputElement>(null);
     const webcamRef = useRef<Webcam>(null);
@@ -195,7 +209,19 @@ export default function CheckInPage() {
     const [pendingOrder, setPendingOrder] = useState<any>(null);
     // Canteen check-in enforcement
     const [enforceCanteenCheckin, setEnforceCanteenCheckin] = useState(false);
-    const [selectedCanteenId, setSelectedCanteenId] = useState<string>('');
+    // One login can be shared by several counters, so the chosen counter is
+    // remembered per device (browser), not per account.
+    const CANTEEN_STORAGE_KEY = 'checkin:selectedCanteenId';
+    const [selectedCanteenId, setSelectedCanteenIdState] = useState<string>(() => {
+        try { return localStorage.getItem(CANTEEN_STORAGE_KEY) || ''; } catch { return ''; }
+    });
+    const setSelectedCanteenId = useCallback((id: string) => {
+        setSelectedCanteenIdState(id);
+        try {
+            if (id) localStorage.setItem(CANTEEN_STORAGE_KEY, id);
+            else localStorage.removeItem(CANTEEN_STORAGE_KEY);
+        } catch { /* private mode / storage disabled */ }
+    }, []);
     const [canteens, setCanteens] = useState<{ id: string; name: string; location: string | null }[]>([]);
     // QR Scanner state
     const [showQRScanner, setShowQRScanner] = useState(false);
@@ -219,6 +245,29 @@ export default function CheckInPage() {
     useEffect(() => { loadStats(); }, [loadStats]);
     useSSERefresh(ORDER_EVENTS, loadStats);
 
+    // Popup for check-ins done at another station. Owners of the scan get
+    // their popup from the HTTP response instead; this handler covers the
+    // other operators watching the same counter.
+    useEffect(() => {
+        return subscribe('order:checkin', (data: { order?: CheckInResult['order'] }) => {
+            const order = data?.order;
+            if (!order?.id) return;
+            // Each operator watches their own counter: ignore check-ins that
+            // belong to a different canteen. Orders without a canteen are
+            // shown everywhere so they never silently disappear.
+            if (selectedCanteenId && order.canteenId && order.canteenId !== selectedCanteenId) return;
+            if (!markShown(order.id)) return;
+            setSuccessData({
+                success: true,
+                message: 'Check-in Berhasil!',
+                order,
+                checkInBy: order.checkedInBy || 'Admin',
+                checkInTime: order.checkInTime,
+            });
+            setShowSuccessPopup(true);
+        });
+    }, [subscribe, selectedCanteenId]);
+
     useEffect(() => {
         const fetchSettings = async () => {
             try {
@@ -236,31 +285,29 @@ export default function CheckInPage() {
         fetchSettings();
     }, []);
 
-    // Auto-select default canteen for CANTEEN role users
+    // Resolve the counter this device should watch:
+    // 1. a counter this device already chose (shared login, several counters)
+    // 2. otherwise the account's preferred canteen
+    // 3. otherwise nothing, so the operator must pick one
     useEffect(() => {
-        const autoSelectCanteen = async () => {
-            // Fetch fresh user data to get latest preferredCanteenId
-            try {
-                const userRes = await api.get('/api/auth/me');
-                const userData = userRes.data;
+        if (canteens.length === 0) return;
 
-                if (userData?.role === 'CANTEEN' && userData.preferredCanteenId && canteens.length > 0) {
-                    // Only auto-select if canteen exists in the list and not already selected
-                    const userCanteen = canteens.find(c => c.id === userData.preferredCanteenId);
-                    if (userCanteen && !selectedCanteenId) {
-                        console.log('Auto-selecting canteen:', userCanteen.name);
-                        setSelectedCanteenId(userData.preferredCanteenId);
-                    }
-                }
-            } catch (error) {
-                console.error('Failed to fetch user for auto-select:', error);
-            }
-        };
-
-        if (canteens.length > 0 && !selectedCanteenId) {
-            autoSelectCanteen();
+        // Drop a stored counter that no longer exists.
+        if (selectedCanteenId && !canteens.some(c => c.id === selectedCanteenId)) {
+            setSelectedCanteenId('');
+            return;
         }
-    }, [canteens, selectedCanteenId]);
+        if (selectedCanteenId) return;
+
+        api.get('/api/auth/me')
+            .then(({ data }) => {
+                const preferred = data?.preferredCanteenId;
+                if (data?.role === 'CANTEEN' && preferred && canteens.some(c => c.id === preferred)) {
+                    setSelectedCanteenId(preferred);
+                }
+            })
+            .catch(() => { /* operator can still pick manually */ });
+    }, [canteens, selectedCanteenId, setSelectedCanteenId]);
 
     const togglePhotoSetting = async () => {
         try {
@@ -423,8 +470,12 @@ export default function CheckInPage() {
             const now = Date.now();
             const isDuplicateScan =
                 codeToUse === lastScanRef.current.code && now - lastScanRef.current.at < 3000;
+            const orderId = String(result.order?.id || '');
+            // The SSE broadcast for this same check-in can reach this device
+            // before the HTTP response does; don't flash the popup twice.
+            const alreadyShown = orderId !== '' && !markShown(orderId);
 
-            if (!isDuplicateScan) {
+            if (!isDuplicateScan && !alreadyShown) {
                 lastScanRef.current = { code: codeToUse, at: now };
                 setSuccessData(result);
                 setShowSuccessPopup(true);
@@ -486,38 +537,40 @@ export default function CheckInPage() {
                 <span className="text-sm text-white/40">{connectedClients} terhubung</span>
             </div>
 
-            {/* Canteen Selection - Only show when enforcement is enabled */}
-            {enforceCanteenCheckin && (
-                <div className="card border-primary-500/30 bg-gradient-to-r from-primary-500/10 to-transparent">
-                    <div className="flex items-center gap-4">
-                        <div className="w-12 h-12 rounded-xl bg-primary-500/20 flex items-center justify-center">
-                            <MapPin className="w-6 h-6 text-primary-400" />
-                        </div>
-                        <div className="flex-1">
-                            <label className="block text-sm font-medium text-white/70 mb-1">
-                                Pos Check-in Saat Ini
-                            </label>
-                            <select
-                                value={selectedCanteenId}
-                                onChange={(e) => setSelectedCanteenId(e.target.value)}
-                                className="input-field w-full bg-dark-800"
-                            >
-                                <option value="">-- Pilih Kantin --</option>
-                                {canteens.map(c => (
-                                    <option key={c.id} value={c.id}>
-                                        {c.name}{c.location ? ` (${c.location})` : ''}
-                                    </option>
-                                ))}
-                            </select>
-                        </div>
+            {/* Counter selection. Always visible: it drives which check-in
+                popups this device shows, and is remembered per browser so a
+                shared login can serve several counters at once. */}
+            <div className="card border-primary-500/30 bg-gradient-to-r from-primary-500/10 to-transparent">
+                <div className="flex items-center gap-4">
+                    <div className="w-12 h-12 rounded-xl bg-primary-500/20 flex items-center justify-center">
+                        <MapPin className="w-6 h-6 text-primary-400" />
                     </div>
-                    {!selectedCanteenId && (
-                        <p className="text-xs text-warning mt-2">
-                            ⚠️ Pilih kantin untuk memvalidasi lokasi check-in
-                        </p>
-                    )}
+                    <div className="flex-1">
+                        <label className="block text-sm font-medium text-white/70 mb-1">
+                            Pos Check-in Saat Ini
+                        </label>
+                        <select
+                            value={selectedCanteenId}
+                            onChange={(e) => setSelectedCanteenId(e.target.value)}
+                            className="input-field w-full bg-dark-800"
+                        >
+                            <option value="">-- Pilih Kantin --</option>
+                            {canteens.map(c => (
+                                <option key={c.id} value={c.id}>
+                                    {c.name}{c.location ? ` (${c.location})` : ''}
+                                </option>
+                            ))}
+                        </select>
+                    </div>
                 </div>
-            )}
+                {!selectedCanteenId && (
+                    <p className="text-xs text-warning mt-2">
+                        {enforceCanteenCheckin
+                            ? '⚠️ Pilih kantin untuk memvalidasi lokasi check-in'
+                            : 'Pilih kantin agar popup hanya menampilkan check-in dari counter ini'}
+                    </p>
+                )}
+            </div>
 
             <div className="grid grid-cols-5 gap-4">
                 <div className="stat-card text-center">
