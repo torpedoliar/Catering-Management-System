@@ -24,6 +24,7 @@ import {
     getCachedSettings,
 } from './shared';
 import { cacheService, CACHE_KEYS, CACHE_TTL } from '../../services/cache.service';
+import { isOvernightShift, resolveBreakTimeForDay, calculateBreakWindow } from '../../utils/shift-utils';
 
 const router = Router();
 
@@ -702,8 +703,16 @@ router.get('/stats/today', authMiddleware, canteenMiddleware, async (req: AuthRe
         const tomorrow = getTomorrow();
         const dateKey = today.toISOString().split('T')[0];
 
+        // Q4a: the check-in page scopes numbers to its counter.
+        const canteenIdFilter = typeof req.query.canteenId === 'string' && req.query.canteenId ? req.query.canteenId : null;
+        // Q10b: the check-in page wants fresh numbers at break boundaries;
+        // the admin dashboard is fine with the 60s cache.
+        const fresh = req.query.fresh === '1';
+
         // Check cache first for performance
-        const cacheKey = CACHE_KEYS.DASHBOARD_STATS(dateKey);
+        const cacheKey = fresh
+            ? `${CACHE_KEYS.DASHBOARD_STATS(dateKey)}:fresh:${canteenIdFilter || 'all'}`
+            : CACHE_KEYS.DASHBOARD_STATS(dateKey);
         const cached = await cacheService.get<any>(cacheKey);
         if (cached) {
             return res.json(cached);
@@ -716,7 +725,7 @@ router.get('/stats/today', authMiddleware, canteenMiddleware, async (req: AuthRe
         const yesterday = new Date(today);
         yesterday.setDate(yesterday.getDate() - 1);
 
-        const [total, pickedUp, pending, cancelled, noShow, byShift, shifts, todayHolidays, blacklistedCount, usersAtRisk, ordersWithDetails, todayNoShowOrders, yesterdayNoShowOrders] = await Promise.all([
+        const [total, pickedUp, pending, cancelled, noShow, byShift, shifts, todayHolidays, blacklistedCount, usersAtRisk, ordersWithDetails, todayNoShowOrders, yesterdayNoShowOrders, todayOrdersAll, yesterdayOrdersAll] = await Promise.all([
             // Total does NOT include cancelled orders - only actual orders
             prisma.order.count({
                 where: { orderDate: { gte: today, lt: tomorrow }, status: { not: 'CANCELLED' } },
@@ -739,7 +748,7 @@ router.get('/stats/today', authMiddleware, canteenMiddleware, async (req: AuthRe
                 where: { orderDate: { gte: today, lt: tomorrow }, status: { not: 'CANCELLED' } },
                 _count: { id: true },
             }),
-            prisma.shift.findMany({ where: { isActive: true } }),
+            prisma.shift.findMany({ where: { isActive: true }, include: { dayBreaks: true } }),
             prisma.holiday.findMany({
                 where: {
                     date: { gte: today, lt: tomorrow },
@@ -786,6 +795,15 @@ router.get('/stats/today', authMiddleware, canteenMiddleware, async (req: AuthRe
                     user: { select: { id: true, externalId: true, name: true, company: true, department: true, noShowCount: true } },
                     shift: { select: { name: true } }
                 },
+            }),
+            // Lightweight rows for the break-focused cards (all statuses, scalar fields only)
+            prisma.order.findMany({
+                where: { orderDate: { gte: today, lt: tomorrow } },
+                select: { status: true, shiftId: true, canteenId: true, orderDate: true },
+            }),
+            prisma.order.findMany({
+                where: { orderDate: { gte: yesterday, lt: today } },
+                select: { status: true, shiftId: true, canteenId: true, orderDate: true },
             }),
         ]);
 
@@ -922,6 +940,198 @@ router.get('/stats/today', authMiddleware, canteenMiddleware, async (req: AuthRe
         // Calculate pickup rate
         const pickupRate = total > 0 ? Math.round((pickedUp / total) * 100) : 0;
 
+        // ============ Break-focused cards for the check-in page ============
+        // The check-in operator needs to see the numbers for the shift(s)
+        // whose meal break is happening (or about to start, within 1 hour),
+        // not the whole day. Decisions from the grilling session:
+        //   Q1a focus follows the break window, Q7a window = breakStart-1h..breakEnd,
+        //   Q8a shifts without a break never become the focus,
+        //   Q11a overnight shifts use their orderDate (yesterday) when the
+        //   break lands after midnight, Q3a concurrent breaks merge.
+        const now = getNow();
+
+        interface FocusShift {
+            id: string;
+            name: string;
+            breakStart: Date;
+            breakEnd: Date;
+        }
+
+        const toFocusShifts: FocusShift[] = [];
+        for (const shift of shifts) {
+            if (!shift.isActive) continue;
+            // Q8a: a shift without a break never becomes the focus.
+            if (!shift.breakStartTime || !shift.breakEndTime) continue;
+
+            const dayBreaks = shift.hasSpecialDayBreaks ? shift.dayBreaks : [];
+            const withBreaks = {
+                startTime: shift.startTime,
+                endTime: shift.endTime,
+                breakStartTime: shift.breakStartTime,
+                breakEndTime: shift.breakEndTime,
+                hasSpecialDayBreaks: shift.hasSpecialDayBreaks,
+                dayBreaks: dayBreaks.map(db => ({
+                    dayOfWeek: db.dayOfWeek,
+                    breakStartTime: db.breakStartTime,
+                    breakEndTime: db.breakEndTime,
+                })),
+            };
+
+            // Q11a: overnight shifts may break after midnight. For those the
+            // order (and its break) belongs to the previous day's orderDate,
+            // so probe both today's and yesterday's orderDate.
+            const isOvernight = isOvernightShift(shift.startTime, shift.endTime);
+            const candidates: Date[] = isOvernight ? [yesterday, today] : [today];
+
+            for (const orderDate of candidates) {
+                const resolved = resolveBreakTimeForDay(withBreaks, now);
+                if (!resolved.breakStartTime || !resolved.breakEndTime) continue;
+
+                const probe = {
+                    ...withBreaks,
+                    breakStartTime: resolved.breakStartTime,
+                    breakEndTime: resolved.breakEndTime,
+                };
+                const dayStart = new Date(orderDate);
+                dayStart.setHours(0, 0, 0, 0);
+                const window = calculateBreakWindow(dayStart, probe, dayStart, dayStart);
+                if (!window) continue;
+
+                // Q7a: visible from 1 hour before the break until it ends.
+                const startWindow = new Date(window.breakStart.getTime() - 60 * 60000);
+                if (now >= startWindow && now <= window.breakEnd) {
+                    toFocusShifts.push({
+                        id: shift.id,
+                        name: shift.name,
+                        breakStart: window.breakStart,
+                        breakEnd: window.breakEnd,
+                    });
+                }
+            }
+        }
+
+        const countIn = (orders: any[], status: string) =>
+            orders.filter(o => o.status === status).length;
+
+        let focusCards: {
+            scope: 'break' | 'all';
+            shiftNames: string[];
+            breakStart?: string;
+            breakEnd?: string;
+            total: number;
+            pickedUp: number;
+            pending: number;
+            cancelled: number;
+            noShow: number;
+        };
+        let focusInfo: {
+            scope: 'break' | 'all';
+            shiftNames: string[];
+            breakStart?: string;
+            breakEnd?: string;
+            nextBreak?: { breakStart: string; shiftNames: string[] };
+        };
+
+        const hhmm = (d: Date) => d.toISOString().slice(11, 16);
+
+        if (toFocusShifts.length > 0) {
+            const focusShiftIds = new Set(toFocusShifts.map(s => s.id));
+            // Overnight shifts in focus pull yesterday's orders; day shifts pull today's.
+            const focusOvernightIds = new Set(
+                toFocusShifts
+                    .filter(s => {
+                        const sh = shifts.find(x => x.id === s.id)!;
+                        return isOvernightShift(sh.startTime, sh.endTime);
+                    })
+                    .map(s => s.id)
+            );
+            const focusOrders = [...todayOrdersAll, ...yesterdayOrdersAll].filter(o => {
+                if (!focusShiftIds.has(o.shiftId)) return false;
+                // Q4a: respect the operator's counter when one is chosen.
+                if (canteenIdFilter && o.canteenId !== canteenIdFilter) return false;
+                if (focusOvernightIds.has(o.shiftId)) {
+                    return o.orderDate >= yesterday && o.orderDate < today;
+                }
+                return o.orderDate >= today && o.orderDate < tomorrow;
+            });
+
+            focusCards = {
+                scope: 'break',
+                shiftNames: toFocusShifts.map(s => s.name),
+                breakStart: hhmm(new Date(Math.min(...toFocusShifts.map(s => s.breakStart.getTime())))),
+                breakEnd: hhmm(new Date(Math.max(...toFocusShifts.map(s => s.breakEnd.getTime())))),
+                total: focusOrders.filter(o => o.status !== 'CANCELLED').length,
+                pickedUp: countIn(focusOrders, 'PICKED_UP'),
+                pending: countIn(focusOrders, 'ORDERED'),
+                cancelled: countIn(focusOrders, 'CANCELLED'),
+                noShow: countIn(focusOrders, 'NO_SHOW'),
+            };
+            focusInfo = {
+                scope: 'break',
+                shiftNames: focusCards.shiftNames,
+                breakStart: focusCards.breakStart,
+                breakEnd: focusCards.breakEnd,
+            };
+        } else {
+            // Q2a/Q13a: outside any break window, fall back to all-day numbers
+            // and point at the next break so operators know when the view shifts.
+            const allDayOrders = [...todayOrdersAll, ...yesterdayOrdersAll].filter(o => {
+                if (o.orderDate >= today && o.orderDate < tomorrow) return true;
+                // Overnight orders from yesterday whose shift is still running
+                const sh = shifts.find(x => x.id === o.shiftId);
+                return !!sh && isOvernightShift(sh.startTime, sh.endTime) && o.orderDate >= yesterday && o.orderDate < today;
+            }).filter(o => !canteenIdFilter || o.canteenId === canteenIdFilter);
+
+            let nextBreak: { breakStart: string; shiftNames: string[] } | undefined;
+            let nextAt = Infinity;
+            for (const shift of shifts) {
+                if (!shift.isActive || !shift.breakStartTime || !shift.breakEndTime) continue;
+                const dayBreaks = shift.hasSpecialDayBreaks ? shift.dayBreaks : [];
+                const probe = {
+                    startTime: shift.startTime,
+                    endTime: shift.endTime,
+                    breakStartTime: shift.breakStartTime,
+                    breakEndTime: shift.breakEndTime,
+                    hasSpecialDayBreaks: shift.hasSpecialDayBreaks,
+                    dayBreaks: dayBreaks.map(db => ({
+                        dayOfWeek: db.dayOfWeek,
+                        breakStartTime: db.breakStartTime,
+                        breakEndTime: db.breakEndTime,
+                    })),
+                };
+                const resolved = resolveBreakTimeForDay(probe, now);
+                if (!resolved.breakStartTime || !resolved.breakEndTime) continue;
+                const isOvernight = isOvernightShift(shift.startTime, shift.endTime);
+                const candidates: Date[] = isOvernight ? [yesterday, today] : [today];
+                for (const orderDate of candidates) {
+                    const dayStart = new Date(orderDate);
+                    dayStart.setHours(0, 0, 0, 0);
+                    const window = calculateBreakWindow(dayStart, { ...probe, breakStartTime: resolved.breakStartTime, breakEndTime: resolved.breakEndTime }, dayStart, dayStart);
+                    if (!window) continue;
+                    if (window.breakStart.getTime() > now.getTime() && window.breakStart.getTime() < nextAt) {
+                        nextAt = window.breakStart.getTime();
+                        nextBreak = { breakStart: hhmm(window.breakStart), shiftNames: [shift.name] };
+                    }
+                }
+            }
+
+            focusCards = {
+                scope: 'all',
+                shiftNames: [],
+                total: allDayOrders.filter(o => o.status !== 'CANCELLED').length,
+                pickedUp: countIn(allDayOrders, 'PICKED_UP'),
+                pending: countIn(allDayOrders, 'ORDERED'),
+                cancelled: countIn(allDayOrders, 'CANCELLED'),
+                noShow: countIn(allDayOrders, 'NO_SHOW'),
+            };
+            focusInfo = {
+                scope: 'all',
+                shiftNames: [],
+                nextBreak,
+            };
+        }
+        // ============ /break-focused cards ============
+
         // Build response object
         const statsResponse = {
             date: today.toISOString().split('T')[0],
@@ -948,6 +1158,8 @@ router.get('/stats/today', authMiddleware, canteenMiddleware, async (req: AuthRe
             blacklistedCount,
             usersAtRisk,
             blacklistStrikes,
+            focusCards,
+            focus: focusInfo,
         };
 
         // Cache the response for 60 seconds

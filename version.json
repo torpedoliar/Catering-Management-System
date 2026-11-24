@@ -1,8 +1,16 @@
 {
-    "version": "2.9.0",
+    "version": "2.10.0",
     "releaseDate": "2026-11-24",
     "minDatabaseVersion": "1.2.0",
     "changelog": [
+        "=== 2.10.0 (2026-11-24) — Statistik Check-in Mengikuti Jam Istirahat Shift ===",
+        "Feature: Lima kartu statistik di halaman Check-in kini otomatis menampilkan data shift yang sedang masuk jendela istirahat (mulai 1 jam sebelum istirahat sampai istirahat selesai), bukan lagi total sepanjang hari.",
+        "Feature: Beberapa shift yang istirahat bersamaan digabung dalam satu set angka; shift tanpa jam istirahat tidak pernah menjadi fokus; shift malam dengan istirahat lewat tengah malam didukung (memakai orderDate kemarin).",
+        "Feature: Label kecil di atas kartu menampilkan konteks: 'Istirahat 12:00-13:00 - SHIFT 1' saat fokus, atau 'Semua Shift - Sepanjang Hari - Istirahat berikutnya 18:00 (SHIFT 2)' saat di luar jendela istirahat.",
+        "Feature: Angka statistik mengikuti kantin yang dipilih di dropdown Pos Check-in (param canteenId); tanpa pilihan = semua kantin.",
+        "Perf: Halaman Check-in meminta data tanpa cache (fresh=1) agar pergantian jendela istirahat terlihat seketika; Dashboard Admin tetap memakai cache 60 detik.",
+        "Backend: /api/orders/stats/today kini mengembalikan focusCards + focus (metadata) dan byShift tetap dipertahankan; tidak ada perubahan schema database.",
+        "",
         "=== 2.9.0 (2026-11-24) — Barcode 1D & Canteen Check-in Fixes ===",
         "Feature: Kartu pesanan dan detail riwayat kini menampilkan barcode 1D Code 128 (bukan QR). String kode tidak berubah (ORDER-<uuid>), jadi kode yang sudah terlanjur disimpan tetap bisa di-scan.",
         "Feature: Scanner kamera check-in tidak lagi memotong barcode lebar (qrbox dilepas), dan input manual merutekan kode ORDER-* ke endpoint check-in QR — scanner laser USB (keyboard wedge) kini berfungsi.",

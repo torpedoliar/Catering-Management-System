@@ -237,14 +237,37 @@ export default function CheckInPage() {
         return () => clearInterval(timer);
     }, []);
 
+    // The five stat cards show the shift(s) whose meal break is active (or
+    // starting within an hour) — server decides via `focusCards`. `null`
+    // metadata means the backend predates this and we show all-day totals.
+    const [focusInfo, setFocusInfo] = useState<{
+        scope: 'break' | 'all';
+        shiftNames: string[];
+        breakStart?: string;
+        breakEnd?: string;
+        nextBreak?: { breakStart: string; shiftNames: string[] };
+    } | null>(null);
+
     const loadStats = useCallback(async () => {
         try {
-            const res = await api.get('/api/orders/stats/today');
-            setTodayStats({ total: res.data.total, checkedIn: res.data.pickedUp, pending: res.data.pending, noShow: res.data.noShow || 0, cancelled: res.data.cancelled || 0 });
+            const params: Record<string, string> = {};
+            // Q10b: break boundaries must be seen immediately, skip the 60s cache.
+            params.fresh = '1';
+            // Q4a: scope the numbers to this device's counter when chosen.
+            if (selectedCanteenId) params.canteenId = selectedCanteenId;
+            const res = await api.get('/api/orders/stats/today', { params });
+            setTodayStats({
+                total: res.data.focusCards?.total ?? res.data.total,
+                checkedIn: res.data.focusCards?.pickedUp ?? res.data.pickedUp,
+                pending: res.data.focusCards?.pending ?? res.data.pending,
+                noShow: res.data.focusCards?.noShow ?? (res.data.noShow || 0),
+                cancelled: res.data.focusCards?.cancelled ?? (res.data.cancelled || 0),
+            });
+            setFocusInfo(res.data.focus ?? null);
         } catch (error) {
             console.error('Failed to load stats:', error);
         }
-    }, []);
+    }, [selectedCanteenId]);
 
     useEffect(() => { loadStats(); }, [loadStats]);
     useSSERefresh(ORDER_EVENTS, loadStats);
@@ -575,6 +598,18 @@ export default function CheckInPage() {
                     </p>
                 )}
             </div>
+
+            {/* Q9a: one small line telling the operator which shift the cards describe. */}
+            <p className="text-sm text-white/60">
+                {focusInfo?.scope === 'break' && focusInfo.breakStart && focusInfo.breakEnd ? (
+                    <>Istirahat {focusInfo.breakStart}–{focusInfo.breakEnd} · <span className="text-primary-400 font-medium">{focusInfo.shiftNames.join(', ')}</span></>
+                ) : focusInfo?.nextBreak ? (
+                    <>Semua Shift · Sepanjang Hari · Istirahat berikutnya {focusInfo.nextBreak.breakStart} ({focusInfo.nextBreak.shiftNames.join(', ')})</>
+                ) : (
+                    <>Semua Shift · Sepanjang Hari</>
+                )}
+                {!selectedCanteenId && <span className="text-white/30"> · Semua Kantin</span>}
+            </p>
 
             <div className="grid grid-cols-5 gap-4">
                 <div className="stat-card text-center">
