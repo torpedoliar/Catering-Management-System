@@ -72,3 +72,5 @@ tree_output.txt
 
 # Generated knowledge graph (graphify output)
 graphify-out/
+# Impeccable design hook session cache
+**/.impeccable/hook.cache.json

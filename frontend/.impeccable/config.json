@@ -1,0 +1,26 @@
+{
+  "detector": {
+    "ignoreRules": [],
+    "ignoreFiles": [],
+    "ignoreValues": [
+      {
+        "rule": "gray-on-color",
+        "value": "*",
+        "files": [
+          "src/pages/KioskPage.tsx"
+        ],
+        "createdAt": "2026-11-23T15:54:57.753Z",
+        "reason": "false positive: text-slate-900 (#0f172a) on bg-emerald-400 (#34d399) is ~10:1 contrast; heuristic matched the color name 'slate', not actual luminance"
+      },
+      {
+        "rule": "gradient-text",
+        "value": "*",
+        "files": [
+          "src/index.css"
+        ],
+        "createdAt": "2026-11-23T16:04:57.125Z",
+        "reason": "pre-existing project design system (.text-gradient token from the Warm Luxury redesign), not touched by this change; flagged only because a nearby rule was deleted"
+      }
+    ]
+  }
+}
