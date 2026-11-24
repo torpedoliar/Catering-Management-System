@@ -6,6 +6,7 @@ import { useSSE, useSSERefresh, ORDER_EVENTS } from '../../contexts/SSEContext';
 import { ScanLine, Search, CheckCircle2, AlertCircle, Loader2, Wifi, X, User as UserIcon, Clock, Zap, Calendar, Camera, MapPin } from 'lucide-react';
 import toast from 'react-hot-toast';
 import Webcam from 'react-webcam';
+import { formatTimeWIB } from '../../utils/timezone';
 import { Html5Qrcode } from 'html5-qrcode';
 
 interface CheckInResult {
@@ -37,19 +38,26 @@ interface CheckInResultPopupProps {
 
 function CheckInResultPopup({ show, data, onClose }: CheckInResultPopupProps) {
     const [countdown, setCountdown] = useState(5);
+    // The page re-renders every second (live clock) and passes a fresh arrow
+    // for onClose; keeping it in a ref stops that from restarting the timer.
+    const onCloseRef = useRef(onClose);
+    onCloseRef.current = onClose;
 
-    useEffect(() => {
-        if (show && countdown > 0) {
-            const timer = setTimeout(() => setCountdown(countdown - 1), 1000);
-            return () => clearTimeout(timer);
-        } else if (countdown === 0) {
-            onClose();
-        }
-    }, [show, countdown, onClose]);
-
+    // A new result gets the full countdown, even when the popup is already
+    // open from the previous scan (rapid queue).
     useEffect(() => {
         if (show) setCountdown(5);
-    }, [show]);
+    }, [show, data]);
+
+    useEffect(() => {
+        if (!show) return;
+        if (countdown <= 0) {
+            onCloseRef.current();
+            return;
+        }
+        const timer = setTimeout(() => setCountdown((c) => c - 1), 1000);
+        return () => clearTimeout(timer);
+    }, [show, countdown]);
 
     if (!show || !data || !data.order) return null;
 
@@ -61,16 +69,7 @@ function CheckInResultPopup({ show, data, onClose }: CheckInResultPopupProps) {
         ? (data.checkInTime || data.order.checkInTime || new Date())
         : (data.order.checkInTime || data.checkInTime);
 
-    let formattedTime = '-';
-    if (displayTime) {
-        const dateObj = new Date(displayTime);
-        formattedTime = dateObj.toLocaleString('en-US', {
-            hour: 'numeric',
-            minute: 'numeric',
-            hour12: true,
-            timeZone: 'Asia/Jakarta'
-        });
-    }
+    const formattedTime = formatTimeWIB(displayTime);
 
     if (isSuccess) {
         // --- GREEN POPUP (SUCCESS) ---
@@ -80,7 +79,7 @@ function CheckInResultPopup({ show, data, onClose }: CheckInResultPopupProps) {
                     {/* Header Background */}
                     <div className="h-32 bg-[#4CAF50] flex items-center justify-center relative overflow-hidden">
                         <div className="absolute inset-0 bg-white/10" />
-                        <div className="w-20 h-20 bg-white rounded-full flex items-center justify-center shadow-lg relative z-10 animate-bounce-subtle">
+                        <div className="w-20 h-20 bg-white rounded-full flex items-center justify-center shadow-lg relative z-10">
                             <CheckCircle2 className="w-12 h-12 text-[#4CAF50]" strokeWidth={3} />
                         </div>
                     </div>
@@ -184,7 +183,9 @@ export default function CheckInPage() {
     const [successData, setSuccessData] = useState<CheckInResult | null>(null);
     const [lastError, setLastError] = useState<string | null>(null);
     const [todayStats, setTodayStats] = useState({ total: 0, checkedIn: 0, pending: 0, noShow: 0, cancelled: 0 });
-    const [lastCheckInTime, setLastCheckInTime] = useState<number>(0);
+    // Camera decoders and double-Enter can fire the same code twice; remember
+    // the last one so the second call can be ignored.
+    const lastScanRef = useRef({ code: '', at: 0 });
     const [currentTime, setCurrentTime] = useState(new Date());
     const inputRef = useRef<HTMLInputElement>(null);
     const webcamRef = useRef<Webcam>(null);
@@ -325,6 +326,10 @@ export default function CheckInPage() {
     }, [enforceCanteenCheckin, selectedCanteenId]);
 
     const closeQRScanner = useCallback(async () => {
+        // Hide the modal immediately: it sits after the result popup in the DOM
+        // and would otherwise cover the success/duplicate popup until stop()
+        // resolves, which takes long enough that the popup can time out unseen.
+        setShowQRScanner(false);
         if (qrScannerRef.current) {
             try {
                 await qrScannerRef.current.stop();
@@ -334,7 +339,6 @@ export default function CheckInPage() {
             }
             qrScannerRef.current = null;
         }
-        setShowQRScanner(false);
     }, []);
 
     const handleCheckIn = async (method: 'manual' | 'qr', qrCodeData?: string) => {
@@ -417,16 +421,15 @@ export default function CheckInPage() {
             };
 
             const now = Date.now();
-            const isRapidCheckIn = now - lastCheckInTime < 5000;
+            const isDuplicateScan =
+                codeToUse === lastScanRef.current.code && now - lastScanRef.current.at < 3000;
 
-            if (isRapidCheckIn) {
-                toast.success(`${result.order?.user.name} - ${result.order?.shift.name}`, { duration: 2000, icon: '✅' });
-            } else {
+            if (!isDuplicateScan) {
+                lastScanRef.current = { code: codeToUse, at: now };
                 setSuccessData(result);
                 setShowSuccessPopup(true);
             }
 
-            setLastCheckInTime(now);
             setCapturedPhoto(null);
             setPendingOrder(null);
             loadStats();
