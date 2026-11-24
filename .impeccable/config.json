@@ -1,0 +1,32 @@
+{
+  "detector": {
+    "ignoreRules": [],
+    "ignoreFiles": [],
+    "ignoreValues": [
+      {
+        "rule": "overused-font",
+        "value": "plus jakarta sans",
+        "createdAt": "2026-11-24T09:09:42.911Z",
+        "reason": "pre-existing project design system font, declared in tailwind.config.js fontFamily.sans and used since the Warm Luxury redesign; not introduced by this change"
+      },
+      {
+        "rule": "side-tab",
+        "value": "*",
+        "files": [
+          "frontend/src/index.css"
+        ],
+        "createdAt": "2026-11-24T09:09:49.600Z",
+        "reason": "false positive: .stat-card::after is a 3px top gradient accent that fades in on hover, not a side border; pre-existing stat-card design used by MessagesPage"
+      },
+      {
+        "rule": "gradient-text",
+        "value": "*",
+        "files": [
+          "frontend/src/index.css"
+        ],
+        "createdAt": "2026-11-24T09:09:52.373Z",
+        "reason": "pre-existing project design system (.text-gradient token from the Warm Luxury redesign); this file is not touched by the check-in work"
+      }
+    ]
+  }
+}
