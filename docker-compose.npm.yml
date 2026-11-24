@@ -1,5 +1,3 @@
-version: '3.8'
-
 # ============================================
 # Docker Compose untuk Nginx Proxy Manager
 # Tidak include nginx bawaan - gunakan NPM external
