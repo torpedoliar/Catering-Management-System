@@ -1,0 +1,41 @@
+{
+  "detector": {
+    "ignoreRules": [],
+    "ignoreFiles": [],
+    "ignoreValues": [
+      {
+        "rule": "gray-on-color",
+        "value": "*",
+        "files": [
+          "src/pages/KioskPage.tsx"
+        ],
+        "createdAt": "2026-11-24T09:28:27.515Z",
+        "reason": "false positive: text-slate-900 (#0f172a) on bg-emerald-400 (#34d399) is ~10:1 contrast; heuristic matched the color name 'slate', not actual luminance"
+      },
+      {
+        "rule": "overused-font",
+        "value": "plus jakarta sans",
+        "createdAt": "2026-11-24T09:28:27.927Z",
+        "reason": "pre-existing project design system font, declared in tailwind.config.js fontFamily.sans and used since the Warm Luxury redesign; not introduced by this change"
+      },
+      {
+        "rule": "gradient-text",
+        "value": "*",
+        "files": [
+          "src/index.css"
+        ],
+        "createdAt": "2026-11-24T09:28:28.385Z",
+        "reason": "pre-existing .text-gradient token from the Warm Luxury redesign; this edit only removed dead .progress-* rules"
+      },
+      {
+        "rule": "side-tab",
+        "value": "*",
+        "files": [
+          "src/index.css"
+        ],
+        "createdAt": "2026-11-24T09:28:29.017Z",
+        "reason": "false positive: .stat-card::after is a 3px top gradient accent that fades in on hover, not a side border"
+      }
+    ]
+  }
+}

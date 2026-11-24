@@ -77,20 +77,20 @@ function CheckInResultPopup({ show, data, onClose }: CheckInResultPopupProps) {
         // --- GREEN POPUP (SUCCESS) ---
         return (
             <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm animate-fade-in">
-                <div className="bg-white rounded-3xl overflow-hidden w-full max-w-sm shadow-2xl animate-scale-in relative">
+                <div className="bg-white rounded-3xl overflow-x-hidden overflow-y-auto w-full max-w-2xl max-h-[calc(100vh-2rem)] shadow-2xl animate-scale-in relative">
                     {/* Header Background */}
-                    <div className="h-32 bg-[#4CAF50] flex items-center justify-center relative overflow-hidden">
+                    <div className="h-40 bg-[#4CAF50] flex items-center justify-center relative overflow-hidden">
                         <div className="absolute inset-0 bg-white/10" />
-                        <div className="w-20 h-20 bg-white rounded-full flex items-center justify-center shadow-lg relative z-10">
-                            <CheckCircle2 className="w-12 h-12 text-[#4CAF50]" strokeWidth={3} />
+                        <div className="w-28 h-28 bg-white rounded-full flex items-center justify-center shadow-lg relative z-10">
+                            <CheckCircle2 className="w-16 h-16 text-[#4CAF50]" strokeWidth={3} />
                         </div>
                     </div>
 
-                    <div className="px-6 pt-12 pb-6 text-center -mt-10 relative z-10">
-                        <h2 className="text-2xl font-bold text-gray-800 mb-1">Successful Pickup</h2>
+                    <div className="px-10 pt-16 pb-8 text-center -mt-14 relative z-10">
+                        <h2 className="text-3xl font-bold text-gray-800 mb-1">Successful Pickup</h2>
 
-                        <div className="mt-4 flex flex-col items-center">
-                            <div className="w-24 h-24 rounded-full overflow-hidden border-4 border-white shadow-md mb-3">
+                        <div className="mt-6 flex flex-col items-center">
+                            <div className="w-40 h-40 rounded-full overflow-hidden border-4 border-white shadow-md mb-4">
                                 {data.order.user.photo ? (
                                     <img
                                         src={`${(import.meta as any).env?.VITE_API_URL || ''}${data.order.user.photo}`}
@@ -99,31 +99,34 @@ function CheckInResultPopup({ show, data, onClose }: CheckInResultPopupProps) {
                                     />
                                 ) : (
                                     <div className="w-full h-full bg-gray-200 flex items-center justify-center">
-                                        <UserIcon className="w-10 h-10 text-gray-400" />
+                                        <UserIcon className="w-16 h-16 text-gray-400" />
                                     </div>
                                 )}
                             </div>
-                            <h3 className="text-xl font-bold text-gray-800">{data.order.user.name}</h3>
+                            <h3 className="text-4xl font-black text-gray-800 leading-tight">{data.order.user.name}</h3>
+                            {data.order.user.externalId && (
+                                <p className="text-lg font-mono text-gray-500 mt-1">{data.order.user.externalId}</p>
+                            )}
                         </div>
 
-                        <div className="mt-6 space-y-4 text-left">
-                            <div className="flex justify-between border-b border-gray-100 pb-2">
-                                <span className="text-gray-500 text-sm">Canteen Location:</span>
-                                <span className="font-semibold text-gray-800">{data.order.canteen?.name || 'N/A'}</span>
+                        <div className="mt-8 space-y-5 text-left">
+                            <div className="flex items-baseline justify-between border-b border-gray-100 pb-3">
+                                <span className="text-gray-500 text-base">Canteen Location:</span>
+                                <span className="font-bold text-gray-800 text-xl">{data.order.canteen?.name || 'N/A'}</span>
                             </div>
-                            <div className="flex justify-between border-b border-gray-100 pb-2">
-                                <span className="text-gray-500 text-sm">Time Picked Up:</span>
-                                <span className="font-semibold text-gray-800">{formattedTime}</span>
+                            <div className="flex items-baseline justify-between border-b border-gray-100 pb-3">
+                                <span className="text-gray-500 text-base">Time Picked Up:</span>
+                                <span className="font-bold text-gray-800 text-xl">{formattedTime}</span>
                             </div>
-                            <div className="flex justify-between border-b border-gray-100 pb-2">
-                                <span className="text-gray-500 text-sm">Canteen Staff:</span>
-                                <span className="font-semibold text-gray-800">{data.checkInBy || 'System'}</span>
+                            <div className="flex items-baseline justify-between border-b border-gray-100 pb-3">
+                                <span className="text-gray-500 text-base">Canteen Staff:</span>
+                                <span className="font-bold text-gray-800 text-xl">{data.checkInBy || 'System'}</span>
                             </div>
                         </div>
 
                         <button
                             onClick={onClose}
-                            className="w-full mt-8 bg-[#4CAF50] hover:bg-[#43A047] text-white font-bold py-3 px-4 rounded-xl transition-colors shadow-lg shadow-green-500/30"
+                            className="w-full mt-8 bg-[#4CAF50] hover:bg-[#43A047] text-white font-bold text-lg py-4 px-4 rounded-xl transition-colors shadow-lg shadow-green-500/30"
                         >
                             Close
                         </button>
@@ -135,38 +138,39 @@ function CheckInResultPopup({ show, data, onClose }: CheckInResultPopupProps) {
         // --- RED POPUP (DUPLICATE ERROR) ---
         return (
             <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm animate-fade-in">
-                <div className="bg-white rounded-3xl overflow-hidden w-full max-w-sm shadow-2xl animate-shake relative">
+                <div className="bg-white rounded-3xl overflow-x-hidden overflow-y-auto w-full max-w-2xl max-h-[calc(100vh-2rem)] shadow-2xl animate-shake relative">
                     {/* Header Background */}
-                    <div className="bg-red-50 p-6 flex flex-col items-center justify-center border-b border-red-100">
-                        <div className="w-16 h-16 bg-white rounded-full flex items-center justify-center shadow-md mb-3 border-2 border-red-100">
-                            <X className="w-8 h-8 text-[#F44336]" strokeWidth={3} />
+                    <div className="bg-red-50 p-8 flex flex-col items-center justify-center border-b border-red-100">
+                        <div className="w-24 h-24 bg-white rounded-full flex items-center justify-center shadow-md mb-4 border-2 border-red-100">
+                            <X className="w-12 h-12 text-[#F44336]" strokeWidth={3} />
                         </div>
-                        <h2 className="text-xl font-bold text-[#D32F2F]">Duplicate Pickup Detected</h2>
+                        <h2 className="text-3xl font-bold text-[#D32F2F]">Duplicate Pickup Detected</h2>
+                        <p className="text-base text-red-400 mt-1">Pesanan ini sudah diambil sebelumnya</p>
                     </div>
 
-                    <div className="p-6">
-                        <div className="space-y-3 text-sm">
-                            <div className="flex justify-between">
+                    <div className="p-8">
+                        <div className="space-y-5 text-base">
+                            <div className="flex items-baseline justify-between">
                                 <span className="text-gray-500">Employee Name:</span>
-                                <span className="font-semibold text-gray-800 text-right">{data.order.user.name}</span>
+                                <span className="font-bold text-gray-800 text-2xl text-right">{data.order.user.name}</span>
                             </div>
-                            <div className="flex justify-between">
+                            <div className="flex items-baseline justify-between">
                                 <span className="text-gray-500">Canteen Location:</span>
-                                <span className="font-semibold text-gray-800 text-right">{data.order.canteen?.name || 'N/A'}</span>
+                                <span className="font-bold text-gray-800 text-xl text-right">{data.order.canteen?.name || 'N/A'}</span>
                             </div>
-                            <div className="flex justify-between">
+                            <div className="flex items-baseline justify-between">
                                 <span className="text-gray-500">Time Picked Up:</span>
-                                <span className="font-semibold text-gray-800 text-right">{formattedTime}</span>
+                                <span className="font-bold text-gray-800 text-xl text-right">{formattedTime}</span>
                             </div>
-                            <div className="bg-red-50 p-3 rounded-xl border border-red-100 mt-2">
-                                <span className="text-gray-500 block text-xs mb-1">First Check-in by:</span>
-                                <span className="font-bold text-gray-800 block text-lg">{data.checkInBy || 'System'}</span>
+                            <div className="bg-red-50 p-5 rounded-xl border border-red-100 mt-3">
+                                <span className="text-gray-500 block text-sm mb-1">First Check-in by:</span>
+                                <span className="font-black text-gray-800 block text-3xl">{data.checkInBy || 'System'}</span>
                             </div>
                         </div>
 
                         <button
                             onClick={onClose}
-                            className="w-full mt-6 bg-[#F44336] hover:bg-[#D32F2F] text-white font-bold py-3 px-4 rounded-xl transition-colors shadow-lg shadow-red-500/30"
+                            className="w-full mt-8 bg-[#F44336] hover:bg-[#D32F2F] text-white font-bold text-lg py-4 px-4 rounded-xl transition-colors shadow-lg shadow-red-500/30"
                         >
                             Close
                         </button>
