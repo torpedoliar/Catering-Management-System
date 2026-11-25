@@ -24,7 +24,7 @@ import {
     getCachedSettings,
 } from './shared';
 import { cacheService, CACHE_KEYS, CACHE_TTL } from '../../services/cache.service';
-import { isOvernightShift, resolveBreakTimeForDay, calculateBreakWindow } from '../../utils/shift-utils';
+import { isOvernightShift, resolveBreakTimeForDay, calculateBreakWindow, parseShiftTime } from '../../utils/shift-utils';
 
 const router = Router();
 
@@ -953,11 +953,19 @@ router.get('/stats/today', authMiddleware, canteenMiddleware, async (req: AuthRe
         interface FocusShift {
             id: string;
             name: string;
+            orderDate: Date;
             breakStart: Date;
             breakEnd: Date;
         }
 
+        const shiftStartOn = (date: Date, time: string) => {
+            const start = new Date(date);
+            const { hours, minutes } = parseShiftTime(time);
+            start.setUTCHours(hours, minutes, 0, 0);
+            return start;
+        };
         const toFocusShifts: FocusShift[] = [];
+        let nextBoundary = tomorrow.getTime();
         for (const shift of shifts) {
             if (!shift.isActive) continue;
             // Q8a: a shift without a break never becomes the focus.
@@ -984,7 +992,7 @@ router.get('/stats/today', authMiddleware, canteenMiddleware, async (req: AuthRe
             const candidates: Date[] = isOvernight ? [yesterday, today] : [today];
 
             for (const orderDate of candidates) {
-                const resolved = resolveBreakTimeForDay(withBreaks, now);
+                const resolved = resolveBreakTimeForDay(withBreaks, isOvernight ? now : orderDate);
                 if (!resolved.breakStartTime || !resolved.breakEndTime) continue;
 
                 const probe = {
@@ -994,13 +1002,17 @@ router.get('/stats/today', authMiddleware, canteenMiddleware, async (req: AuthRe
                 };
                 const dayStart = new Date(orderDate);
                 dayStart.setHours(0, 0, 0, 0);
-                const window = calculateBreakWindow(dayStart, probe, dayStart, dayStart);
+                const window = calculateBreakWindow(dayStart, probe, shiftStartOn(dayStart, shift.startTime), dayStart);
                 if (!window) continue;
 
                 // Q7a: visible from 1 hour before the break until it ends.
                 const startWindow = new Date(window.breakStart.getTime() - 60 * 60000);
+                for (const edge of [startWindow.getTime(), window.breakStart.getTime(), window.breakEnd.getTime() + 1]) {
+                    if (edge > now.getTime()) nextBoundary = Math.min(nextBoundary, edge);
+                }
                 if (now >= startWindow && now <= window.breakEnd) {
                     toFocusShifts.push({
+                        orderDate,
                         id: shift.id,
                         name: shift.name,
                         breakStart: window.breakStart,
@@ -1030,30 +1042,17 @@ router.get('/stats/today', authMiddleware, canteenMiddleware, async (req: AuthRe
             breakStart?: string;
             breakEnd?: string;
             nextBreak?: { breakStart: string; shiftNames: string[] };
+            nextRefreshAt?: string;
+            upcoming?: boolean;
         };
 
         const hhmm = (d: Date) => d.toISOString().slice(11, 16);
 
         if (toFocusShifts.length > 0) {
-            const focusShiftIds = new Set(toFocusShifts.map(s => s.id));
-            // Overnight shifts in focus pull yesterday's orders; day shifts pull today's.
-            const focusOvernightIds = new Set(
-                toFocusShifts
-                    .filter(s => {
-                        const sh = shifts.find(x => x.id === s.id)!;
-                        return isOvernightShift(sh.startTime, sh.endTime);
-                    })
-                    .map(s => s.id)
-            );
-            const focusOrders = [...todayOrdersAll, ...yesterdayOrdersAll].filter(o => {
-                if (!focusShiftIds.has(o.shiftId)) return false;
-                // Q4a: respect the operator's counter when one is chosen.
-                if (canteenIdFilter && o.canteenId !== canteenIdFilter) return false;
-                if (focusOvernightIds.has(o.shiftId)) {
-                    return o.orderDate >= yesterday && o.orderDate < today;
-                }
-                return o.orderDate >= today && o.orderDate < tomorrow;
-            });
+            const focusKeys = new Set(toFocusShifts.map(s => `${s.id}:${s.orderDate.toISOString().slice(0, 10)}`));
+            const focusOrders = [...todayOrdersAll, ...yesterdayOrdersAll].filter(o =>
+                (!canteenIdFilter || o.canteenId === canteenIdFilter)
+                && focusKeys.has(`${o.shiftId}:${o.orderDate.toISOString().slice(0, 10)}`));
 
             focusCards = {
                 scope: 'break',
@@ -1071,6 +1070,7 @@ router.get('/stats/today', authMiddleware, canteenMiddleware, async (req: AuthRe
                 shiftNames: focusCards.shiftNames,
                 breakStart: focusCards.breakStart,
                 breakEnd: focusCards.breakEnd,
+                upcoming: toFocusShifts.every(shift => shift.breakStart > now),
             };
         } else {
             // Q2a/Q13a: outside any break window, fall back to all-day numbers
@@ -1079,7 +1079,7 @@ router.get('/stats/today', authMiddleware, canteenMiddleware, async (req: AuthRe
                 if (o.orderDate >= today && o.orderDate < tomorrow) return true;
                 // Overnight orders from yesterday whose shift is still running
                 const sh = shifts.find(x => x.id === o.shiftId);
-                return !!sh && isOvernightShift(sh.startTime, sh.endTime) && o.orderDate >= yesterday && o.orderDate < today;
+                return !!sh && isOvernightShift(sh.startTime, sh.endTime) && o.orderDate >= yesterday && o.orderDate < today && now <= shiftStartOn(today, sh.endTime);
             }).filter(o => !canteenIdFilter || o.canteenId === canteenIdFilter);
 
             let nextBreak: { breakStart: string; shiftNames: string[] } | undefined;
@@ -1106,7 +1106,7 @@ router.get('/stats/today', authMiddleware, canteenMiddleware, async (req: AuthRe
                 for (const orderDate of candidates) {
                     const dayStart = new Date(orderDate);
                     dayStart.setHours(0, 0, 0, 0);
-                    const window = calculateBreakWindow(dayStart, { ...probe, breakStartTime: resolved.breakStartTime, breakEndTime: resolved.breakEndTime }, dayStart, dayStart);
+                    const window = calculateBreakWindow(dayStart, { ...probe, breakStartTime: resolved.breakStartTime, breakEndTime: resolved.breakEndTime }, shiftStartOn(dayStart, shift.startTime), dayStart);
                     if (!window) continue;
                     if (window.breakStart.getTime() > now.getTime() && window.breakStart.getTime() < nextAt) {
                         nextAt = window.breakStart.getTime();
@@ -1130,6 +1130,7 @@ router.get('/stats/today', authMiddleware, canteenMiddleware, async (req: AuthRe
                 nextBreak,
             };
         }
+        focusInfo.nextRefreshAt = new Date(Date.now() + Math.max(200, nextBoundary - now.getTime() + 100)).toISOString();
         // ============ /break-focused cards ============
 
         // Build response object

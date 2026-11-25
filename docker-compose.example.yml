@@ -41,6 +41,7 @@ services:
       - ./backend/src:/app/src
       - ./backend/prisma:/app/prisma
       - ./backend/uploads:/app/uploads
+      - ./backend/private-checkin-photos:/app/private-checkin-photos
       - /app/node_modules
     depends_on:
       db:

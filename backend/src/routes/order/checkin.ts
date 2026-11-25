@@ -24,13 +24,43 @@ import {
     ErrorMessages,
     upload,
     checkinUploadDir,
-    sharp,
-    path,
     isOvernightShift,
     validateCheckinTimeWindow,
 } from './shared';
 
+import { savePickupPhoto } from './checkin.photo';
+import { resolveCheckinIdentity } from './checkin.identity';
+
 const router = Router();
+const pickupInclude = {
+    user: { select: { id: true, name: true, externalId: true, company: true, division: true, department: true, photo: true } },
+    shift: { include: { dayBreaks: true } },
+    canteen: { select: { id: true, name: true, location: true } },
+} as const;
+
+async function respondToPickupConflict(res: Response, id: string) {
+    const order = await prisma.order.findUnique({ where: { id }, include: pickupInclude });
+    if (order?.status !== 'PICKED_UP') return res.status(409).json({ error: 'Status pesanan berubah. Periksa pesanan sebelum mencoba lagi.' });
+    return res.status(409).json({ code: 'ALREADY_PICKED_UP', error: 'Pesanan sudah di-check in sebelumnya', order, checkedInBy: order.checkedInBy, checkInTime: order.checkInTime });
+}
+
+const candidateSelect = { id: true, externalId: true, name: true, department: true } as const;
+const toCandidate = ({ id, ...user }: { id: string; externalId: string; name: string; department: string | null }) => ({ userId: id, ...user });
+
+router.get('/checkin/lookup', authMiddleware, canteenMiddleware, async (req, res) => {
+    const query = typeof req.query.query === 'string' ? req.query.query.trim() : '';
+    if (!query || query.length > 100) return res.status(400).json({ error: 'Kode atau nama tidak valid' });
+    try {
+        const result = await resolveCheckinIdentity(
+            async () => (await prisma.user.findMany({ where: { OR: [{ externalId: query }, ...(/^\d+$/.test(query) ? [{ nik: query }] : [])] }, select: candidateSelect })).map(toCandidate),
+            async () => (await prisma.user.findMany({ where: { name: { contains: query, mode: 'insensitive' } }, select: candidateSelect, orderBy: [{ name: 'asc' }, { externalId: 'asc' }], take: 10 })).map(toCandidate),
+        );
+        res.json(result);
+    } catch (error) {
+        console.error('Check-in lookup error:', error);
+        res.status(500).json({ error: ErrorMessages.SERVER_ERROR });
+    }
+});
 
 // Get QR code for an order
 router.get('/:id/qrcode', authMiddleware, async (req: AuthRequest, res: Response) => {
@@ -95,6 +125,7 @@ router.post('/checkin/qr', authMiddleware, canteenMiddleware, upload.single('pho
 
         if (order.status === 'PICKED_UP') {
             return res.status(400).json({
+                code: 'ALREADY_PICKED_UP',
                 error: 'Pesanan sudah di-check in sebelumnya',
                 order,
                 checkedInBy: order.checkedInBy || 'System',
@@ -132,19 +163,7 @@ router.post('/checkin/qr', authMiddleware, canteenMiddleware, upload.single('pho
             });
         }
 
-        // Process photo if uploaded (before DB write to have photoUrl ready)
-        let photoUrl = undefined;
-        if (req.file) {
-            const filename = `checkin-${order.id}-${Date.now()}.webp`;
-            const filepath = path.join(checkinUploadDir, filename);
-
-            await sharp(req.file.buffer)
-                .resize(400, 400, { fit: 'cover' })
-                .webp({ quality: 80 })
-                .toFile(filepath);
-
-            photoUrl = `/uploads/checkins/${filename}`;
-        }
+        const photo = await savePickupPhoto(req.file?.buffer, settings?.checkinPhotoEnabled === true, checkinUploadDir);
 
         // [FIX 1] Single atomic write — updateMany ensures race condition safety
         const checkInTime = getNowUTC();
@@ -158,18 +177,13 @@ router.post('/checkin/qr', authMiddleware, canteenMiddleware, upload.single('pho
                 checkInTime,
                 checkedInById: checkedInByUser?.id || null,
                 checkedInBy: checkedInByUser?.name || 'System',
-                ...(photoUrl && { checkinPhoto: photoUrl }),
+                ...(photo.reference && { checkinPhoto: photo.reference }),
             },
         });
 
         if (updateResult.count === 0) {
-            // Race condition: another operator checked in this order between read and write
-            return res.status(400).json({
-                error: 'Pesanan sudah di-check in sebelumnya',
-                order,
-                checkedInBy: order.checkedInBy || 'System',
-                checkInTime: order.checkInTime,
-            });
+            await photo.cleanup?.();
+            return await respondToPickupConflict(res, order.id);
         }
 
         // Fetch updated order with fresh data for response (ensures correct types for Decimal, DateTime, etc.)
@@ -199,6 +213,7 @@ router.post('/checkin/qr', authMiddleware, canteenMiddleware, upload.single('pho
 
         res.json({
             message: 'Check-in berhasil',
+            photoStatus: photo.status,
             order: updatedOrder,
             checkInTime: updatedOrder.checkInTime,
             checkInBy: req.user?.externalId || 'Admin'
@@ -211,24 +226,23 @@ router.post('/checkin/qr', authMiddleware, canteenMiddleware, upload.single('pho
 
 // Check-in by user ID or name (Canteen/Admin)
 // P0 Optimized: Parallel queries, cached settings, atomic write, async audit
-router.post('/checkin/manual', authMiddleware, canteenMiddleware, async (req: AuthRequest, res: Response) => {
+router.post('/checkin/manual', authMiddleware, canteenMiddleware, upload.single('photo'), async (req: AuthRequest, res: Response) => {
     const context = getRequestContext(req);
 
     try {
-        const { externalId, name, nik, operatorCanteenId } = req.body;
-
-        if (!externalId && !name && !nik) {
-            return res.status(400).json({ error: ErrorMessages.MISSING_REQUIRED_FIELDS });
+        const { userId, externalId, name, nik, operatorCanteenId } = req.body;
+        if (name !== undefined || [userId, externalId, nik].some(value => value !== undefined && (typeof value !== 'string' || !value.trim() || value.length > 100))) {
+            return res.status(400).json({ error: 'Pilih karyawan dari hasil pencarian atau gunakan ID/NIK yang valid' });
         }
+        if (!userId && !externalId && !nik) return res.status(400).json({ error: ErrorMessages.MISSING_REQUIRED_FIELDS });
 
-        const orConditions: any[] = [];
-        if (externalId) orConditions.push({ externalId });
-        if (nik) orConditions.push({ nik });
-        if (name) orConditions.push({ name: { contains: name, mode: 'insensitive' } });
-
-        const user = await prisma.user.findFirst({
-            where: { OR: orConditions }
+        const users = await prisma.user.findMany({
+            where: userId ? { id: userId } : { OR: [...(externalId ? [{ externalId }] : []), ...(nik ? [{ nik }] : [])] },
+            select: candidateSelect,
+            take: 2,
         });
+        if (users.length > 1) return res.status(409).json({ error: 'Kode cocok dengan lebih dari satu karyawan. Pilih karyawan terlebih dahulu.' });
+        const [user] = users;
 
         if (!user) {
             return res.status(404).json({ error: ErrorMessages.USER_NOT_FOUND });
@@ -300,6 +314,7 @@ router.post('/checkin/manual', authMiddleware, canteenMiddleware, async (req: Au
 
             if (pickedUpOrder) {
                 return res.status(400).json({
+                    code: 'ALREADY_PICKED_UP',
                     error: 'Pesanan sudah di-check in sebelumnya',
                     order: pickedUpOrder,
                     checkedInBy: pickedUpOrder.checkedInBy || 'System',
@@ -346,6 +361,8 @@ router.post('/checkin/manual', authMiddleware, canteenMiddleware, async (req: Au
             });
         }
 
+        const photo = await savePickupPhoto(req.file?.buffer, settings?.checkinPhotoEnabled === true, checkinUploadDir);
+
         // [BUG FIX] Atomic updateMany to prevent race condition (double check-in)
         const checkInTime = getNowUTC();
         const updateResult = await prisma.order.updateMany({
@@ -358,17 +375,13 @@ router.post('/checkin/manual', authMiddleware, canteenMiddleware, async (req: Au
                 checkInTime,
                 checkedInById: checkedInByUser?.id || null,
                 checkedInBy: checkedInByUser?.name || 'System',
+                ...(photo.reference && { checkinPhoto: photo.reference }),
             },
         });
 
         if (updateResult.count === 0) {
-            // Race condition: another operator checked in between read and write
-            return res.status(400).json({
-                error: 'Pesanan sudah di-check in sebelumnya',
-                order,
-                checkedInBy: order.checkedInBy || 'System',
-                checkInTime: order.checkInTime,
-            });
+            await photo.cleanup?.();
+            return await respondToPickupConflict(res, order.id);
         }
 
         // Fetch updated order with full relations for response
@@ -398,6 +411,7 @@ router.post('/checkin/manual', authMiddleware, canteenMiddleware, async (req: Au
 
         res.json({
             message: 'Check-in berhasil',
+            photoStatus: photo.status,
             order: updatedOrder,
             checkInTime: updatedOrder.checkInTime,
             checkInBy: checkedInByUser?.name || 'Admin',

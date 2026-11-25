@@ -2,8 +2,8 @@ import { useState, useEffect, useCallback, useRef } from 'react';
 import { format } from 'date-fns';
 import { id as idLocale } from 'date-fns/locale';
 import { api } from '../../contexts/AuthContext';
-import { useSSE, useSSERefresh, ORDER_EVENTS } from '../../contexts/SSEContext';
-import { ScanLine, Search, CheckCircle2, AlertCircle, Loader2, Wifi, X, User as UserIcon, Clock, Zap, Calendar, Camera, MapPin } from 'lucide-react';
+import { useSSE, useSSERefresh, ORDER_EVENTS, SETTINGS_EVENTS } from '../../contexts/SSEContext';
+import { ScanLine, Search, CheckCircle2, AlertCircle, Loader2, X, Zap, MapPin } from 'lucide-react';
 import toast from 'react-hot-toast';
 import Webcam from 'react-webcam';
 import { formatTimeWIB } from '../../utils/timezone';
@@ -32,185 +32,20 @@ interface CheckInResult {
     checkInTime?: Date | string;
 }
 
-interface CheckInResultPopupProps {
-    show: boolean;
-    data: CheckInResult | null;
-    onClose: () => void;
-}
-
-function CheckInResultPopup({ show, data, onClose }: CheckInResultPopupProps) {
-    const [countdown, setCountdown] = useState(5);
-    // The page re-renders every second (live clock) and passes a fresh arrow
-    // for onClose; keeping it in a ref stops that from restarting the timer.
-    const onCloseRef = useRef(onClose);
-    onCloseRef.current = onClose;
-
-    // A new result gets the full countdown, even when the popup is already
-    // open from the previous scan (rapid queue).
-    useEffect(() => {
-        if (show) setCountdown(5);
-    }, [show, data]);
-
-    useEffect(() => {
-        if (!show) return;
-        if (countdown <= 0) {
-            onCloseRef.current();
-            return;
-        }
-        const timer = setTimeout(() => setCountdown((c) => c - 1), 1000);
-        return () => clearTimeout(timer);
-    }, [show, countdown]);
-
-    if (!show || !data || !data.order) return null;
-
-    const isSuccess = data.success;
-
-    // For successful check-in, use the current operation time
-    // For duplicate (error), use the ORIGINAL check-in time
-    const displayTime = isSuccess
-        ? (data.checkInTime || data.order.checkInTime || new Date())
-        : (data.order.checkInTime || data.checkInTime);
-
-    const formattedTime = formatTimeWIB(displayTime);
-
-    if (isSuccess) {
-        // --- GREEN POPUP (SUCCESS) ---
-        return (
-            <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm animate-fade-in">
-                <div className="bg-white rounded-3xl overflow-x-hidden overflow-y-auto w-full max-w-2xl max-h-[calc(100vh-2rem)] shadow-2xl animate-scale-in relative">
-                    {/* Header Background */}
-                    <div className="h-40 bg-[#4CAF50] flex items-center justify-center relative overflow-hidden">
-                        <div className="absolute inset-0 bg-white/10" />
-                        <div className="w-28 h-28 bg-white rounded-full flex items-center justify-center shadow-lg relative z-10">
-                            <CheckCircle2 className="w-16 h-16 text-[#4CAF50]" strokeWidth={3} />
-                        </div>
-                    </div>
-
-                    <div className="px-10 pt-16 pb-8 text-center -mt-14 relative z-10">
-                        <h2 className="text-3xl font-bold text-gray-800 mb-1">Successful Pickup</h2>
-
-                        <div className="mt-6 flex flex-col items-center">
-                            <div className="w-40 h-40 rounded-full overflow-hidden border-4 border-white shadow-md mb-4">
-                                {data.order.user.photo ? (
-                                    <img
-                                        src={`${(import.meta as any).env?.VITE_API_URL || ''}${data.order.user.photo}`}
-                                        alt={data.order.user.name}
-                                        className="w-full h-full object-cover"
-                                    />
-                                ) : (
-                                    <div className="w-full h-full bg-gray-200 flex items-center justify-center">
-                                        <UserIcon className="w-16 h-16 text-gray-400" />
-                                    </div>
-                                )}
-                            </div>
-                            <h3 className="text-4xl font-black text-gray-800 leading-tight">{data.order.user.name}</h3>
-                            {data.order.user.externalId && (
-                                <p className="text-lg font-mono text-gray-500 mt-1">{data.order.user.externalId}</p>
-                            )}
-                        </div>
-
-                        <div className="mt-8 space-y-5 text-left">
-                            <div className="flex items-baseline justify-between border-b border-gray-100 pb-3">
-                                <span className="text-gray-500 text-base">Canteen Location:</span>
-                                <span className="font-bold text-gray-800 text-xl">{data.order.canteen?.name || 'N/A'}</span>
-                            </div>
-                            <div className="flex items-baseline justify-between border-b border-gray-100 pb-3">
-                                <span className="text-gray-500 text-base">Time Picked Up:</span>
-                                <span className="font-bold text-gray-800 text-xl">{formattedTime}</span>
-                            </div>
-                            <div className="flex items-baseline justify-between border-b border-gray-100 pb-3">
-                                <span className="text-gray-500 text-base">Canteen Staff:</span>
-                                <span className="font-bold text-gray-800 text-xl">{data.checkInBy || 'System'}</span>
-                            </div>
-                        </div>
-
-                        <button
-                            onClick={onClose}
-                            className="w-full mt-8 bg-[#4CAF50] hover:bg-[#43A047] text-white font-bold text-lg py-4 px-4 rounded-xl transition-colors shadow-lg shadow-green-500/30"
-                        >
-                            Close
-                        </button>
-                    </div>
-                </div>
-            </div>
-        );
-    } else {
-        // --- RED POPUP (DUPLICATE ERROR) ---
-        return (
-            <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm animate-fade-in">
-                <div className="bg-white rounded-3xl overflow-x-hidden overflow-y-auto w-full max-w-2xl max-h-[calc(100vh-2rem)] shadow-2xl animate-shake relative">
-                    {/* Header Background */}
-                    <div className="bg-red-50 p-8 flex flex-col items-center justify-center border-b border-red-100">
-                        <div className="w-24 h-24 bg-white rounded-full flex items-center justify-center shadow-md mb-4 border-2 border-red-100">
-                            <X className="w-12 h-12 text-[#F44336]" strokeWidth={3} />
-                        </div>
-                        <h2 className="text-3xl font-bold text-[#D32F2F]">Duplicate Pickup Detected</h2>
-                        <p className="text-base text-red-400 mt-1">Pesanan ini sudah diambil sebelumnya</p>
-                    </div>
-
-                    <div className="p-8">
-                        <div className="space-y-5 text-base">
-                            <div className="flex items-baseline justify-between">
-                                <span className="text-gray-500">Employee Name:</span>
-                                <span className="font-bold text-gray-800 text-2xl text-right">{data.order.user.name}</span>
-                            </div>
-                            <div className="flex items-baseline justify-between">
-                                <span className="text-gray-500">Canteen Location:</span>
-                                <span className="font-bold text-gray-800 text-xl text-right">{data.order.canteen?.name || 'N/A'}</span>
-                            </div>
-                            <div className="flex items-baseline justify-between">
-                                <span className="text-gray-500">Time Picked Up:</span>
-                                <span className="font-bold text-gray-800 text-xl text-right">{formattedTime}</span>
-                            </div>
-                            <div className="bg-red-50 p-5 rounded-xl border border-red-100 mt-3">
-                                <span className="text-gray-500 block text-sm mb-1">First Check-in by:</span>
-                                <span className="font-black text-gray-800 block text-3xl">{data.checkInBy || 'System'}</span>
-                            </div>
-                        </div>
-
-                        <button
-                            onClick={onClose}
-                            className="w-full mt-8 bg-[#F44336] hover:bg-[#D32F2F] text-white font-bold text-lg py-4 px-4 rounded-xl transition-colors shadow-lg shadow-red-500/30"
-                        >
-                            Close
-                        </button>
-                    </div>
-                </div>
-            </div>
-        );
-    }
-}
-
 export default function CheckInPage() {
-    const { isConnected, connectedClients, subscribe } = useSSE();
+    const { isConnected, subscribe } = useSSE();
     const [searchInput, setSearchInput] = useState('');
     const [isProcessing, setIsProcessing] = useState(false);
-    const [showSuccessPopup, setShowSuccessPopup] = useState(false);
     const [successData, setSuccessData] = useState<CheckInResult | null>(null);
     const [lastError, setLastError] = useState<string | null>(null);
-    const [todayStats, setTodayStats] = useState({ total: 0, checkedIn: 0, pending: 0, noShow: 0, cancelled: 0 });
-    // Camera decoders and double-Enter can fire the same code twice; remember
-    // the last one so the second call can be ignored.
-    const lastScanRef = useRef({ code: '', at: 0 });
-    // Every operator at a counter must see who was just served, not only the
-    // device that scanned. The SSE broadcast and the HTTP response for the
-    // same check-in race each other, so remember which orders already got a
-    // popup on this device and let whichever arrives first win.
-    const shownOrderIdsRef = useRef<Set<string>>(new Set());
-    const markShown = (orderId: string): boolean => {
-        const seen = shownOrderIdsRef.current;
-        if (seen.has(orderId)) return false;
-        seen.add(orderId);
-        if (seen.size > 200) shownOrderIdsRef.current = new Set(Array.from(seen).slice(-100));
-        return true;
-    };
+    const [todayStats, setTodayStats] = useState<{ total: number; checkedIn: number; pending: number; noShow: number; cancelled: number } | null>(null);
+    const [statsError, setStatsError] = useState(false);
+    const statsRequest = useRef(0);
     const [currentTime, setCurrentTime] = useState(new Date());
     const inputRef = useRef<HTMLInputElement>(null);
     const webcamRef = useRef<Webcam>(null);
     const [photoEnabled, setPhotoEnabled] = useState(false);
     const [showCamera, setShowCamera] = useState(false);
-    const [capturedPhoto, setCapturedPhoto] = useState<string | null>(null);
-    const [pendingOrder, setPendingOrder] = useState<any>(null);
     // Canteen check-in enforcement
     const [enforceCanteenCheckin, setEnforceCanteenCheckin] = useState(false);
     // One login can be shared by several counters, so the chosen counter is
@@ -246,9 +81,12 @@ export default function CheckInPage() {
         breakStart?: string;
         breakEnd?: string;
         nextBreak?: { breakStart: string; shiftNames: string[] };
+        nextRefreshAt?: string;
+        upcoming?: boolean;
     } | null>(null);
 
     const loadStats = useCallback(async () => {
+        const request = ++statsRequest.current;
         try {
             const params: Record<string, string> = {};
             // Q10b: break boundaries must be seen immediately, skip the 60s cache.
@@ -256,6 +94,8 @@ export default function CheckInPage() {
             // Q4a: scope the numbers to this device's counter when chosen.
             if (selectedCanteenId) params.canteenId = selectedCanteenId;
             const res = await api.get('/api/orders/stats/today', { params });
+            if (request !== statsRequest.current) return;
+            setStatsError(false);
             setTodayStats({
                 total: res.data.focusCards?.total ?? res.data.total,
                 checkedIn: res.data.focusCards?.pickedUp ?? res.data.pickedUp,
@@ -265,38 +105,38 @@ export default function CheckInPage() {
             });
             setFocusInfo(res.data.focus ?? null);
         } catch (error) {
+            if (request === statsRequest.current) setStatsError(true);
             console.error('Failed to load stats:', error);
         }
     }, [selectedCanteenId]);
 
-    useEffect(() => { loadStats(); }, [loadStats]);
+    useEffect(() => {
+        setTodayStats(null);
+        setFocusInfo(null);
+        setStatsError(false);
+        void loadStats();
+        return () => { ++statsRequest.current; };
+    }, [loadStats]);
+    useEffect(() => {
+        if (isConnected) void loadStats();
+        const timer = setInterval(loadStats, 30000);
+        return () => clearInterval(timer);
+    }, [loadStats, isConnected]);
+    useEffect(() => {
+        const boundary = Date.parse(focusInfo?.nextRefreshAt || '');
+        if (!Number.isFinite(boundary) || boundary <= Date.now()) return;
+        const timeout = setTimeout(loadStats, boundary - Date.now());
+        return () => clearTimeout(timeout);
+    }, [focusInfo?.nextRefreshAt, loadStats]);
     useSSERefresh(ORDER_EVENTS, loadStats);
 
-    // Popup for check-ins done at another station. Owners of the scan get
-    // their popup from the HTTP response instead; this handler covers the
-    // other operators watching the same counter.
-    useEffect(() => {
-        return subscribe('order:checkin', (data: { order?: CheckInResult['order'] }) => {
-            const order = data?.order;
-            if (!order?.id) return;
-            // Each operator watches their own counter: ignore check-ins that
-            // belong to a different canteen. Orders without a canteen are
-            // shown everywhere so they never silently disappear.
-            if (selectedCanteenId && order.canteenId && order.canteenId !== selectedCanteenId) return;
-            if (!markShown(order.id)) return;
-            setSuccessData({
-                success: true,
-                message: 'Check-in Berhasil!',
-                order,
-                checkInBy: order.checkedInBy || 'Admin',
-                checkInTime: order.checkInTime,
-            });
-            setShowSuccessPopup(true);
-        });
-    }, [subscribe, selectedCanteenId]);
+    const [remotePickup, setRemotePickup] = useState<CheckInResult['order']>();
+    useEffect(() => subscribe('order:checkin', (data: { order?: CheckInResult['order'] }) => {
+        const order = data?.order;
+        if (order?.user && (!selectedCanteenId || !order.canteenId || order.canteenId === selectedCanteenId)) setRemotePickup(order);
+    }), [subscribe, selectedCanteenId]);
 
-    useEffect(() => {
-        const fetchSettings = async () => {
+    const fetchSettings = useCallback(async () => {
             try {
                 const [settingsRes, canteensRes] = await Promise.all([
                     api.get('/api/settings'),
@@ -308,9 +148,9 @@ export default function CheckInPage() {
             } catch (error) {
                 console.error('Failed to load settings:', error);
             }
-        };
-        fetchSettings();
     }, []);
+    useEffect(() => { void fetchSettings(); }, [fetchSettings]);
+    useSSERefresh(SETTINGS_EVENTS, fetchSettings);
 
     // Resolve the counter this device should watch:
     // 1. a counter this device already chose (shared login, several counters)
@@ -336,93 +176,107 @@ export default function CheckInPage() {
             .catch(() => { /* operator can still pick manually */ });
     }, [canteens, selectedCanteenId, setSelectedCanteenId]);
 
-    const togglePhotoSetting = async () => {
+    const pendingPhotoAction = useRef<((photo?: Blob, cancelled?: boolean) => void) | null>(null);
+    const photoAnswer = () => new Promise<Blob | null>(resolve => {
+        pendingPhotoAction.current = (blob, cancelled) => resolve(cancelled ? null : blob ?? new Blob());
+        setShowCamera(true);
+    });
+    const finishPhoto = (photo?: Blob, cancelled = false) => {
+        pendingPhotoAction.current?.(photo, cancelled);
+        pendingPhotoAction.current = null;
+        setShowCamera(false);
+    };
+    const capturePhoto = async () => {
+        const action = pendingPhotoAction.current;
+        const image = webcamRef.current?.getScreenshot();
+        if (!image) { toast.error('Kamera belum siap. Coba lagi atau lanjut tanpa foto.'); return; }
         try {
-            await api.put('/api/settings', { checkinPhotoEnabled: !photoEnabled });
-            setPhotoEnabled(!photoEnabled);
-            toast.success(`Foto check-in ${!photoEnabled ? 'diaktifkan' : 'dinonaktifkan'}`);
+            const blob = await (await fetch(image)).blob();
+            if (pendingPhotoAction.current === action) finishPhoto(blob);
+        }
+        catch { toast.error('Foto gagal dibaca. Coba lagi atau lanjut tanpa foto.'); }
+    };
+
+    const scannerSession = useRef(0);
+    const cameraBusy = useRef(false);
+    const closeQRScanner = useCallback(() => {
+        ++scannerSession.current;
+        setShowQRScanner(false);
+        requestAnimationFrame(() => inputRef.current?.focus());
+        const scanner = qrScannerRef.current;
+        if (!scanner || cameraBusy.current) return;
+        qrScannerRef.current = null;
+        cameraBusy.current = true;
+        void scanner.stop().catch(console.error).finally(() => {
+            cameraBusy.current = false;
+        });
+    }, []);
+    useEffect(() => () => {
+        ++scannerSession.current;
+        const scanner = qrScannerRef.current;
+        if (scanner?.isScanning && !cameraBusy.current) void scanner.stop().catch(console.error);
+        pendingPhotoAction.current?.(undefined, true);
+    }, []);
+
+    const openQRScanner = async () => {
+        if (enforceCanteenCheckin && !selectedCanteenId) { toast.error('Pilih kantin terlebih dahulu'); return; }
+        if (cameraBusy.current || qrScannerRef.current) { toast.error('Kamera belum siap. Coba lagi.'); return; }
+        const session = ++scannerSession.current;
+        cameraBusy.current = true;
+        setShowQRScanner(true);
+        let scanner: Html5Qrcode | undefined;
+        let acceptedCode: string | undefined;
+        try {
+            await new Promise(resolve => setTimeout(resolve, 100));
+            if (scannerSession.current !== session || !qrContainerRef.current) return;
+            scanner = new Html5Qrcode('qr-reader');
+            qrScannerRef.current = scanner;
+            await scanner.start({ facingMode: 'environment' }, { fps: 10 }, text => {
+                if (scannerSession.current !== session || acceptedCode) return;
+                if (!cameraBusy.current && scanner?.isScanning) {
+                    const acceptedSession = ++scannerSession.current;
+                    cameraBusy.current = true;
+                    void scanner.stop().catch(console.error).finally(() => {
+                        cameraBusy.current = false;
+                        qrScannerRef.current = null;
+                        if (scannerSession.current !== acceptedSession) return;
+                        setShowQRScanner(false);
+                        void handleCheckIn('qr', text);
+                    });
+                } else acceptedCode = text;
+            }, () => {});
         } catch (error) {
-            toast.error('Gagal mengubah pengaturan');
+            if (scannerSession.current === session) {
+                console.error(error);
+                toast.error('Kamera tidak dapat dibuka. Periksa izin lalu coba lagi.');
+                closeQRScanner();
+            }
+        } finally {
+            if (scannerSession.current !== session || acceptedCode) {
+                if (scanner?.isScanning) await scanner.stop().catch(console.error);
+                qrScannerRef.current = null;
+                if (scannerSession.current === session && acceptedCode) {
+                    setShowQRScanner(false);
+                    void handleCheckIn('qr', acceptedCode);
+                }
+            }
+            cameraBusy.current = false;
         }
     };
 
-    const capturePhoto = useCallback(() => {
-        const imageSrc = webcamRef.current?.getScreenshot();
-        if (imageSrc) {
-            setCapturedPhoto(imageSrc);
-            setShowCamera(false);
-            // Auto proceed with check-in
-            if (pendingOrder) {
-                handleCheckIn(pendingOrder.method, imageSrc);
-            }
-        }
-    }, [pendingOrder]);
-
-    // QR Scanner functions
-    const openQRScanner = useCallback(async () => {
-        if (enforceCanteenCheckin && !selectedCanteenId) {
-            toast.error('Pilih kantin terlebih dahulu');
-            return;
-        }
-
-        setShowQRScanner(true);
-
-        // Wait for DOM to render
-        await new Promise(resolve => setTimeout(resolve, 100));
-
-        if (qrContainerRef.current && !qrScannerRef.current) {
-            try {
-                const qrScanner = new Html5Qrcode('qr-reader');
-                qrScannerRef.current = qrScanner;
-
-                await qrScanner.start(
-                    { facingMode: 'environment' },
-                    {
-                        fps: 10,
-                        // No qrbox: a 1D barcode spans nearly the whole frame, and
-                        // cropping to a square box cuts it in half.
-                    },
-                    (decodedText) => {
-                        // QR Code found - process check-in
-                        closeQRScanner();
-                        handleCheckIn('qr', decodedText);
-                    },
-                    () => {
-                        // QR Code not found - keep scanning
-                    }
-                );
-            } catch (err) {
-                console.error('Failed to start QR scanner:', err);
-                toast.error('Gagal membuka kamera. Pastikan izin kamera diberikan.');
-                setShowQRScanner(false);
-            }
-        }
-    }, [enforceCanteenCheckin, selectedCanteenId]);
-
-    const closeQRScanner = useCallback(async () => {
-        // Hide the modal immediately: it sits after the result popup in the DOM
-        // and would otherwise cover the success/duplicate popup until stop()
-        // resolves, which takes long enough that the popup can time out unseen.
-        setShowQRScanner(false);
-        if (qrScannerRef.current) {
-            try {
-                await qrScannerRef.current.stop();
-                qrScannerRef.current.clear();
-            } catch (err) {
-                console.error('Failed to stop QR scanner:', err);
-            }
-            qrScannerRef.current = null;
-        }
-    }, []);
-
-    const handleCheckIn = async (method: 'manual' | 'qr', qrCodeData?: string) => {
+    const [candidates, setCandidates] = useState<{ userId: string; externalId: string; name: string; department: string | null }[]>([]);
+    const inFlight = useRef(false);
+    // One pending scan keeps the pos responsive without accepting an unbounded queue.
+    const nextScan = useRef<string | null>(null);
+    const activeCode = useRef<string | null>(null);
+    const handleCheckIn = async (method: 'manual' | 'qr', qrCodeData?: string, userId?: string) => {
         // Read directly from the DOM to bypass React's async state updates during rapid scans
         let domValue = searchInput;
         if (method === 'manual' && inputRef.current) {
             domValue = inputRef.current.value;
         }
         
-        const codeToUse = qrCodeData || domValue.trim();
+        const codeToUse = (qrCodeData || domValue).trim();
 
         if (!codeToUse) {
             if (method === 'qr') {
@@ -450,10 +304,34 @@ export default function CheckInPage() {
         // needed too: an ID card barcode decodes to the employee's externalId
         // or NIK, which only the manual endpoint understands. Without this,
         // scanning an ID card with the phone camera 404s on the order lookup.
-        const isOrderCode = /^ORDER-/i.test(codeToUse);
+        const isOrderCode = !userId && /^ORDER-/i.test(codeToUse);
         if (isOrderCode) method = 'qr';
         else if (method === 'qr') method = 'manual';
 
+        if (inFlight.current) {
+            if (!userId && (codeToUse === activeCode.current || codeToUse === nextScan.current)) {
+                if (!qrCodeData && inputRef.current) {
+                    inputRef.current.value = '';
+                    setSearchInput('');
+                }
+                return;
+            }
+            if (!nextScan.current && !userId && !photoEnabled) {
+                nextScan.current = codeToUse;
+                setSearchInput('');
+                if (inputRef.current) inputRef.current.value = '';
+            } else {
+                if (!qrCodeData && inputRef.current) {
+                    inputRef.current.value = '';
+                    setSearchInput('');
+                }
+                toast.error('Scan belum diterima. Pindai ulang setelah pos siap.');
+            }
+            return;
+        }
+        inFlight.current = true;
+        activeCode.current = codeToUse;
+        setCandidates([]);
         setIsProcessing(true);
         setLastError(null);
 
@@ -465,60 +343,36 @@ export default function CheckInPage() {
         }
 
         try {
-            let res;
-            const formData = new FormData();
-
-            if (method === 'qr') {
-                formData.append('qrCode', codeToUse);
-                if (selectedCanteenId) {
-                    formData.append('operatorCanteenId', selectedCanteenId);
+            if (method === 'manual' && !userId) {
+                const { data } = await api.get('/api/orders/checkin/lookup', { params: { query: codeToUse } });
+                if (data.match === 'selection') {
+                    setCandidates(data.candidates);
+                    if (nextScan.current) { nextScan.current = null; toast.error('Pilih karyawan, lalu pindai ulang kode berikutnya.'); }
+                    return;
                 }
-                if (capturedPhoto) {
-                    const blob = await (await fetch(capturedPhoto)).blob();
-                    formData.append('photo', blob, 'checkin.webp');
-                }
-                res = await api.post('/api/orders/checkin/qr', formData, {
-                    headers: { 'Content-Type': 'multipart/form-data' }
-                });
-            } else {
-                // Send all possible identifiers - backend will check in order: externalId, nik, name
-                const searchValue = codeToUse;
-                const isNumeric = /^\d+$/.test(searchValue);
-                const isId = /^[A-Z0-9]+$/i.test(searchValue);
-
-                const payload = isId
-                    ? { externalId: searchValue, nik: isNumeric ? searchValue : undefined, operatorCanteenId: selectedCanteenId || undefined }
-                    : { name: searchValue, operatorCanteenId: selectedCanteenId || undefined };
-                res = await api.post('/api/orders/checkin/manual', payload);
+                userId = data.candidates[0]?.userId;
+                if (!userId) { setLastError('Karyawan tidak ditemukan'); return; }
             }
+            const photo = photoEnabled ? await photoAnswer() : undefined;
+            if (photo === null) return;
+            const formData = new FormData();
+            formData.append(method === 'qr' ? 'qrCode' : 'userId', userId || codeToUse);
+            if (selectedCanteenId) formData.append('operatorCanteenId', selectedCanteenId);
+            if (photo?.size) formData.append('photo', photo, 'checkin.webp');
+            const res = await api.post(`/api/orders/checkin/${method}`, formData);
 
             const result: CheckInResult = {
                 success: true,
-                message: 'Check-in Berhasil!',
+                message: res.data.photoStatus === 'saved' ? 'Berhasil diambil · foto tersimpan' : res.data.photoStatus === 'failed' ? 'Berhasil diambil · foto gagal disimpan' : 'Berhasil diambil',
                 order: res.data.order,
                 checkInBy: res.data.checkInBy || res.data.checkedInBy || 'Admin',
                 checkInTime: res.data.checkInTime
             };
 
-            const now = Date.now();
-            const isDuplicateScan =
-                codeToUse === lastScanRef.current.code && now - lastScanRef.current.at < 3000;
-            const orderId = String(result.order?.id || '');
-            // The SSE broadcast for this same check-in can reach this device
-            // before the HTTP response does; don't flash the popup twice.
-            const alreadyShown = orderId !== '' && !markShown(orderId);
-
-            if (!isDuplicateScan && !alreadyShown) {
-                lastScanRef.current = { code: codeToUse, at: now };
-                setSuccessData(result);
-                setShowSuccessPopup(true);
-            }
-
-            setCapturedPhoto(null);
-            setPendingOrder(null);
+            setSuccessData(result);
             loadStats();
         } catch (error: any) {
-            const message = error.response?.data?.error || 'Check-in gagal';
+            const message = error.response?.data?.error || 'Hasil belum dapat dipastikan. Periksa pesanan sebelum memindai ulang.';
 
             if (message.includes('sudah di-check in sebelumnya') && error.response?.data?.order) {
                 const alreadyCheckedOrder = error.response.data.order;
@@ -530,44 +384,30 @@ export default function CheckInPage() {
                     checkInBy: error.response.data.checkedInBy || alreadyCheckedOrder.checkedInBy || 'Admin'
                 };
                 setSuccessData(warningResult);
-                setShowSuccessPopup(true);
             } else {
-                setLastError(message);
-                toast.error(message);
+                setLastError(!error.response || error.response.status >= 500 ? 'Hasil belum dapat dipastikan. Periksa pesanan sebelum memindai ulang.' : error.response.data?.message || message);
             }
         } finally {
+            inFlight.current = false;
             setIsProcessing(false);
+            inputRef.current?.focus();
+            const queued = nextScan.current;
+            nextScan.current = null;
+            if (queued) void handleCheckIn('manual', queued);
         }
     };
 
     const handleKeyPress = (e: React.KeyboardEvent) => {
-        if (e.key === 'Enter') handleCheckIn('manual');
+        if (e.key !== 'Enter' || e.repeat || e.nativeEvent.isComposing) return;
+        e.preventDefault();
+        void handleCheckIn('manual');
     };
 
     return (
-        <div className="w-full max-w-7xl mx-auto space-y-6 animate-fade-in">
-            <div className="glass-card p-6 rounded-2xl text-center">
-                <div className="flex items-center justify-center gap-3 mb-2">
-                    <Clock className="w-8 h-8 text-primary-400" />
-                    <span className="text-5xl font-bold text-white font-mono tracking-wider">{format(currentTime, 'HH:mm:ss')}</span>
-                </div>
-                <div className="flex items-center justify-center gap-2 text-white/60">
-                    <Calendar className="w-5 h-5" />
-                    <span className="text-lg">{format(currentTime, 'EEEE, dd MMMM yyyy', { locale: idLocale })}</span>
-                </div>
-            </div>
-
-            <div className={`flex items-center justify-between p-4 rounded-2xl border ${isConnected ? 'bg-success/10 border-success/30' : 'bg-danger/10 border-danger/30'}`}>
-                <div className="flex items-center gap-3">
-                    <div className="relative">
-                        <Wifi className={`w-5 h-5 ${isConnected ? 'text-success' : 'text-danger'}`} />
-                        {isConnected && <span className="absolute inset-0 bg-success rounded-full animate-ping opacity-50" />}
-                    </div>
-                    <span className={`font-medium ${isConnected ? 'text-success' : 'text-danger'}`}>
-                        {isConnected ? 'Sinkronisasi real-time aktif' : 'Menyambung kembali...'}
-                    </span>
-                </div>
-                <span className="text-sm text-white/40">{connectedClients} terhubung</span>
+        <div className="w-full max-w-7xl mx-auto space-y-4 motion-safe:animate-fade-in">
+            <div className="flex flex-wrap items-center justify-between gap-2 text-sm">
+                <span>{format(currentTime, 'EEEE, dd MMMM · HH:mm', { locale: idLocale })}</span>
+                <span>{isConnected ? 'Sinkronisasi aktif' : 'Sinkronisasi terputus'}</span>
             </div>
 
             {/* Counter selection. Always visible: it drives which check-in
@@ -579,10 +419,12 @@ export default function CheckInPage() {
                         <MapPin className="w-6 h-6 text-primary-400" />
                     </div>
                     <div className="flex-1">
-                        <label className="block text-sm font-medium text-white/70 mb-1">
+                        <label htmlFor="checkin-canteen" className="block text-sm font-medium text-white/70 mb-1">
                             Pos Check-in Saat Ini
                         </label>
                         <select
+                            id="checkin-canteen"
+                            disabled={isProcessing || showQRScanner}
                             value={selectedCanteenId}
                             onChange={(e) => setSelectedCanteenId(e.target.value)}
                             className="input-field w-full bg-dark-800"
@@ -605,41 +447,6 @@ export default function CheckInPage() {
                 )}
             </div>
 
-            {/* Q9a: one small line telling the operator which shift the cards describe. */}
-            <p className="text-sm text-white/60">
-                {focusInfo?.scope === 'break' && focusInfo.breakStart && focusInfo.breakEnd ? (
-                    <>Istirahat {focusInfo.breakStart}–{focusInfo.breakEnd} · <span className="text-primary-400 font-medium">{focusInfo.shiftNames.join(', ')}</span></>
-                ) : focusInfo?.nextBreak ? (
-                    <>Semua Shift · Sepanjang Hari · Istirahat berikutnya {focusInfo.nextBreak.breakStart} ({focusInfo.nextBreak.shiftNames.join(', ')})</>
-                ) : (
-                    <>Semua Shift · Sepanjang Hari</>
-                )}
-                {!selectedCanteenId && <span className="text-white/30"> · Semua Kantin</span>}
-            </p>
-
-            <div className="grid grid-cols-5 gap-4">
-                <div className="stat-card text-center">
-                    <p className="text-xs text-white/40 uppercase tracking-wider">Total</p>
-                    <p className="text-3xl font-bold text-gradient mt-1">{todayStats.total}</p>
-                </div>
-                <div className="stat-card text-center">
-                    <p className="text-xs text-white/40 uppercase tracking-wider">Diambil</p>
-                    <p className="text-3xl font-bold text-success mt-1">{todayStats.checkedIn}</p>
-                </div>
-                <div className="stat-card text-center">
-                    <p className="text-xs text-white/40 uppercase tracking-wider">Pending</p>
-                    <p className="text-3xl font-bold text-warning mt-1">{todayStats.pending}</p>
-                </div>
-                <div className="stat-card text-center">
-                    <p className="text-xs text-white/40 uppercase tracking-wider">Dibatalkan</p>
-                    <p className="text-3xl font-bold text-slate-400 mt-1">{todayStats.cancelled}</p>
-                </div>
-                <div className="stat-card text-center">
-                    <p className="text-xs text-white/40 uppercase tracking-wider">Tidak Diambil</p>
-                    <p className="text-3xl font-bold text-danger mt-1">{todayStats.noShow}</p>
-                </div>
-            </div>
-
             <div className="card relative overflow-hidden">
                 <div className="absolute top-0 right-0 w-64 h-64 bg-gradient-to-br from-primary-500/20 to-transparent rounded-full blur-3xl" />
                 <div className="relative z-10">
@@ -653,33 +460,47 @@ export default function CheckInPage() {
                                 <p className="text-white/50">Scan barcode atau masukkan ID karyawan</p>
                             </div>
                         </div>
-                        <button onClick={togglePhotoSetting} className={`px-4 py-2 rounded-xl border flex items-center gap-2 transition-all ${photoEnabled ? 'bg-success/20 border-success/40 text-success' : 'bg-white/5 border-white/20 text-white/60'}`}>
-                            <Camera className="w-5 h-5" />
-                            <span className="text-sm font-medium">{photoEnabled ? 'Foto ON' : 'Foto OFF'}</span>
-                        </button>
+                        {photoEnabled && <span className="text-sm">Foto opsional</span>}
                     </div>
 
                     <div className="relative mb-6">
                         <Search className="absolute left-4 top-1/2 -translate-y-1/2 w-5 h-5 text-white/40" />
-                        <input ref={inputRef} type="text" placeholder="ID Karyawan / Nama / Barcode..." value={searchInput} onChange={(e) => setSearchInput(e.target.value)} onKeyPress={handleKeyPress} autoFocus className="input-search text-lg h-16" />
+                        <input aria-label="ID karyawan, nama, atau barcode" ref={inputRef} type="text" placeholder="ID Karyawan / Nama / Barcode..." value={searchInput} onChange={(e) => setSearchInput(e.target.value)} onKeyDown={handleKeyPress} autoFocus className="input-search text-lg h-16" />
                     </div>
 
                     <div className="grid grid-cols-2 gap-4">
                         <button onClick={() => handleCheckIn('manual')} disabled={isProcessing || !searchInput.trim()} className="btn-success h-14 flex items-center justify-center gap-3 text-base font-semibold">
                             {isProcessing ? (<><Loader2 className="w-5 h-5 animate-spin" />Memproses...</>) : (<><CheckCircle2 className="w-5 h-5" />Ambil Makan</>)}
                         </button>
-                        <button onClick={() => handleCheckIn('qr')} disabled={isProcessing} className="btn-primary h-14 flex items-center justify-center gap-3 text-base font-semibold">
+                        <button onClick={openQRScanner} disabled={isProcessing} className="btn-primary h-14 flex items-center justify-center gap-3 text-base font-semibold">
                             {isProcessing ? (<><Loader2 className="w-5 h-5 animate-spin" />Memproses...</>) : (<><ScanLine className="w-5 h-5" />Scan Barcode</>)}
                         </button>
                     </div>
+
+                    {candidates.length > 0 && (
+                        <section className="mt-4" aria-label="Hasil pencarian karyawan">
+                            <p>Pilih karyawan untuk mencatat pengambilan.</p>
+                            {candidates.map(candidate => (
+                                <button key={candidate.userId} type="button" className="btn-secondary mt-2 w-full" onClick={() => handleCheckIn('manual', candidate.externalId, candidate.userId)}>
+                                    {candidate.name} · {candidate.externalId}{candidate.department && ` · ${candidate.department}`}
+                                </button>
+                            ))}
+                        </section>
+                    )}
+
+                    {successData?.order?.user && <div role="status" className="mt-4 rounded-xl border border-white/20 p-4">
+                        <p className="font-bold">{successData.message}</p>
+                        <p className="break-words">{successData.order.user.name} · {successData.order.user.externalId}</p>
+                        <p>{[formatTimeWIB(successData.checkInTime), successData.checkInBy].filter(Boolean).join(' · ')}</p>
+                    </div>}
+                    {remotePickup && remotePickup.id !== successData?.order?.id && <p className="mt-2 text-sm">Aktivitas terbaru · {remotePickup.user.name}</p>}
 
                     {lastError && (
                         <div className="mt-6 p-4 rounded-2xl bg-danger/10 border border-danger/30">
                             <div className="flex items-start gap-3">
                                 <AlertCircle className="w-6 h-6 text-danger flex-shrink-0" />
                                 <div>
-                                    <p className="font-medium text-danger">{lastError}</p>
-                                    <p className="text-sm text-white/40 mt-1">Silakan coba lagi</p>
+                                    <p role="alert" className="font-medium text-danger">{lastError}</p>
                                 </div>
                             </div>
                         </div>
@@ -696,46 +517,60 @@ export default function CheckInPage() {
                 </div>
             </div>
 
-            <CheckInResultPopup show={showSuccessPopup} data={successData} onClose={() => { setShowSuccessPopup(false); setSuccessData(null); }} />
 
-            {showCamera && pendingOrder && (
-                <div className="fixed inset-0 bg-black/40 backdrop-blur-sm z-50 flex flex-col items-center justify-center p-4">
-                    <div className="w-full max-w-2xl space-y-4 bg-dark-900/90 rounded-2xl p-6 border border-white/10 shadow-2xl">
-                        <div className="glass-card p-6 rounded-2xl">
-                            <div className="flex items-center gap-4">
-                                <div className="w-20 h-20 rounded-full overflow-hidden bg-white/10 flex-shrink-0">
-                                    {pendingOrder.data?.order?.user?.photo ? (
-                                        <img src={`${(import.meta as any).env.VITE_API_URL || ''}${pendingOrder.data.order.user.photo}`} alt={pendingOrder.data.order.user.name} className="w-full h-full object-cover" />
-                                    ) : (
-                                        <div className="w-full h-full flex items-center justify-center text-white/40"><UserIcon className="w-10 h-10" /></div>
-                                    )}
-                                </div>
-                                <div className="flex-1">
-                                    <p className="text-2xl font-bold text-white">{pendingOrder.data?.order?.user?.name}</p>
-                                    <p className="text-primary-400 font-mono">ID: {pendingOrder.data?.order?.user?.externalId}</p>
-                                    <p className="text-white/60 text-sm">{pendingOrder.data?.order?.shift?.name}</p>
-                                </div>
-                            </div>
-                        </div>
-                        <div className="relative aspect-[4/3] bg-black rounded-2xl overflow-hidden">
-                            <Webcam audio={false} ref={webcamRef} screenshotFormat="image/webp" className="w-full h-full object-cover" videoConstraints={{ facingMode: "user" }} />
-                            <div className="absolute inset-0 border-4 border-primary-500/50 rounded-2xl pointer-events-none" />
-                        </div>
-                        <div className="flex gap-4">
-                            <button onClick={() => { setShowCamera(false); setPendingOrder(null); setIsProcessing(false); }} className="btn-secondary flex-1 h-14">
-                                <X className="w-5 h-5 mr-2" />Batal
-                            </button>
-                            <button onClick={capturePhoto} className="btn-primary flex-1 h-14">
-                                <Camera className="w-5 h-5 mr-2" />Ambil Foto
-                            </button>
-                        </div>
-                    </div>
+
+            {statsError && <p role="status">Data belum diperbarui</p>}
+            {!todayStats && !statsError && <p role="status">Memuat statistik…</p>}
+            {/* Q9a: one small line telling the operator which shift the cards describe. */}
+            <p className="text-sm text-white/60">
+                {focusInfo?.scope === 'break' && focusInfo.breakStart && focusInfo.breakEnd ? (
+                    <>{focusInfo.upcoming ? 'Istirahat berikutnya' : 'Istirahat'} {focusInfo.breakStart}–{focusInfo.breakEnd} · <span className="text-primary-400 font-medium">{focusInfo.shiftNames.join(', ')}</span></>
+                ) : focusInfo?.nextBreak ? (
+                    <>Semua Shift · Sepanjang Hari · Istirahat berikutnya {focusInfo.nextBreak.breakStart} ({focusInfo.nextBreak.shiftNames.join(', ')})</>
+                ) : (
+                    <>Semua Shift · Sepanjang Hari</>
+                )}
+                {!selectedCanteenId && <span className="text-white/30"> · Semua Kantin</span>}
+            </p>
+
+            <div className="grid grid-cols-2 gap-2 sm:grid-cols-5">
+                <div className="stat-card text-center">
+                    <p className="text-xs text-white/40 uppercase tracking-wider">Total</p>
+                    <p className="text-3xl font-bold text-gradient mt-1">{todayStats?.total ?? '—'}</p>
                 </div>
+                <div className="stat-card text-center">
+                    <p className="text-xs text-white/40 uppercase tracking-wider">Diambil</p>
+                    <p className="text-3xl font-bold text-success mt-1">{todayStats?.checkedIn ?? '—'}</p>
+                </div>
+                <div className="stat-card text-center">
+                    <p className="text-xs text-white/40 uppercase tracking-wider">Belum diambil</p>
+                    <p className="text-3xl font-bold text-warning mt-1">{todayStats?.pending ?? '—'}</p>
+                </div>
+                <div className="stat-card text-center">
+                    <p className="text-xs text-white/40 uppercase tracking-wider">Dibatalkan</p>
+                    <p className="text-3xl font-bold text-slate-400 mt-1">{todayStats?.cancelled ?? '—'}</p>
+                </div>
+                <div className="stat-card text-center">
+                    <p className="text-xs text-white/40 uppercase tracking-wider">Tidak Diambil</p>
+                    <p className="text-3xl font-bold text-danger mt-1">{todayStats?.noShow ?? '—'}</p>
+                </div>
+            </div>
+
+            {showCamera && (
+                <dialog ref={node => { if (node && !node.open) node.showModal(); }} aria-labelledby="pickup-photo-title" onCancel={e => { e.preventDefault(); finishPhoto(undefined, true); }} className="m-auto max-h-[90dvh] w-[min(92vw,32rem)] overflow-auto rounded-xl bg-dark-900 p-4 text-white backdrop:bg-black/60">
+                    <h2 id="pickup-photo-title" className="mb-3 text-lg font-bold">Foto bukti pengambilan</h2>
+                    <Webcam audio={false} ref={webcamRef} screenshotFormat="image/webp" className="max-h-[55dvh] w-full object-contain" onUserMediaError={() => toast.error('Kamera tidak tersedia. Lanjut tanpa foto.')} />
+                    <div className="mt-3 flex flex-wrap gap-2">
+                        <button className="btn-secondary" onClick={() => finishPhoto(undefined, true)}>Batal</button>
+                        <button className="btn-secondary" onClick={() => finishPhoto()}>Lanjut tanpa foto</button>
+                        <button className="btn-primary" onClick={capturePhoto}>Ambil foto</button>
+                    </div>
+                </dialog>
             )}
 
             {/* QR Scanner Modal */}
             {showQRScanner && (
-                <div className="fixed inset-0 bg-black/40 backdrop-blur-sm z-50 flex flex-col items-center justify-center p-4">
+                <dialog ref={node => { if (node && !node.open) node.showModal(); }} aria-labelledby="barcode-scanner-title" onCancel={event => { event.preventDefault(); closeQRScanner(); }} className="m-auto max-h-[90dvh] w-[min(92vw,32rem)] overflow-auto rounded-xl bg-transparent text-white backdrop:bg-black/60">
                     <div className="w-full max-w-lg space-y-4 bg-dark-900/90 rounded-2xl p-6 border border-white/10 shadow-2xl">
                         <div className="flex items-center justify-between mb-4">
                             <div className="flex items-center gap-3">
@@ -743,12 +578,13 @@ export default function CheckInPage() {
                                     <ScanLine className="w-6 h-6 text-primary-400" />
                                 </div>
                                 <div>
-                                    <h3 className="text-xl font-bold text-white">Scan Barcode / QR</h3>
-                                    <p className="text-white/50 text-sm">Arahkan kamera ke barcode pesanan</p>
+                                    <h3 id="barcode-scanner-title" className="text-xl font-bold text-white">Pindai barcode / QR</h3>
+                                    <p className="text-white/50 text-sm">Arahkan kamera ke kode pesanan atau kartu karyawan</p>
                                 </div>
                             </div>
                             <button
                                 onClick={closeQRScanner}
+                                aria-label="Tutup kamera"
                                 className="btn-icon bg-white/10 hover:bg-white/20"
                             >
                                 <X className="w-6 h-6" />
@@ -773,11 +609,11 @@ export default function CheckInPage() {
 
                         <div className="p-4 rounded-xl bg-white/5 border border-white/10 text-center">
                             <p className="text-white/60 text-sm">
-                                Pastikan barcode terlihat jelas dalam kotak scan
+                                Pastikan kode terlihat jelas di kamera
                             </p>
                         </div>
                     </div>
-                </div>
+                </dialog>
             )}
         </div>
     );

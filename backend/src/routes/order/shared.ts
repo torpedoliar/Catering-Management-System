@@ -39,13 +39,8 @@ export const upload = multer({
     limits: { fileSize: 5 * 1024 * 1024 },
 });
 
-// Check-in uploads directory
-export const checkinUploadDir = path.join(__dirname, '../../../uploads/checkins');
-
-// Ensure directory exists on module load
-if (!fs.existsSync(checkinUploadDir)) {
-    fs.mkdirSync(checkinUploadDir, { recursive: true });
-}
+// Evidence is separate from the public /uploads static tree.
+export const checkinUploadDir = process.env.CHECKIN_PHOTO_DIR || path.join(__dirname, '../../../private-checkin-photos');
 
 // Re-export all dependencies for convenience
 export {

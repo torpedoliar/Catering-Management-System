@@ -77,6 +77,7 @@ export default function SettingsPage() {
 
     const [blacklistStrikes, setBlacklistStrikes] = useState(3);
     const [blacklistDuration, setBlacklistDuration] = useState(7);
+    const [checkinPhotoEnabled, setCheckinPhotoEnabled] = useState(false);
     const [autoBlacklistEnabled, setAutoBlacklistEnabled] = useState(true);
     const [initialAutoBlacklistEnabled, setInitialAutoBlacklistEnabled] = useState(true);
     const [showPasswordModal, setShowPasswordModal] = useState(false);
@@ -203,6 +204,7 @@ export default function SettingsPage() {
                 setMaxWeeksAhead(data.maxWeeksAhead || 1);
                 setBlacklistStrikes(data.blacklistStrikes || 3);
                 setBlacklistDuration(data.blacklistDuration || 7);
+                setCheckinPhotoEnabled(data.checkinPhotoEnabled === true);
                 setAutoBlacklistEnabled(data.autoBlacklistEnabled ?? true);
                 setInitialAutoBlacklistEnabled(data.autoBlacklistEnabled ?? true);
             }
@@ -328,6 +330,7 @@ export default function SettingsPage() {
                 blacklistStrikes,
                 blacklistDuration,
                 autoBlacklistEnabled,
+                checkinPhotoEnabled,
             };
 
             if (withAdminPassword) {
@@ -337,6 +340,7 @@ export default function SettingsPage() {
             const response = await api.put('/api/settings', payload);
 
             setSettings(response.data);
+            setCheckinPhotoEnabled(response.data.checkinPhotoEnabled === true);
             setAutoBlacklistEnabled(response.data.autoBlacklistEnabled ?? true);
             setInitialAutoBlacklistEnabled(response.data.autoBlacklistEnabled ?? true);
             setShowPasswordModal(false);
@@ -866,6 +870,10 @@ export default function SettingsPage() {
                                     </div>
 
                                     <div className="pt-2">
+                                        <label className="flex items-center gap-2">
+                                            <input type="checkbox" checked={checkinPhotoEnabled} onChange={event => setCheckinPhotoEnabled(event.target.checked)} />
+                                            Tawarkan foto bukti saat check-in
+                                        </label>
                                         <button
                                             onClick={handleSaveSystemSettings}
                                             disabled={savingSystem}

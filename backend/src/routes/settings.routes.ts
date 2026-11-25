@@ -99,12 +99,17 @@ router.put('/', authMiddleware, adminMiddleware, async (req: AuthRequest, res: R
             blacklistStrikes,
             blacklistDuration,
             enforceCanteenCheckin,
+            checkinPhotoEnabled,
             // W4 (F-3 / Wave 4 admin UI): admin can flip token-rotation
             // on/off here. Validation: must be a boolean.
             enableTokenRotation,
             autoBlacklistEnabled,
             adminPassword,
         } = req.body;
+
+        if (checkinPhotoEnabled !== undefined && typeof checkinPhotoEnabled !== 'boolean') {
+            return res.status(400).json({ error: 'Pengaturan foto harus berupa boolean' });
+        }
 
         if (enableTokenRotation !== undefined && typeof enableTokenRotation !== 'boolean') {
             return res.status(400).json({ error: 'enableTokenRotation must be a boolean' });
@@ -185,6 +190,7 @@ router.put('/', authMiddleware, adminMiddleware, async (req: AuthRequest, res: R
                 ...(maxWeeksAhead !== undefined && { maxWeeksAhead }),
                 ...(blacklistStrikes !== undefined && { blacklistStrikes }),
                 ...(blacklistDuration !== undefined && { blacklistDuration }),
+                ...(checkinPhotoEnabled !== undefined && { checkinPhotoEnabled }),
                 ...(enforceCanteenCheckin !== undefined && { enforceCanteenCheckin }),
                 ...(enableTokenRotation !== undefined && { enableTokenRotation }),
                 ...(autoBlacklistEnabled !== undefined && { autoBlacklistEnabled }),
@@ -203,6 +209,7 @@ router.put('/', authMiddleware, adminMiddleware, async (req: AuthRequest, res: R
                 blacklistStrikes: blacklistStrikes || 3,
                 blacklistDuration: blacklistDuration || 7,
                 autoBlacklistEnabled: autoBlacklistEnabled ?? true,
+                checkinPhotoEnabled: checkinPhotoEnabled ?? false,
             },
         });
 

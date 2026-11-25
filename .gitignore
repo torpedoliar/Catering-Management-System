@@ -74,3 +74,4 @@ tree_output.txt
 graphify-out/
 # Impeccable design hook session cache
 **/.impeccable/hook.cache.json
+/backend/private-checkin-photos/
