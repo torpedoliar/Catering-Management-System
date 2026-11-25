@@ -27,7 +27,9 @@ class SSEManager {
     private pubClient: RedisClientType | null = null;
     private subClient: RedisClientType | null = null;
     private readonly MAX_CLIENTS = 1000;
-    private readonly MAX_CLIENTS_PER_USER = 5;
+    // Counter PCs often share one CANTEEN login, so 5 was far too low: the
+    // 6th screen got 429 and never received check-in events.
+    private readonly MAX_CLIENTS_PER_USER = parseInt(process.env.SSE_MAX_CLIENTS_PER_USER || '', 10) || 50;
     private readonly IDLE_TIMEOUT_MS = 5 * 60 * 1000; // 5 minutes
     private idleCheckTimer: ReturnType<typeof setInterval> | null = null;
 
@@ -187,6 +189,12 @@ class SSEManager {
 
         // Broadcast client count update to all
         this.broadcastClientCount();
+    }
+
+    // Mark a client as alive (heartbeat written successfully).
+    touch(id: string): void {
+        const client = this.clients.get(id);
+        if (client) client.lastActivity = getNow();
     }
 
     removeClient(id: string): void {

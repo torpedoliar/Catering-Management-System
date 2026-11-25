@@ -47,6 +47,13 @@ async function respondToPickupConflict(res: Response, id: string) {
 const candidateSelect = { id: true, externalId: true, name: true, department: true } as const;
 const toCandidate = ({ id, ...user }: { id: string; externalId: string; name: string; department: string | null }) => ({ userId: id, ...user });
 
+// Counter PCs often share one login; the browser sends the operator name
+// typed on that PC so the audit log still shows who recorded the pickup.
+const operatorNameOf = (body: any): string | undefined => {
+    const v = typeof body?.operatorName === 'string' ? body.operatorName.trim().slice(0, 40) : '';
+    return v || undefined;
+};
+
 router.get('/checkin/lookup', authMiddleware, canteenMiddleware, async (req, res) => {
     const query = typeof req.query.query === 'string' ? req.query.query.trim() : '';
     if (!query || query.length > 100) return res.status(400).json({ error: 'Kode atau nama tidak valid' });
@@ -203,10 +210,11 @@ router.post('/checkin/qr', authMiddleware, canteenMiddleware, upload.single('pho
         // [FIX 3] Fire-and-forget: audit log + SSE broadcast (don't block response)
         logOrder('ORDER_CHECKIN', req.user || null, updatedOrder, context, {
             oldValue: { status: 'ORDERED' },
-            metadata: { checkedInBy: checkedInByUser?.name, checkedInByExternalId: checkedInByUser?.externalId, method: 'QR' },
+            metadata: { checkedInBy: checkedInByUser?.name, checkedInByExternalId: checkedInByUser?.externalId, method: 'QR', operator: operatorNameOf(req.body) },
         }).catch(err => console.error('[Audit] Failed to log QR check-in:', err));
 
         sseManager.broadcast('order:checkin', {
+            checkInBy: req.user?.externalId || 'Admin',
             order: updatedOrder,
             timestamp: getNow().toISOString(),
         });
@@ -401,10 +409,11 @@ router.post('/checkin/manual', authMiddleware, canteenMiddleware, upload.single(
         // [BUG FIX] Add audit log (was missing in manual check-in)
         logOrder('ORDER_CHECKIN', req.user || null, updatedOrder, context, {
             oldValue: { status: 'ORDERED' },
-            metadata: { checkedInBy: checkedInByUser?.name, checkedInByExternalId: checkedInByUser?.externalId, method: 'Manual' },
+            metadata: { checkedInBy: checkedInByUser?.name, checkedInByExternalId: checkedInByUser?.externalId, method: 'Manual', operator: operatorNameOf(req.body) },
         }).catch(err => console.error('[Audit] Failed to log manual check-in:', err));
 
         sseManager.broadcast('order:checkin', {
+            checkInBy: req.user?.externalId || 'Admin',
             order: updatedOrder,
             timestamp: getNow().toISOString(),
         });

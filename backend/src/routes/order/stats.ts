@@ -1164,7 +1164,10 @@ router.get('/stats/today', authMiddleware, canteenMiddleware, async (req: AuthRe
         };
 
         // Cache the response for 60 seconds
-        await cacheService.set(cacheKey, statsResponse, { ttl: CACHE_TTL.DASHBOARD_STATS });
+        // Check-in screens (fresh=1) need near-live counts, but 5 PCs per
+        // counter refresh on every pickup: a 3s shared cache per canteen keeps
+        // numbers current without one DB query per screen per scan.
+        await cacheService.set(cacheKey, statsResponse, { ttl: fresh ? 3 : CACHE_TTL.DASHBOARD_STATS });
 
         res.json(statsResponse);
     } catch (error) {

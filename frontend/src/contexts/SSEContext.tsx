@@ -76,8 +76,10 @@ export function SSEProvider({ children }: { children: ReactNode }) {
     // Infinite reconnect with capped exponential backoff (never gives up)
     const maxBackoffMs = 30_000;        // Cap delay at 30s
     const baseReconnectDelayMs = 1000;  // Start at 1s
-    // Server sends heartbeat every 10s. If none in 25s → connection is dead.
-    const heartbeatTimeoutMs = 25_000;
+    // Server sends heartbeat every 15s. If none in 45s (3 missed) → dead.
+    // Was 25s while the server sent every 30s, so every stream was killed and
+    // reopened every ~25s and events in the gap (check-in popups) were lost.
+    const heartbeatTimeoutMs = 45_000;
     // Probe EventSource readyState every 15s to catch silent zombie connections
     const probeIntervalMs = 15_000;
 
@@ -306,6 +308,7 @@ export function SSEProvider({ children }: { children: ReactNode }) {
         ALL_EVENTS.forEach(eventType => {
             eventSource.addEventListener(eventType, (event: MessageEvent) => {
                 try {
+                    lastHeartbeatRef.current = Date.now(); // any event proves the stream is alive
                     const data = JSON.parse(event.data);
                     const eventObj = { type: eventType, data, timestamp: new Date().toISOString() };
                     setLastEvent(eventObj);
@@ -476,7 +479,11 @@ function showEventToast(eventType: string, data: any, currentUserId: string) {
             }
             break;
         case 'order:checkin':
-            toast.success(`✅ ${data.order?.user?.name || 'User'} checked in!`, withClick({
+            // Only the employee whose meal it is. Broadcasting this to every
+            // counter screen mixed other PCs' pickups into each operator's
+            // view and a click navigated away from the scan page.
+            if (!isOwnAction) break;
+            toast.success('✅ Makanan Anda sudah diambil', withClick({
                 icon: '🎉',
                 onClick: () => goTo({ relatedType: 'ORDER', relatedId: data.order?.id, title: 'order:checkin' }),
             }));
