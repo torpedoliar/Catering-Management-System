@@ -445,8 +445,14 @@ export default function CheckInPage() {
         // here as 'manual'. Route order codes (ORDER-...) to the QR endpoint so
         // laser scans of the 1D barcode work — otherwise they'd be looked up as
         // an employee name/id and fail with "user not found".
+        //
+        // The camera scanner always reports 'qr', so the reverse mapping is
+        // needed too: an ID card barcode decodes to the employee's externalId
+        // or NIK, which only the manual endpoint understands. Without this,
+        // scanning an ID card with the phone camera 404s on the order lookup.
         const isOrderCode = /^ORDER-/i.test(codeToUse);
         if (isOrderCode) method = 'qr';
+        else if (method === 'qr') method = 'manual';
 
         setIsProcessing(true);
         setLastError(null);
