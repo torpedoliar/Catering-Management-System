@@ -19,8 +19,8 @@ interface EventLog {
 }
 
 // T3 (audit 2026-11-25): order and blacklist events carry names, employee
-// IDs, departments and blacklist status. They reach staff roles and the
-// people they are about; other users get only what lets their screens
+// IDs, departments and blacklist status. They reach ADMIN and the people
+// they are about; other users get only what lets their screens
 // refresh (order events) or nothing (user events).
 const PERSONAL_EVENT_PREFIXES = ['order:', 'user:'];
 
@@ -36,10 +36,14 @@ function ownersOf(data: any): string[] {
     return Array.from(new Set(ids.filter((id): id is string => typeof id === 'string' && id.length > 0)));
 }
 
+// No `order` object on purpose: check-in pages built before 2026-11-26
+// turn any `order:checkin` that carries `order` into a popup on every PC
+// of that canteen (the "scan at RNG1 shows on RNG2" report). Without
+// `order` those stale tabs ignore the event; current pages only refresh.
 function redactOrderEvent(data: any) {
     const o = data?.order;
     return {
-        ...(o ? { order: { id: o.id, status: o.status, shiftId: o.shiftId, canteenId: o.canteenId, orderDate: o.orderDate } } : {}),
+        ...(o ? { orderId: o.id, status: o.status, shiftId: o.shiftId, canteenId: o.canteenId, orderDate: o.orderDate } : {}),
         ...(data?.orderId ? { orderId: data.orderId } : {}),
         ...(typeof data?.count === 'number' ? { count: data.count } : {}),
         timestamp: data?.timestamp,
@@ -351,7 +355,7 @@ class SSEManager {
      * T3 (audit 2026-11-25): events about a person (orders, check-ins,
      * blacklists) went to every connected browser, so any employee could
      * read other employees' names, IDs and blacklist status. Scoped events
-     * send the full payload only to staff roles and to the people the event
+     * send the full payload only to ADMIN and to the people the event
      * is about; everyone else gets `redacted` (no personal data) so their
      * screens can still refresh, or nothing when `redacted` is null.
      */
@@ -376,7 +380,7 @@ class SSEManager {
         const fullMessage = `event: ${event}\ndata: ${JSON.stringify(full)}\n\n`;
         const redactedMessage = redacted == null ? null : `event: ${event}\ndata: ${JSON.stringify(redacted)}\n\n`;
         this.clients.forEach((client) => {
-            const privileged = (client.role && SSEManager.STAFF_ROLES.has(client.role))
+            const privileged = (client.role && SSEManager.FULL_DETAIL_ROLES.has(client.role))
                 || (client.userId && ownerUserIds.includes(client.userId));
             const message = privileged ? fullMessage : redactedMessage;
             if (!message) return;
@@ -389,8 +393,10 @@ class SSEManager {
         });
     }
 
-    // Roles that work with other people's orders and may see them live.
-    private static readonly STAFF_ROLES = new Set(['ADMIN', 'CANTEEN', 'VENDOR']);
+    // Roles that see other people's order/blacklist details live. Counter
+    // (CANTEEN) and vendor screens only need a refresh signal: each counter
+    // PC shows its own scans from its own HTTP responses.
+    private static readonly FULL_DETAIL_ROLES = new Set(['ADMIN']);
 
     // Broadcast to all EXCEPT specific user (for avoiding echo)
     broadcastExceptUser(userId: string, event: string, data: any): void {
