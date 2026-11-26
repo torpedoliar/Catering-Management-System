@@ -3,6 +3,7 @@ import fs from 'fs';
 import path from 'path';
 import { exec } from 'child_process';
 import { promisify } from 'util';
+import readline from 'readline';
 import { prisma } from '../lib/prisma';
 import { logSystem } from './audit.service';
 import { AuditAction } from '@prisma/client';
@@ -283,6 +284,40 @@ export async function createBackup(userId: string | null, notes?: string): Promi
     }
 }
 
+/**
+ * S4 (audit 2026-11-25): restore runs `psql -f` on the backup file. psql
+ * executes meta-commands such as `\!` (shell), `\o |cmd`, `\copy ... program`
+ * and `\i` (read another file), and the server executes COPY ... PROGRAM.
+ * An uploaded "backup" could therefore run commands on the server. pg_dump
+ * plain output never needs these, so refuse any file that contains them.
+ * Allowed meta-commands: \connect, \restrict / \unrestrict (newer pg_dump),
+ * \set and \.
+ */
+const FORBIDDEN_PSQL_META = /^\s*\\(?!connect\b|c\b|restrict\b|unrestrict\b|set\b|\.)/;
+const FORBIDDEN_SQL = /\bCOPY\b[^;]*\bPROGRAM\b|\bpg_read_server_files\b|\blo_import\b|\blo_export\b/i;
+
+export async function assertSafeSqlDump(filepath: string): Promise<void> {
+    const rl = readline.createInterface({ input: fs.createReadStream(filepath, { encoding: 'utf8' }), crlfDelay: Infinity });
+    let lineNo = 0;
+    let inCopyData = false;
+    try {
+        for await (const line of rl) {
+            lineNo++;
+            // Rows of a `COPY ... FROM stdin;` block are data, ended by "\.".
+            if (inCopyData) {
+                if (line === '\\.') inCopyData = false;
+                continue;
+            }
+            if (/^COPY\s.+\sFROM\s+stdin;\s*$/i.test(line)) { inCopyData = true; continue; }
+            if (FORBIDDEN_PSQL_META.test(line) || FORBIDDEN_SQL.test(line)) {
+                throw new Error(`File backup ditolak: baris ${lineNo} berisi perintah yang tidak diizinkan untuk restore.`);
+            }
+        }
+    } finally {
+        rl.close();
+    }
+}
+
 export async function restoreBackup(backupId: string, userId: string): Promise<{ success: boolean; message: string }> {
     const backup = await prisma.backup.findUnique({ where: { id: backupId } });
 
@@ -295,6 +330,9 @@ export async function restoreBackup(backupId: string, userId: string): Promise<{
     if (!fs.existsSync(filepath)) {
         throw new Error('Backup file not found on disk');
     }
+
+    // S4: the file is fed to psql, which also runs client meta-commands.
+    await assertSafeSqlDump(filepath);
 
     try {
         // Get database connection details

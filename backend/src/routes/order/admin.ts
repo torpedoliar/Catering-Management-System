@@ -143,38 +143,42 @@ router.post('/process-noshows', authMiddleware, adminMiddleware, async (req: Aut
             ordersByUser.set(order.userId, existing);
         }
 
-        const orderIds = noShowOrders.map(o => o.id);
         const context = getRequestContext(req);
 
         // FIX-M3: Batch operations in single transaction
         const userUpdates = await prisma.$transaction(async (tx) => {
-            // 1. Batch update all orders to NO_SHOW
-            await tx.order.updateMany({
-                where: { id: { in: orderIds } },
-                data: { status: 'NO_SHOW' },
-            });
-
-            // 2. Increment noShowCount for each affected user (only if autoBlacklistEnabled is true)
-            const updates: Array<{ userId: string; user: any; orderCount: number }> = [];
+            // T2 (audit 2026-11-25): only flip orders that are STILL ORDERED.
+            // A check-in, a cancel or the hourly scheduler may have changed
+            // them since the read above; strikes count only what flipped here.
+            const updates: Array<{ userId: string; user: any; orders: typeof noShowOrders }> = [];
             for (const [userId, userOrders] of ordersByUser) {
+                const flipped: typeof noShowOrders = [];
+                for (const order of userOrders) {
+                    const r = await tx.order.updateMany({
+                        where: { id: order.id, status: 'ORDERED' },
+                        data: { status: 'NO_SHOW' },
+                    });
+                    if (r.count > 0) flipped.push(order);
+                }
+                if (flipped.length === 0) continue;
+
                 let updatedUser;
                 if (autoBlacklistEnabled) {
                     updatedUser = await tx.user.update({
                         where: { id: userId },
-                        data: { noShowCount: { increment: userOrders.length } },
+                        data: { noShowCount: { increment: flipped.length } },
                     });
                 } else {
                     updatedUser = await tx.user.findUnique({ where: { id: userId } });
                 }
-                updates.push({ userId, user: updatedUser, orderCount: userOrders.length });
+                updates.push({ userId, user: updatedUser, orders: flipped });
             }
 
             return updates;
-        });
+        }, { timeout: 60_000 }); // one guarded update per order: allow more than the 5s default
 
         // 3. Post-transaction: blacklist checks, audit logs, SSE broadcasts
-        for (const { userId, user: updatedUser } of userUpdates) {
-            const userOrders = ordersByUser.get(userId)!;
+        for (const { userId, user: updatedUser, orders: userOrders } of userUpdates) {
 
             // Check blacklist threshold (only if autoBlacklistEnabled is true)
             if (autoBlacklistEnabled && updatedUser.noShowCount >= strikeThreshold) {

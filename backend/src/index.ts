@@ -78,8 +78,14 @@ app.use(express.json({ limit: '1mb' })); // FIX-L1: Limit request body size
 app.use(express.urlencoded({ extended: true, limit: '1mb' }));
 app.use('/uploads', express.static(path.join(__dirname, '../uploads')));
 
-// Trust proxy for proper IP detection (behind reverse proxy/load balancer)
-app.set('trust proxy', true);
+// Trust proxy for proper IP detection (behind reverse proxy/load balancer).
+// S3 (audit 2026-11-25): `true` trusted every X-Forwarded-For hop the CLIENT
+// sent, so per-IP login limits could be bypassed and audit IPs forged. Trust
+// only the proxies in front of us: 1 = Nginx Proxy Manager alone; set
+// TRUST_PROXY=2 if another proxy (e.g. Cloudflare, frontend nginx) sits in
+// front of it.
+const trustProxyEnv = (process.env.TRUST_PROXY || '1').trim();
+app.set('trust proxy', /^\d+$/.test(trustProxyEnv) ? parseInt(trustProxyEnv, 10) : trustProxyEnv === 'true' ? true : trustProxyEnv);
 
 // NOTE: Security headers (HSTS, CSP, X-Frame-Options, etc.) are centralized
 // in the NPM/openresty layer to cover ALL responses including SPA root HTML.

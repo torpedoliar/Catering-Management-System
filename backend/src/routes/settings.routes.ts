@@ -12,6 +12,7 @@ import multer from 'multer';
 import sharp from 'sharp';
 import path from 'path';
 import fs from 'fs';
+import { settingsForRole, maskSettingsSecrets } from '../utils/settingsView';
 
 const router = Router();
 
@@ -76,7 +77,8 @@ router.get('/', authMiddleware, async (req: AuthRequest, res: Response) => {
             { ttl: CACHE_TTL.SETTINGS }
         );
 
-        res.json(settings);
+        // K1: never send SMTP credentials / admin-only config to non-admins.
+        res.json(settingsForRole(settings, req.user?.role));
     } catch (error) {
         console.error('Get settings error:', error);
         res.status(500).json({ error: ErrorMessages.SERVER_ERROR });
@@ -230,18 +232,20 @@ router.put('/', authMiddleware, adminMiddleware, async (req: AuthRequest, res: R
         }
 
         // Log audit
-        await logSettings(req.user || null, oldSettings, settings, getRequestContext(req), { settingsType: 'System Settings' });
+        await logSettings(req.user || null, maskSettingsSecrets(oldSettings), maskSettingsSecrets(settings), getRequestContext(req), { settingsType: 'System Settings' });
 
         // Invalidate settings cache
         await cacheService.delete(CACHE_KEYS.SETTINGS);
 
-        // Broadcast settings update to all clients
+        // Broadcast settings update to all clients. K1: SSE reaches every
+        // logged-in user, so only the non-admin view goes out; admin screens
+        // refetch through GET /api/settings.
         sseManager.broadcast('settings:updated', {
-            settings,
+            settings: settingsForRole(settings, 'USER'),
             timestamp: getNow().toISOString(),
         });
 
-        res.json(settings);
+        res.json(maskSettingsSecrets(settings));
     } catch (error) {
         console.error('Update settings error:', error);
         res.status(500).json({ error: 'Failed to update settings' });

@@ -25,9 +25,10 @@ import {
     bulkOrderSchema,
     BulkOrderSuccess,
     BulkOrderFailure,
+    getCachedSettings,
 } from './shared';
 import { parseOrderDate, toOrderDateKey } from '../../utils/orderDate';
-import { createOrderWithCapacityCheck } from '../../services/order.service';
+import { createOrderWithCapacityCheck, runSerializable } from '../../services/order.service';
 
 const router = Router();
 
@@ -49,7 +50,7 @@ router.post('/bulk', authMiddleware, blockVendorMiddleware, blacklistMiddleware,
         }
 
         // Get settings
-        const settings = await prisma.settings.findUnique({ where: { id: 'default' } });
+        const settings = await getCachedSettings();
         const cutoffMode = settings?.cutoffMode || 'per-shift';
         const maxOrderDaysAhead = settings?.maxOrderDaysAhead || 7;
         const cutoffDays = settings?.cutoffDays || 0;
@@ -246,13 +247,16 @@ router.post('/bulk', authMiddleware, blockVendorMiddleware, blacklistMiddleware,
 
                 let order;
                 try {
-                    order = await prisma.$transaction(
-                        (tx) => createOrderWithCapacityCheck(tx, canteenId, shiftId, orderDate, orderData),
-                        { isolationLevel: 'Serializable' }
+                    order = await runSerializable(
+                        (tx) => createOrderWithCapacityCheck(tx, canteenId, shiftId, orderDate, orderData)
                     );
                 } catch (e: any) {
                     if (e?.name === 'CapacityError') {
                         failedOrders.push({ date: orderDateParam, shiftId, reason: 'Kapasitas kantin penuh' });
+                        continue;
+                    }
+                    if (e?.name === 'DuplicateOrderError') {
+                        failedOrders.push({ date: orderDateParam, shiftId, reason: 'Sudah ada pesanan untuk tanggal ini' });
                         continue;
                     }
                     throw e;

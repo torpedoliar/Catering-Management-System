@@ -307,7 +307,11 @@ router.post('/checkin/manual', authMiddleware, canteenMiddleware, upload.single(
 
         // Duplicate check-in detection
         if (!order) {
-            const pickedUpOrder = await prisma.order.findFirst({
+            // R3 (audit 2026-11-25): only today's pickup, or yesterday's
+            // overnight shift, counts as "already picked up". Yesterday's
+            // daytime meal used to be shown as a duplicate when the person
+            // simply had no order today.
+            const pickedUpOrders = await prisma.order.findMany({
                 where: {
                     userId: user.id,
                     orderDate: { gte: yesterday, lt: tomorrow },
@@ -318,7 +322,10 @@ router.post('/checkin/manual', authMiddleware, canteenMiddleware, upload.single(
                     shift: true,
                     canteen: { select: { id: true, name: true, location: true } },
                 },
+                orderBy: { checkInTime: 'desc' },
             });
+            const pickedUpOrder = pickedUpOrders.find(o => o.orderDate >= today)
+                ?? pickedUpOrders.find(o => o.orderDate < today && isOvernightShift(o.shift.startTime, o.shift.endTime));
 
             if (pickedUpOrder) {
                 return res.status(400).json({

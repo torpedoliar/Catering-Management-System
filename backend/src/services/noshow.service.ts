@@ -127,12 +127,15 @@ export async function processNoShows(): Promise<NoShowResult> {
 
         // Process each order
         for (const order of pendingOrders) {
-            // Mark order as NO_SHOW
-            const updatedOrder = await prisma.order.update({
-                where: { id: order.id },
+            // Mark order as NO_SHOW. T2 (audit 2026-11-25): only if it is
+            // still ORDERED — a check-in, cancel or the admin "process
+            // no-shows" button may have changed it since the query above.
+            const flip = await prisma.order.updateMany({
+                where: { id: order.id, status: 'ORDERED' },
                 data: { status: 'NO_SHOW' },
-                include: { shift: true },
             });
+            if (flip.count === 0) continue;
+            const updatedOrder = order;
 
             result.processedOrders++;
 
@@ -396,15 +399,17 @@ export async function cancelOrdersForBlacklistedUser(
 
         // Cancel each order
         for (const order of pendingOrders) {
-            const updatedOrder = await prisma.order.update({
-                where: { id: order.id },
+            // T2: cancel only if still ORDERED (a pickup may have happened).
+            const flip = await prisma.order.updateMany({
+                where: { id: order.id, status: 'ORDERED' },
                 data: {
                     status: 'CANCELLED',
                     cancelledBy: 'System (Blacklist)',
                     cancelReason,
                 },
-                include: { shift: true },
             });
+            if (flip.count === 0) continue;
+            const updatedOrder = { ...order, status: 'CANCELLED' as const };
 
             // Create a cancellation message
             await prisma.message.create({

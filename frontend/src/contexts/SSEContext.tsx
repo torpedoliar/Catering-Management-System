@@ -313,7 +313,7 @@ export function SSEProvider({ children }: { children: ReactNode }) {
                     const eventObj = { type: eventType, data, timestamp: new Date().toISOString() };
                     setLastEvent(eventObj);
                     notifySubscribers(eventType, data);
-                    showEventToast(eventType, data, user?.id ?? '');
+                    showEventToast(eventType, data, user?.id ?? '', user?.role ?? '');
                 } catch (e) {
                     console.error(`Failed to parse SSE event ${eventType}:`, e);
                 }
@@ -423,9 +423,13 @@ export function SSEProvider({ children }: { children: ReactNode }) {
 }
 
 // Show toast notifications for events
-function showEventToast(eventType: string, data: any, currentUserId: string) {
+function showEventToast(eventType: string, data: any, currentUserId: string, currentRole = '') {
     // Don't show toast for own actions
     const isOwnAction = data.order?.userId === currentUserId || data.userId === currentUserId;
+    // T3 (audit 2026-11-25): other people's order/blacklist activity is an
+    // admin concern. Employees no longer receive those details at all, and
+    // counter screens (CANTEEN) must not be flooded during a meal break.
+    const showOthersActivity = currentRole === 'ADMIN';
 
     // FE-NOTIF-NAV: every business toast is clickable. The onClick builds
     // a minimal Notification-shaped object from the SSE payload and lets
@@ -457,7 +461,7 @@ function showEventToast(eventType: string, data: any, currentUserId: string) {
 
     switch (eventType) {
         case 'order:created':
-            if (!isOwnAction) {
+            if (!isOwnAction && showOthersActivity) {
                 toast.success(`📦 New order: ${data.order?.user?.name || 'User'}`, withClick({
                     icon: '🍽️',
                     onClick: () => goTo({ relatedType: 'ORDER', relatedId: data.order?.id, title: 'order:created' }),
@@ -489,7 +493,7 @@ function showEventToast(eventType: string, data: any, currentUserId: string) {
             }));
             break;
         case 'order:cancelled':
-            if (!isOwnAction) {
+            if (!isOwnAction && showOthersActivity) {
                 toast(`Order cancelled: ${data.order?.user?.name || 'User'}`, withClick({
                     icon: '❌',
                     onClick: () => goTo({ relatedType: 'ORDER', relatedId: data.order?.id, title: 'order:cancelled' }),
@@ -503,18 +507,21 @@ function showEventToast(eventType: string, data: any, currentUserId: string) {
             }
             break;
         case 'order:noshow':
+            if (!isOwnAction && !showOthersActivity) break;
             toast.error(`Tidak diambil: ${data.userName || 'User'}`, withClick({
                 icon: '⚠️',
                 onClick: () => goTo({ relatedType: 'ORDER', relatedId: data.orderId, title: 'order:noshow' }),
             }));
             break;
         case 'user:blacklisted':
+            if (!isOwnAction && !showOthersActivity) break;
             toast.error(`${data.userName || 'User'} blacklisted`, withClick({
                 icon: '🚫',
                 onClick: () => goTo({ relatedType: 'BLACKLIST', relatedId: data.blacklistId, title: 'user:blacklisted' }),
             }));
             break;
         case 'user:unblocked':
+            if (!isOwnAction && !showOthersActivity) break;
             toast.success(`${data.userName || 'User'} unblocked`, withClick({
                 icon: '✅',
                 onClick: () => goTo({ relatedType: 'BLACKLIST', relatedId: data.blacklistId, title: 'user:unblocked' }),

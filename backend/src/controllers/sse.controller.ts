@@ -18,6 +18,34 @@ interface EventLog {
     timestamp: Date;
 }
 
+// T3 (audit 2026-11-25): order and blacklist events carry names, employee
+// IDs, departments and blacklist status. They reach staff roles and the
+// people they are about; other users get only what lets their screens
+// refresh (order events) or nothing (user events).
+const PERSONAL_EVENT_PREFIXES = ['order:', 'user:'];
+
+function ownersOf(data: any): string[] {
+    const ids = [
+        data?.userId,
+        data?.order?.userId,
+        data?.order?.user?.id,
+        data?.blacklist?.userId,
+        data?.user?.id,
+        ...(Array.isArray(data?.orders) ? data.orders.map((o: any) => o?.userId) : []),
+    ];
+    return Array.from(new Set(ids.filter((id): id is string => typeof id === 'string' && id.length > 0)));
+}
+
+function redactOrderEvent(data: any) {
+    const o = data?.order;
+    return {
+        ...(o ? { order: { id: o.id, status: o.status, shiftId: o.shiftId, canteenId: o.canteenId, orderDate: o.orderDate } } : {}),
+        ...(data?.orderId ? { orderId: data.orderId } : {}),
+        ...(typeof data?.count === 'number' ? { count: data.count } : {}),
+        timestamp: data?.timestamp,
+    };
+}
+
 class SSEManager {
     private clients: Map<string, SSEClient> = new Map();
     private eventHistory: EventLog[] = [];
@@ -63,6 +91,16 @@ class SSEManager {
                     this.writeToLocalClients(event, data, null);
                 } catch (e) {
                     console.error('[SSE-SUB] broadcast parse error:', e);
+                }
+            });
+
+            // T3: scoped events (full payload for staff/owner, redacted for the rest)
+            await this.subClient.subscribe('sse:scoped', (message) => {
+                try {
+                    const { event, full, redacted, ownerUserIds } = JSON.parse(message);
+                    this.writeScopedToLocalClients(event, full, redacted, ownerUserIds);
+                } catch (e) {
+                    console.error('[SSE-SUB] scoped parse error:', e);
                 }
             });
 
@@ -238,6 +276,14 @@ class SSEManager {
 
     // FIX-H1: Publish to Redis instead of direct write
     broadcast(event: string, data: any): void {
+        // T3: events about a person are scoped instead of going to everyone.
+        if (PERSONAL_EVENT_PREFIXES.some(p => event.startsWith(p))) {
+            this.broadcastScoped(event, data, {
+                ownerUserIds: ownersOf(data),
+                redacted: event.startsWith('order:') ? redactOrderEvent(data) : null,
+            });
+            return;
+        }
         const enrichedData = {
             ...data,
             _sse: {
@@ -300,6 +346,51 @@ class SSEManager {
             this.writeToLocalClients(event, enrichedData, { role: roles[0] });
         }
     }
+
+    /**
+     * T3 (audit 2026-11-25): events about a person (orders, check-ins,
+     * blacklists) went to every connected browser, so any employee could
+     * read other employees' names, IDs and blacklist status. Scoped events
+     * send the full payload only to staff roles and to the people the event
+     * is about; everyone else gets `redacted` (no personal data) so their
+     * screens can still refresh, or nothing when `redacted` is null.
+     */
+    broadcastScoped(event: string, full: any, options: { ownerUserIds?: (string | null | undefined)[]; redacted?: any | null } = {}): void {
+        const broadcastTime = getNow().toISOString();
+        const fullData = { ...full, _sse: { event, broadcastTime, scoped: true } };
+        const redactedData = options.redacted == null ? null : { ...options.redacted, _sse: { event, broadcastTime, scoped: true } };
+        const ownerUserIds = (options.ownerUserIds || []).filter((id): id is string => !!id);
+
+        this.logEvent(event, fullData);
+
+        if (this.pubClient?.isReady) {
+            this.pubClient.publish('sse:scoped', JSON.stringify({ event, full: fullData, redacted: redactedData, ownerUserIds })).catch(err =>
+                console.error('[SSE] Publish scoped error:', err)
+            );
+        } else {
+            this.writeScopedToLocalClients(event, fullData, redactedData, ownerUserIds);
+        }
+    }
+
+    private writeScopedToLocalClients(event: string, full: any, redacted: any | null, ownerUserIds: string[]): void {
+        const fullMessage = `event: ${event}\ndata: ${JSON.stringify(full)}\n\n`;
+        const redactedMessage = redacted == null ? null : `event: ${event}\ndata: ${JSON.stringify(redacted)}\n\n`;
+        this.clients.forEach((client) => {
+            const privileged = (client.role && SSEManager.STAFF_ROLES.has(client.role))
+                || (client.userId && ownerUserIds.includes(client.userId));
+            const message = privileged ? fullMessage : redactedMessage;
+            if (!message) return;
+            try {
+                client.response.write(message);
+                client.lastActivity = getNow();
+            } catch {
+                this.removeClient(client.id);
+            }
+        });
+    }
+
+    // Roles that work with other people's orders and may see them live.
+    private static readonly STAFF_ROLES = new Set(['ADMIN', 'CANTEEN', 'VENDOR']);
 
     // Broadcast to all EXCEPT specific user (for avoiding echo)
     broadcastExceptUser(userId: string, event: string, data: any): void {

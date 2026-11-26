@@ -112,14 +112,25 @@ router.post('/:id/cancel', authMiddleware, blockVendorMiddleware, blacklistMiddl
 
         const cancelReason = req.body.reason || (req.user?.role === 'USER' ? 'Dibatalkan oleh user' : 'Dibatalkan oleh admin');
 
-        const updatedOrder = await prisma.order.update({
-            where: { id: order.id },
+        // T2 (audit 2026-11-25): cancel only if the order is still ORDERED.
+        // A check-in at the counter between the read above and this write
+        // used to be overwritten, so a meal already handed out showed as
+        // CANCELLED.
+        const cancelResult = await prisma.order.updateMany({
+            where: { id: order.id, status: 'ORDERED' },
             data: {
                 status: 'CANCELLED',
                 cancelledById: cancelledByUser?.id || null,
                 cancelledBy: cancelledByUser?.name || 'System',
                 cancelReason: cancelReason,
             },
+        });
+        if (cancelResult.count === 0) {
+            return res.status(409).json({ error: ErrorMessages.CANNOT_CANCEL_PICKED_UP });
+        }
+
+        const updatedOrder = await prisma.order.findUniqueOrThrow({
+            where: { id: order.id },
             include: {
                 user: { select: { id: true, name: true, externalId: true } },
                 shift: true,

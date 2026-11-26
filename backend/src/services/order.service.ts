@@ -4,6 +4,7 @@ import { getNow, getToday } from './time.service';
 import { createAuditLog } from './audit.service';
 import { prisma } from '../lib/prisma';
 import { Prisma } from '@prisma/client';
+import { toOrderDateKey } from '../utils/orderDate';
 
 /**
  * Thrown by createOrderWithCapacityCheck when a canteen's per-shift or
@@ -17,8 +18,59 @@ export class CapacityError extends Error {
         public readonly limit: number,
         public readonly isShiftSpecific: boolean
     ) {
-        super(`Canteen capacity ${limit} reached`);
+        super(isShiftSpecific
+            ? `Kuota kantin untuk shift ini sudah penuh (${limit} porsi)`
+            : `Kuota harian kantin sudah penuh (${limit} porsi)`);
         this.name = 'CapacityError';
+    }
+}
+
+/** Thrown when the user already has a non-cancelled order for that catering day. */
+export class DuplicateOrderError extends Error {
+    constructor() {
+        super('Sudah ada pesanan untuk tanggal ini');
+        this.name = 'DuplicateOrderError';
+    }
+}
+
+/**
+ * Same matching as the route-level pre-check: a -24h/+48h window plus the
+ * catering-day key, so orders stored before the Fake-UTC fixes still match.
+ */
+async function assertNoActiveOrderForDay(tx: Prisma.TransactionClient, userId: string, orderDate: Date) {
+    const key = toOrderDateKey(orderDate);
+    const candidates = await tx.order.findMany({
+        where: {
+            userId,
+            status: { not: 'CANCELLED' },
+            orderDate: {
+                gte: new Date(orderDate.getTime() - 24 * 3600 * 1000),
+                lt: new Date(orderDate.getTime() + 48 * 3600 * 1000),
+            },
+        },
+        select: { orderDate: true },
+    });
+    if (candidates.some(o => toOrderDateKey(o.orderDate) === key)) {
+        throw new DuplicateOrderError();
+    }
+}
+
+/**
+ * S1 (audit 2026-11-25): run a SERIALIZABLE transaction and retry when
+ * Postgres aborts it for a serialization conflict (Prisma P2034). Without
+ * this, concurrent orders for the same canteen near cutoff surfaced as
+ * HTTP 500 to employees.
+ */
+export async function runSerializable<T>(fn: (tx: Prisma.TransactionClient) => Promise<T>, attempts = 4): Promise<T> {
+    for (let attempt = 1; ; attempt++) {
+        try {
+            return await prisma.$transaction(fn, { isolationLevel: 'Serializable' });
+        } catch (e: any) {
+            const retryable = e?.code === 'P2034'
+                || /could not serialize|deadlock detected|write conflict/i.test(String(e?.message || ''));
+            if (!retryable || attempt >= attempts) throw e;
+            await new Promise(resolve => setTimeout(resolve, 15 * attempt + Math.random() * 40));
+        }
     }
 }
 
@@ -48,6 +100,14 @@ export async function createOrderWithCapacityCheck(
     orderDate: Date,
     orderData: Omit<Prisma.OrderCreateInput, 'canteen' | 'shift' | 'orderDate'>
 ): Promise<any> {
+    // T1 (audit 2026-11-25): the "already ordered today?" check used to run
+    // outside this transaction, so two near-simultaneous requests (double
+    // tap, mobile retry, kiosk + phone) could both create an order for the
+    // same day. Inside a SERIALIZABLE transaction Postgres aborts one of
+    // them; runSerializable retries it and the retry sees the first order.
+    const userId = (orderData as any).userId as string | undefined;
+    if (userId) await assertNoActiveOrderForDay(tx, userId, orderDate);
+
     if (!canteenId) {
         // No canteenId → no capacity constraint, just create
         return await tx.order.create({ data: { ...orderData, orderDate } as any });
@@ -139,7 +199,7 @@ export const OrderService = {
             await prisma.$transaction(async (tx) => {
                 // 1. Batch update all orders to CANCELLED
                 await tx.order.updateMany({
-                    where: { id: { in: orderIds } },
+                    where: { id: { in: orderIds }, status: 'ORDERED' }, // T2: never overwrite a pickup
                     data: { status: 'CANCELLED', cancelledBy, cancelReason: reason },
                 });
 
@@ -234,7 +294,7 @@ export const OrderService = {
             // FIX-M4: Batch cancel in single transaction
             await prisma.$transaction(async (tx) => {
                 await tx.order.updateMany({
-                    where: { id: { in: orderIds } },
+                    where: { id: { in: orderIds }, status: 'ORDERED' }, // T2: never overwrite a pickup
                     data: {
                         status: 'CANCELLED',
                         cancelledBy: 'System (Policy Change)',
@@ -349,7 +409,7 @@ export const OrderService = {
             return {
                 valid: false,
                 message: isShiftSpecific
-                    ? `KKuota kantin ${canteen.name} untuk shift ini penuh (${limit} porsi)`
+                    ? `Kuota kantin ${canteen.name} untuk shift ini penuh (${limit} porsi)`
                     : `Kuota harian kantin ${canteen.name} penuh (${limit} porsi)`
             };
         }

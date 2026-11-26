@@ -27,7 +27,7 @@ import {
 } from './shared';
 import { parseOrderDate, toOrderDateKey } from '../../utils/orderDate';
 import { getCachedSettings } from '../../services/cache.service';
-import { createOrderWithCapacityCheck } from '../../services/order.service';
+import { createOrderWithCapacityCheck, runSerializable } from '../../services/order.service';
 
 const router = Router();
 
@@ -158,13 +158,15 @@ router.post('/', authMiddleware, blockVendorMiddleware, blacklistMiddleware, api
 
         let order;
         try {
-            order = await prisma.$transaction(
-                (tx) => createOrderWithCapacityCheck(tx, canteenId, shiftId, orderDate, orderData),
-                { isolationLevel: 'Serializable' }
+            order = await runSerializable(
+                (tx) => createOrderWithCapacityCheck(tx, canteenId, shiftId, orderDate, orderData)
             );
         } catch (e: any) {
             if (e?.name === 'CapacityError') {
                 return res.status(409).json({ error: e.message, code: 'CAPACITY_FULL' });
+            }
+            if (e?.name === 'DuplicateOrderError') {
+                return res.status(400).json({ error: ErrorMessages.ORDER_ALREADY_EXISTS });
             }
             throw e;
         }

@@ -156,10 +156,10 @@ router.post('/', authMiddleware, async (req: AuthRequest, res: Response) => {
 // Submit Appeal / Sanggahan for NO_SHOW order (User)
 router.post('/appeal', authMiddleware, upload.single('photo'), async (req: AuthRequest, res: Response) => {
     try {
-        const { orderId, shiftId, content, orderDate } = req.body;
+        const { orderId, content } = req.body;
         const userId = req.user?.id;
 
-        if (!userId || !orderId || !shiftId || !content || !orderDate) {
+        if (!userId || !orderId || !content) {
             return res.status(400).json({ error: 'Data tidak lengkap. Order, shift, alasan, dan tanggal wajib diisi.' });
         }
 
@@ -169,10 +169,13 @@ router.post('/appeal', authMiddleware, upload.single('photo'), async (req: AuthR
             return res.status(404).json({ error: 'Order tidak ditemukan' });
         }
         
-        // Validate 7 days limit
-        const appealDate = new Date(orderDate);
-        // We use system date. Note: getNow() is assumed to return current Date. Let's make sure it's available. To be safe, just new Date()
-        const now = new Date();
+        // S2 (audit 2026-11-25): the 7-day limit, shift and date come from
+        // the order in the database. They used to come from the request
+        // body, so an old no-show could be appealed by sending a new date.
+        const shiftId = order.shiftId;
+        const orderDate = order.orderDate;
+        const appealDate = new Date(order.orderDate);
+        const now = getNow(); // Fake-UTC, same clock as order.orderDate
         const diffTime = now.getTime() - appealDate.getTime();
         const diffDays = diffTime / (1000 * 60 * 60 * 24);
         

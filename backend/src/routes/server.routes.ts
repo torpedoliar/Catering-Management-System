@@ -2,6 +2,7 @@ import { Router, Response } from 'express';
 import bcrypt from 'bcryptjs';
 import fs from 'fs';
 import path from 'path';
+import os from 'os';
 import { AuthRequest, authMiddleware, adminMiddleware } from '../middleware/auth.middleware';
 import { prisma } from '../lib/prisma';
 import {
@@ -14,13 +15,19 @@ import {
     getBackupSettings,
     updateBackupSettings,
     importBackupFile,
+    assertSafeSqlDump,
     BACKUP_DIR,
     RETENTION_DAYS
 } from '../services/server.service';
 import multer from 'multer';
 
 // Multer config for backup upload
-const upload = multer({ dest: 'uploads/temp/' });
+// R4 (audit 2026-11-25): temp uploads used to land in uploads/temp, which is
+// served publicly at /uploads. Use the OS temp dir and cap the size.
+const upload = multer({
+    dest: path.join(os.tmpdir(), 'catering-backup-upload'),
+    limits: { fileSize: 1024 * 1024 * 1024 }, // 1 GB
+});
 
 const router = Router();
 
@@ -169,7 +176,7 @@ router.put('/backup/settings', authMiddleware, adminMiddleware, async (req: Auth
     try {
         const { autoBackupEnabled, autoBackupInterval } = req.body;
         const settings = await updateBackupSettings(autoBackupEnabled, autoBackupInterval);
-        res.json(settings);
+        res.json(maskSettingsSecrets(settings));
     } catch (error) {
         console.error('Update settings error:', error);
         res.status(500).json({ error: 'Gagal memperbarui pengaturan backup' });
@@ -184,6 +191,8 @@ router.post('/restore/upload', authMiddleware, adminMiddleware, upload.single('b
         }
 
         const userId = req.user!.id;
+        // S4: reject files with shell/file-access commands before keeping them.
+        await assertSafeSqlDump(req.file.path);
         const backup = await importBackupFile(
             userId,
             req.file.path,
@@ -197,7 +206,10 @@ router.post('/restore/upload', authMiddleware, adminMiddleware, upload.single('b
         });
     } catch (error: any) {
         console.error('Upload backup error:', error);
-        res.status(500).json({ error: error.message || 'Gagal mengunggah backup' });
+        // R4: don't leave a rejected upload behind on disk.
+        if (req.file?.path) await fs.promises.unlink(req.file.path).catch(() => {});
+        const rejected = String(error?.message || '').startsWith('File backup ditolak');
+        res.status(rejected ? 400 : 500).json({ error: error.message || 'Gagal mengunggah backup' });
     }
 });
 
@@ -252,6 +264,9 @@ router.delete('/backup/:id', authMiddleware, adminMiddleware, async (req: AuthRe
     try {
         const { adminPassword } = req.body;
         const userId = req.user!.id;
+        if (typeof adminPassword !== 'string' || !adminPassword) {
+            return res.status(400).json({ error: 'Password admin wajib diisi' });
+        }
 
         // Verify admin password
         const admin = await prisma.user.findUnique({ where: { id: userId } });
@@ -279,6 +294,9 @@ router.post('/restore/:id', authMiddleware, adminMiddleware, async (req: AuthReq
         const { adminPassword, confirmationText } = req.body;
         const userId = req.user!.id;
         const backupId = req.params.id;
+        if (typeof adminPassword !== 'string' || !adminPassword) {
+            return res.status(400).json({ error: 'Password admin wajib diisi' });
+        }
 
         // Validate confirmation text
         if (confirmationText !== 'RESTORE DATABASE') {
@@ -480,6 +498,7 @@ router.get('/uptime/restarts', authMiddleware, adminMiddleware, async (req: Auth
 // Export uptime history to XLSX
 import ExcelJS from 'exceljs';
 import { getNow } from '../services/time.service';
+import { maskSettingsSecrets } from '../utils/settingsView';
 
 router.get('/uptime/export', authMiddleware, adminMiddleware, async (req: AuthRequest, res: Response) => {
     try {
