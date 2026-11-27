@@ -13,22 +13,18 @@ export default function TimeInput({ value, onChange, className = '' }: TimeInput
     const containerRef = useRef<HTMLDivElement>(null);
     const [pickerPosition, setPickerPosition] = useState({ top: 0, left: 0 });
 
-    // Parse value to get hours and minutes
     const [hours, minutes] = (value || '00:00').split(':').map(Number);
 
-    // Calculate picker position when showing
     useEffect(() => {
         if (showPicker && containerRef.current) {
             const rect = containerRef.current.getBoundingClientRect();
-            // Position above the input
             setPickerPosition({
-                top: rect.top - 10,
-                left: rect.left
+                top: rect.top - 8,
+                left: rect.left,
             });
         }
     }, [showPicker]);
 
-    // Handle click outside to close picker
     useEffect(() => {
         const handleClickOutside = (e: MouseEvent) => {
             if (containerRef.current && !containerRef.current.contains(e.target as Node)) {
@@ -43,129 +39,123 @@ export default function TimeInput({ value, onChange, className = '' }: TimeInput
     }, []);
 
     const updateTime = (newHours: number, newMinutes: number) => {
-        const h = Math.max(0, Math.min(23, newHours));
-        const m = Math.max(0, Math.min(59, newMinutes));
-        onChange(`${h.toString().padStart(2, '0')}:${m.toString().padStart(2, '0')}`);
+        const h = Math.max(0, Math.min(23, isNaN(newHours) ? 0 : newHours));
+        const m = Math.max(0, Math.min(59, isNaN(newMinutes) ? 0 : newMinutes));
+        onChange(`${String(h).padStart(2, '0')}:${String(m).padStart(2, '0')}`);
     };
 
-    const incrementHours = () => updateTime(hours + 1, minutes);
-    const decrementHours = () => updateTime(hours - 1, minutes);
-    const incrementMinutes = () => updateTime(hours, minutes + 1);
-    const decrementMinutes = () => updateTime(hours, minutes - 1);
-
-    // Handle wheel event
-    const handleHoursWheel = (e: React.WheelEvent) => {
-        e.preventDefault();
-        e.stopPropagation();
-        if (e.deltaY < 0) incrementHours();
-        else decrementHours();
-    };
-
-    const handleMinutesWheel = (e: React.WheelEvent) => {
-        e.preventDefault();
-        e.stopPropagation();
-        if (e.deltaY < 0) incrementMinutes();
-        else decrementMinutes();
-    };
-
-    const pickerContent = showPicker && createPortal(
-        <div
-            id="time-picker-portal"
-            className="fixed bg-slate-800 border border-slate-600 rounded-lg shadow-2xl p-3"
-            style={{
-                top: pickerPosition.top,
-                left: pickerPosition.left,
-                transform: 'translateY(-100%)',
-                zIndex: 9999
-            }}
-        >
-            <div className="flex gap-4">
-                {/* Hours */}
-                <div
-                    className="flex flex-col items-center"
-                    onWheel={handleHoursWheel}
-                >
-                    <button
-                        type="button"
-                        onClick={incrementHours}
-                        className="p-1 hover:bg-slate-700 rounded"
+    const pickerContent =
+        showPicker &&
+        createPortal(
+            <div
+                id="time-picker-portal"
+                className="fixed bg-[#fff] border border-[#e7e5e4] rounded-[12px] shadow-xl p-3"
+                style={{
+                    top: pickerPosition.top,
+                    left: pickerPosition.left,
+                    transform: 'translateY(-100%)',
+                    zIndex: 9999,
+                }}
+            >
+                <div className="flex gap-4">
+                    <div
+                        className="flex flex-col items-center"
+                        onWheel={(e) => {
+                            e.preventDefault();
+                            updateTime(hours + (e.deltaY < 0 ? 1 : -1), minutes);
+                        }}
                     >
-                        <ChevronUp className="w-5 h-5 text-slate-400" />
-                    </button>
-                    <div className="text-3xl font-mono text-cyan-400 tabular-nums min-w-[48px] text-center py-2">
-                        {hours.toString().padStart(2, '0')}
+                        <button
+                            type="button"
+                            aria-label="Tambah jam"
+                            onClick={() => updateTime(hours + 1, minutes)}
+                            className="p-1 hover:bg-[#f5f5f4] rounded-[6px] border-0 bg-transparent cursor-pointer text-[#57534e]"
+                        >
+                            <ChevronUp className="w-4 h-4" />
+                        </button>
+                        <div className="text-[24px] font-bold font-mono text-[#b45309] tabular-nums min-w-[44px] text-center py-1">
+                            {String(isNaN(hours) ? 0 : hours).padStart(2, '0')}
+                        </div>
+                        <button
+                            type="button"
+                            aria-label="Kurangi jam"
+                            onClick={() => updateTime(hours - 1, minutes)}
+                            className="p-1 hover:bg-[#f5f5f4] rounded-[6px] border-0 bg-transparent cursor-pointer text-[#57534e]"
+                        >
+                            <ChevronDown className="w-4 h-4" />
+                        </button>
+                        <span className="text-[11px] text-[#78716c] mt-0.5">Jam</span>
                     </div>
-                    <button
-                        type="button"
-                        onClick={decrementHours}
-                        className="p-1 hover:bg-slate-700 rounded"
+
+                    <div className="text-[24px] font-mono text-[#a8a29e] py-2 self-center">:</div>
+
+                    <div
+                        className="flex flex-col items-center"
+                        onWheel={(e) => {
+                            e.preventDefault();
+                            updateTime(hours, minutes + (e.deltaY < 0 ? 1 : -1));
+                        }}
                     >
-                        <ChevronDown className="w-5 h-5 text-slate-400" />
-                    </button>
-                    <span className="text-xs text-slate-500 mt-1">Jam</span>
+                        <button
+                            type="button"
+                            aria-label="Tambah menit"
+                            onClick={() => updateTime(hours, minutes + 1)}
+                            className="p-1 hover:bg-[#f5f5f4] rounded-[6px] border-0 bg-transparent cursor-pointer text-[#57534e]"
+                        >
+                            <ChevronUp className="w-4 h-4" />
+                        </button>
+                        <div className="text-[24px] font-bold font-mono text-[#b45309] tabular-nums min-w-[44px] text-center py-1">
+                            {String(isNaN(minutes) ? 0 : minutes).padStart(2, '0')}
+                        </div>
+                        <button
+                            type="button"
+                            aria-label="Kurangi menit"
+                            onClick={() => updateTime(hours, minutes - 1)}
+                            className="p-1 hover:bg-[#f5f5f4] rounded-[6px] border-0 bg-transparent cursor-pointer text-[#57534e]"
+                        >
+                            <ChevronDown className="w-4 h-4" />
+                        </button>
+                        <span className="text-[11px] text-[#78716c] mt-0.5">Menit</span>
+                    </div>
                 </div>
 
-                <div className="text-3xl font-mono text-slate-500 py-2 self-center">:</div>
-
-                {/* Minutes */}
-                <div
-                    className="flex flex-col items-center"
-                    onWheel={handleMinutesWheel}
-                >
-                    <button
-                        type="button"
-                        onClick={incrementMinutes}
-                        className="p-1 hover:bg-slate-700 rounded"
-                    >
-                        <ChevronUp className="w-5 h-5 text-slate-400" />
-                    </button>
-                    <div className="text-3xl font-mono text-cyan-400 tabular-nums min-w-[48px] text-center py-2">
-                        {minutes.toString().padStart(2, '0')}
-                    </div>
-                    <button
-                        type="button"
-                        onClick={decrementMinutes}
-                        className="p-1 hover:bg-slate-700 rounded"
-                    >
-                        <ChevronDown className="w-5 h-5 text-slate-400" />
-                    </button>
-                    <span className="text-xs text-slate-500 mt-1">Menit</span>
-                </div>
-            </div>
-
-            {/* Quick presets */}
-            <div className="mt-3 pt-3 border-t border-slate-700 flex flex-wrap gap-2">
-                {['06:00', '08:00', '12:00', '15:00', '17:00', '20:00'].map(preset => (
-                    <button
-                        key={preset}
-                        type="button"
-                        onClick={() => { onChange(preset); setShowPicker(false); }}
-                        className={`px-2 py-1 text-xs rounded ${value === preset
-                            ? 'bg-cyan-500/30 text-cyan-400'
-                            : 'bg-slate-700 text-slate-300 hover:bg-slate-600'
+                <div className="mt-2.5 pt-2.5 border-t border-[#f5f5f4] flex flex-wrap gap-1.5 max-w-[200px]">
+                    {['06:00', '08:00', '12:00', '15:00', '17:00', '20:00'].map((preset) => (
+                        <button
+                            key={preset}
+                            type="button"
+                            onClick={() => {
+                                onChange(preset);
+                                setShowPicker(false);
+                            }}
+                            className={`px-2 py-1 text-[11.5px] font-semibold rounded-[6px] border cursor-pointer ${
+                                value === preset
+                                    ? 'bg-[#fffbeb] text-[#b45309] border-[#fde68a]'
+                                    : 'bg-[#fafaf9] text-[#57534e] border-[#e7e5e4] hover:bg-[#f5f5f4]'
                             }`}
-                    >
-                        {preset}
-                    </button>
-                ))}
-            </div>
-        </div>,
-        document.body
-    );
+                        >
+                            {preset}
+                        </button>
+                    ))}
+                </div>
+            </div>,
+            document.body
+        );
 
     return (
         <div ref={containerRef} className={`relative ${className}`}>
-            <div
+            <button
+                type="button"
                 onClick={() => setShowPicker(!showPicker)}
-                className="input-field w-full flex items-center justify-between cursor-pointer"
+                className="w-full h-10 px-3 rounded-[10px] border border-[#d6d3d1] bg-[#fff] hover:border-[#a8a29e] focus:outline-none focus:border-[#f59e0b] focus:ring-2 focus:ring-[#f59e0b]/25 flex items-center justify-between text-[14px] text-[#1c1917] cursor-pointer"
             >
-                <span className="text-white">
-                    {hours.toString().padStart(2, '0')} : {minutes.toString().padStart(2, '0')}
+                <span className="font-mono tabular-nums">
+                    {String(isNaN(hours) ? 0 : hours).padStart(2, '0')}:
+                    {String(isNaN(minutes) ? 0 : minutes).padStart(2, '0')}
                 </span>
-                <Clock className="w-4 h-4 text-slate-400" />
-            </div>
+                <Clock className="w-4 h-4 text-[#78716c]" aria-hidden="true" />
+            </button>
             {pickerContent}
         </div>
     );
 }
-

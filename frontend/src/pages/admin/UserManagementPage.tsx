@@ -22,7 +22,6 @@ import {
     Input,
     Select,
     RoleBadge,
-    Card,
 } from '../../components/ui';
 import type { DataTableColumn, DataTableFilter, DataTableBulkAction, DataTableRowAction } from '../../components/ui';
 
@@ -471,34 +470,35 @@ export default function UserManagementPage() {
     const filters: DataTableFilter[] = [
         {
             key: 'company',
-            label: 'Semua perusahaan',
+            label: 'Perusahaan',
             value: filterCompany,
             onChange: (v) => {
                 setFilterCompany(v);
                 setFilterDepartment('');
                 setPage(1);
             },
-            options: companies.map((c) => ({ value: c.name, label: c.name })),
+            options: [{ value: '', label: 'Semua' }, ...companies.map((c) => ({ value: c.name, label: c.name }))],
         },
         {
             key: 'department',
-            label: 'Semua departemen',
+            label: 'Departemen',
             value: filterDepartment,
             onChange: (v) => {
                 setFilterDepartment(v);
                 setPage(1);
             },
-            options: departmentOptions,
+            options: [{ value: '', label: 'Semua' }, ...departmentOptions],
         },
         {
             key: 'role',
-            label: 'Semua role',
+            label: 'Role',
             value: filterRole,
             onChange: (v) => {
                 setFilterRole(v);
                 setPage(1);
             },
             options: [
+                { value: '', label: 'Semua' },
                 { value: 'USER', label: 'Karyawan' },
                 { value: 'CANTEEN', label: 'Operator Kantin' },
                 { value: 'VENDOR', label: 'Vendor' },
@@ -507,13 +507,14 @@ export default function UserManagementPage() {
         },
         {
             key: 'status',
-            label: 'Semua status',
+            label: 'Status',
             value: filterStatus === 'all' ? '' : filterStatus,
             onChange: (v) => {
                 setFilterStatus(v || 'all');
                 setPage(1);
             },
             options: [
+                { value: '', label: 'Semua' },
                 { value: 'active', label: 'Aktif' },
                 { value: 'inactive', label: 'Nonaktif' },
                 { value: 'blacklisted', label: 'Diblokir' },
@@ -720,60 +721,58 @@ export default function UserManagementPage() {
                 }
             />
 
-            <Card padding="none">
-                <DataTable
-                    data={sortedUsers}
-                    columns={columns}
-                    getRowId={(u) => u.id}
-                    loading={isLoading}
-                    emptyTitle="Tidak ada pengguna ditemukan"
-                    emptyDescription="Ubah kata kunci atau filter untuk melihat daftar pengguna."
-                    searchValue={search}
-                    onSearchChange={(v) => {
-                        setSearch(v);
-                        setPage(1);
-                    }}
-                    searchPlaceholder="Cari nama, ID, atau NIK..."
-                    filters={filters}
-                    onResetFilters={() => {
-                        setSearch('');
-                        setFilterCompany('');
-                        setFilterDepartment('');
-                        setFilterRole('');
-                        setFilterStatus('all');
-                        setPage(1);
-                    }}
-                    sortKey={sortKey}
-                    sortDir={sortDir}
-                    onSortChange={(k) => {
-                        if (sortKey === k) setSortDir((d) => (d === 'asc' ? 'desc' : 'asc'));
-                        else {
-                            setSortKey(k);
-                            setSortDir('asc');
-                        }
-                    }}
-                    selectable
-                    selectedIds={selectedIds}
-                    onSelectionChange={setSelectedIds}
-                    bulkActions={bulkActions}
-                    rowActions={rowActions}
-                    getRowLabel={(u) => u.name}
-                    footer={
-                        <Pagination
-                            page={page}
-                            limit={limit}
-                            total={total}
-                            onPageChange={setPage}
-                            onLimitChange={(l) => {
-                                setLimit(l);
-                                setPage(1);
-                            }}
-                            variant="admin"
-                            showJumpToPage
-                        />
+            <DataTable
+                data={sortedUsers}
+                columns={columns}
+                getRowId={(u) => u.id}
+                loading={isLoading}
+                emptyTitle="Tidak ada pengguna ditemukan"
+                emptyDescription="Ubah kata kunci atau filter untuk melihat daftar pengguna."
+                searchValue={search}
+                onSearchChange={(v) => {
+                    setSearch(v);
+                    setPage(1);
+                }}
+                searchPlaceholder="Cari nama, ID, atau NIK..."
+                filters={filters}
+                onResetFilters={() => {
+                    setSearch('');
+                    setFilterCompany('');
+                    setFilterDepartment('');
+                    setFilterRole('');
+                    setFilterStatus('all');
+                    setPage(1);
+                }}
+                sortKey={sortKey}
+                sortDir={sortDir}
+                onSortChange={(k) => {
+                    if (sortKey === k) setSortDir((d) => (d === 'asc' ? 'desc' : 'asc'));
+                    else {
+                        setSortKey(k);
+                        setSortDir('asc');
                     }
-                />
-            </Card>
+                }}
+                selectable
+                selectedIds={selectedIds}
+                onSelectionChange={setSelectedIds}
+                bulkActions={bulkActions}
+                rowActions={rowActions}
+                getRowLabel={(u) => u.name}
+                footer={
+                    <Pagination
+                        page={page}
+                        limit={limit}
+                        total={total}
+                        onPageChange={setPage}
+                        onLimitChange={(l) => {
+                            setLimit(l);
+                            setPage(1);
+                        }}
+                        variant="admin"
+                        showJumpToPage
+                    />
+                }
+            />
 
             {/* Add / Edit User Modal */}
             <Modal

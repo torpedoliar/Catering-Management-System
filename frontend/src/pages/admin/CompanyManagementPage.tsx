@@ -140,8 +140,8 @@ export default function CompanyManagementPage() {
             setNewName('');
             setShowAddCompany(false);
             loadData();
-        } catch (error: any) {
-            toast.error(error.response?.data?.error || 'Gagal membuat perusahaan');
+        } catch (error) {
+            toast.error((error as { response?: { data?: { error?: string } } })?.response?.data?.error || 'Gagal membuat perusahaan');
         }
     };
 
@@ -153,8 +153,8 @@ export default function CompanyManagementPage() {
             setNewName('');
             setShowAddDivision(null);
             loadData();
-        } catch (error: any) {
-            toast.error(error.response?.data?.error || 'Gagal membuat divisi');
+        } catch (error) {
+            toast.error((error as { response?: { data?: { error?: string } } })?.response?.data?.error || 'Gagal membuat divisi');
         }
     };
 
@@ -169,8 +169,8 @@ export default function CompanyManagementPage() {
             setNewName('');
             setShowAddDepartment(null);
             loadData();
-        } catch (error: any) {
-            toast.error(error.response?.data?.error || 'Gagal membuat departemen');
+        } catch (error) {
+            toast.error((error as { response?: { data?: { error?: string } } })?.response?.data?.error || 'Gagal membuat departemen');
         }
     };
 
@@ -189,8 +189,8 @@ export default function CompanyManagementPage() {
             }
             setDeleteConfirm(null);
             loadData();
-        } catch (error: any) {
-            toast.error(error.response?.data?.error || 'Gagal menghapus');
+        } catch (error) {
+            toast.error((error as { response?: { data?: { error?: string } } })?.response?.data?.error || 'Gagal menghapus');
         }
     };
 
@@ -210,8 +210,8 @@ export default function CompanyManagementPage() {
             toast.success('Departemen diperbarui');
             setEditingDepartment(null);
             loadData();
-        } catch (error: any) {
-            toast.error(error.response?.data?.error || 'Gagal memperbarui departemen');
+        } catch (error) {
+            toast.error((error as { response?: { data?: { error?: string } } })?.response?.data?.error || 'Gagal memperbarui departemen');
         }
     };
 
@@ -229,8 +229,8 @@ export default function CompanyManagementPage() {
             );
             setShowMigrateConfirm(false);
             loadData();
-        } catch (error: any) {
-            toast.error(error.response?.data?.error || 'Gagal menyinkronkan dari data pengguna');
+        } catch (error) {
+            toast.error((error as { response?: { data?: { error?: string } } })?.response?.data?.error || 'Gagal menyinkronkan dari data pengguna');
         }
     };
 
@@ -304,8 +304,8 @@ export default function CompanyManagementPage() {
                                             { id: toastId }
                                         );
                                         loadData();
-                                    } catch (error: any) {
-                                        toast.error(error.response?.data?.error || 'Gagal mengimpor', { id: toastId });
+                                    } catch (error) {
+                                        toast.error((error as { response?: { data?: { error?: string } } })?.response?.data?.error || 'Gagal mengimpor', { id: toastId });
                                     }
                                     e.target.value = '';
                                 }}

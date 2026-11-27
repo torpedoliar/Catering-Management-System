@@ -29,8 +29,20 @@ Acuan utama: `docs/redesign/SPEC.md` dan `docs/redesign/mockups/*.dc.html`.
 - **Fase 1:** Selesai (`done`) — commit `fbee36f`
 - **Fase 2:** Selesai (`done`) — commit `eb287a4`
 - **Fase 3:** Selesai (`done`) — commit `5680f3e`
-- **Fase 4:** Selesai (`done`) — 27 November 2026
-- **Fase 5:** Sedang dikerjakan (`in_progress`)
+- **Fase 4:** Selesai (`done`) — commit `3920183`
+- **Fase 5:** Selesai (`done`) — 27 November 2026
+
+### Ringkasan Hasil Fase 5
+- **Pembersihan CSS (`frontend/src/index.css`):** Dihapus seluruh override tema gelap lama (dari 1392 baris menjadi 138 baris), termasuk `[class*="text-white"]`, `[class*="bg-white/"]`, `[class*="text-slate-…"]`, `.card .text-white`, `.glass-*`, `.btn-*`, `.input-field`, `.stat-card`, `.desktop-sidebar-container`, dan override paksa `.grid-cols-* !important` di mobile. Menyisakan token `:root` v2, tipografi dasar `Plus Jakarta Sans` pada canvas `#f7f7f5`, `.sk-shimmer`, `fadeIn`, guard input `16px` mobile, dan `@media print`.
+- **Migrasi komponen bersama & penghapusan file mati:**
+  - Dimigrasikan ke token v2 & primitif `ui/`: `ForcePasswordChange.tsx`, `AnnouncementPopup.tsx`, dan `TimeInput.tsx`.
+  - Dihapus file usang tidak terpakai: `frontend/src/components/Layout/Sidebar.tsx` dan `frontend/src/pages/admin/MenuItemsPage.tsx`.
+  - Perbaikan tata letak responsif mobile (`390×844`) pada tabel berisi data: menambahkan `min-w-0 w-full` di `Layout.tsx` & `Card.tsx`, `w-full max-w-full min-w-0` dan `[contain:layout]` pada wrapper `overflow-x-auto` di `DataTable.tsx`, serta menghapus pembungkus `<Card padding="none">` berlebih di `UserManagementPage.tsx`. Membersihkan 7 warning eslint lama di `CompanyManagementPage.tsx`.
+- **Verifikasi Akhir:**
+  - `cd backend && npm run build`: lolos (0 error).
+  - `cd frontend && npm run build`: lolos (0 error).
+  - `eslint --max-warnings 0` pada seluruh komponen & halaman hasil redesign (0 error, 0 warning; `CheckInPage.tsx` tidak diubah logikanya sesuai batasan).
+  - Uji Playwright Chromium (`verify-phase5.mjs`) di `1366×768`, `1280×720`, dan `390×844` melintasi rute USER, CANTEEN, VENDOR, dan ADMIN (42 pengecekan): `allPassed: true`, 0 page error, 0 horizontal overflow, interaksi rail 72 px (`/canteen/checkin`), filter + modal/tabel (`/admin/users`), dan navigasi bawah mobile (`< 768 px`) berjalan normal.
 
 ### Ringkasan Hasil Fase 4
 - **Backend (kompatibel ke belakang):**

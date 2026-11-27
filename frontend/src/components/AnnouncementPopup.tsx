@@ -1,15 +1,9 @@
 import { useState, useEffect, useCallback } from 'react';
+import { Bell, AlertCircle, Info, AlertTriangle, ChevronLeft, ChevronRight } from 'lucide-react';
 import { api, useAuth } from '../contexts/AuthContext';
 import { useSSE } from '../contexts/SSEContext';
 import { formatDateTimeShortWIB } from '../utils/timezone';
-import {
-    Bell,
-    AlertCircle,
-    Info,
-    AlertTriangle,
-    ChevronLeft,
-    ChevronRight
-} from 'lucide-react';
+import { Badge, Button } from './ui';
 
 interface Announcement {
     id: string;
@@ -22,13 +16,49 @@ interface Announcement {
     };
 }
 
+function getPriorityConfig(priority: string) {
+    switch (priority) {
+        case 'urgent':
+            return {
+                label: 'Penting!',
+                variant: 'danger' as const,
+                accentBg: 'bg-[#fef2f2]',
+                accentBorder: 'border-[#fecaca]',
+                icon: <AlertCircle className="w-5 h-5 text-[#b91c1c]" aria-hidden="true" />,
+            };
+        case 'high':
+            return {
+                label: 'Prioritas tinggi',
+                variant: 'warning' as const,
+                accentBg: 'bg-[#fffbeb]',
+                accentBorder: 'border-[#fde68a]',
+                icon: <AlertTriangle className="w-5 h-5 text-[#b45309]" aria-hidden="true" />,
+            };
+        case 'normal':
+            return {
+                label: 'Info',
+                variant: 'info' as const,
+                accentBg: 'bg-[#eff6ff]',
+                accentBorder: 'border-[#bfdbfe]',
+                icon: <Bell className="w-5 h-5 text-[#1d4ed8]" aria-hidden="true" />,
+            };
+        default:
+            return {
+                label: 'Umum',
+                variant: 'neutral' as const,
+                accentBg: 'bg-[#fafaf9]',
+                accentBorder: 'border-[#e7e5e4]',
+                icon: <Info className="w-5 h-5 text-[#57534e]" aria-hidden="true" />,
+            };
+    }
+}
+
 export default function AnnouncementPopup() {
     const { token } = useAuth();
     const [announcements, setAnnouncements] = useState<Announcement[]>([]);
     const [currentIndex, setCurrentIndex] = useState(0);
     const [isVisible, setIsVisible] = useState(false);
     const [dismissedIds, setDismissedIds] = useState<Set<string>>(() => {
-        // Load dismissed IDs from sessionStorage
         try {
             const stored = sessionStorage.getItem('dismissedAnnouncements');
             return stored ? new Set(JSON.parse(stored)) : new Set();
@@ -38,15 +68,12 @@ export default function AnnouncementPopup() {
     });
     const { subscribe } = useSSE();
 
-    // Check if announcements were already shown this session
     const [shownThisSession, setShownThisSession] = useState(() => {
         return sessionStorage.getItem('announcementsShown') === 'true';
     });
 
-    // Reset state when user logs out (token becomes null)
     useEffect(() => {
         if (!token) {
-            // Clear sessionStorage so announcements show again on next login
             sessionStorage.removeItem('announcementsShown');
             sessionStorage.removeItem('dismissedAnnouncements');
             setShownThisSession(false);
@@ -56,7 +83,6 @@ export default function AnnouncementPopup() {
         }
     }, [token]);
 
-    // Save dismissed IDs to sessionStorage when they change
     useEffect(() => {
         if (dismissedIds.size > 0) {
             sessionStorage.setItem('dismissedAnnouncements', JSON.stringify([...dismissedIds]));
@@ -64,65 +90,48 @@ export default function AnnouncementPopup() {
     }, [dismissedIds]);
 
     const loadAnnouncements = useCallback(async () => {
-        // Skip if already shown this session (only show on fresh login)
-        if (shownThisSession) {
-            return;
-        }
-
+        if (shownThisSession) return;
         try {
             const res = await api.get('/api/announcements/active');
             const newAnnouncements = res.data.announcements || [];
-
-            // Filter out already dismissed announcements and those with type AGREEMENT
             const visibleAnnouncements = newAnnouncements.filter(
-                (a: Announcement & { type?: string }) => !dismissedIds.has(a.id) && a.type !== 'AGREEMENT'
+                (a: Announcement & { type?: string }) =>
+                    !dismissedIds.has(a.id) && a.type !== 'AGREEMENT'
             );
-
             setAnnouncements(visibleAnnouncements);
-
             if (visibleAnnouncements.length > 0) {
                 setIsVisible(true);
                 setCurrentIndex(0);
-                // Mark as shown for this session
                 sessionStorage.setItem('announcementsShown', 'true');
                 setShownThisSession(true);
             }
         } catch (error) {
             console.error('Failed to load announcements:', error);
         }
-    }, [dismissedIds, token, shownThisSession]);
+    }, [dismissedIds, shownThisSession]);
 
     useEffect(() => {
-        // Only load announcements when user is authenticated and not shown this session
         if (token && !shownThisSession) {
             loadAnnouncements();
         }
     }, [loadAnnouncements, token, shownThisSession]);
 
-    // Subscribe to SSE announcement events
     useEffect(() => {
         const unsubCreate = subscribe('announcement:created', (data) => {
             const newAnnouncement = data.announcement;
             if (newAnnouncement && !dismissedIds.has(newAnnouncement.id)) {
-                setAnnouncements(prev => [newAnnouncement, ...prev]);
+                setAnnouncements((prev) => [newAnnouncement, ...prev]);
                 setIsVisible(true);
                 setCurrentIndex(0);
             }
         });
-
         const unsubUpdate = subscribe('announcement:updated', (data) => {
             const updated = data.announcement;
-            setAnnouncements(prev =>
-                prev.map(a => a.id === updated.id ? updated : a)
-            );
+            setAnnouncements((prev) => prev.map((a) => (a.id === updated.id ? updated : a)));
         });
-
         const unsubDelete = subscribe('announcement:deleted', (data) => {
-            setAnnouncements(prev =>
-                prev.filter(a => a.id !== data.announcementId)
-            );
+            setAnnouncements((prev) => prev.filter((a) => a.id !== data.announcementId));
         });
-
         return () => {
             unsubCreate();
             unsubUpdate();
@@ -131,67 +140,19 @@ export default function AnnouncementPopup() {
     }, [subscribe, dismissedIds]);
 
     const handleDismiss = () => {
-        if (announcements.length > 0) {
-            const currentId = announcements[currentIndex].id;
-            setDismissedIds(prev => new Set([...prev, currentId]));
-
-            const remaining = announcements.filter((_, i) => i !== currentIndex);
-            setAnnouncements(remaining);
-
-            if (remaining.length === 0) {
-                setIsVisible(false);
-            } else if (currentIndex >= remaining.length) {
-                setCurrentIndex(remaining.length - 1);
-            }
-        }
+        if (announcements.length === 0) return;
+        const currentId = announcements[currentIndex].id;
+        setDismissedIds((prev) => new Set([...prev, currentId]));
+        const remaining = announcements.filter((_, i) => i !== currentIndex);
+        setAnnouncements(remaining);
+        if (remaining.length === 0) setIsVisible(false);
+        else if (currentIndex >= remaining.length) setCurrentIndex(remaining.length - 1);
     };
 
     const handleDismissAll = () => {
-        const allIds = new Set(announcements.map(a => a.id));
-        setDismissedIds(prev => new Set([...prev, ...allIds]));
+        setDismissedIds((prev) => new Set([...prev, ...announcements.map((a) => a.id)]));
         setAnnouncements([]);
         setIsVisible(false);
-    };
-
-    const handlePrev = () => {
-        setCurrentIndex(prev => Math.max(0, prev - 1));
-    };
-
-    const handleNext = () => {
-        setCurrentIndex(prev => Math.min(announcements.length - 1, prev + 1));
-    };
-
-    const getPriorityStyles = (priority: string) => {
-        switch (priority) {
-            case 'urgent':
-                return {
-                    bg: 'from-red-600 to-red-700',
-                    border: 'border-red-500/50',
-                    icon: <AlertCircle className="w-6 h-6 text-red-200" />,
-                    badge: 'bg-red-500 text-white'
-                };
-            case 'high':
-                return {
-                    bg: 'from-orange-500 to-orange-600',
-                    border: 'border-orange-500/50',
-                    icon: <AlertTriangle className="w-6 h-6 text-orange-200" />,
-                    badge: 'bg-orange-500 text-white'
-                };
-            case 'normal':
-                return {
-                    bg: 'from-blue-500 to-blue-600',
-                    border: 'border-blue-500/50',
-                    icon: <Bell className="w-6 h-6 text-blue-200" />,
-                    badge: 'bg-blue-500 text-white'
-                };
-            default:
-                return {
-                    bg: 'from-gray-500 to-gray-600',
-                    border: 'border-gray-500/50',
-                    icon: <Info className="w-6 h-6 text-gray-200" />,
-                    badge: 'bg-gray-500 text-white'
-                };
-        }
     };
 
     if (!isVisible || announcements.length === 0) {
@@ -199,97 +160,87 @@ export default function AnnouncementPopup() {
     }
 
     const current = announcements[currentIndex];
-    const styles = getPriorityStyles(current.priority);
+    const meta = getPriorityConfig(current.priority);
 
     return (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm animate-fade-in">
-            <div className={`relative w-full max-w-lg mx-4 rounded-2xl border ${styles.border} bg-gradient-to-br ${styles.bg} shadow-2xl overflow-hidden flex flex-col max-h-[90vh]`}>
+        <div
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="announcement-popup-title"
+            className="fixed inset-0 z-50 flex items-center justify-center bg-[#0f172a]/50 backdrop-blur-sm p-4"
+        >
+            <div className="relative w-full max-w-lg rounded-[16px] border border-[#e7e5e4] bg-[#fff] shadow-2xl overflow-hidden flex flex-col max-h-[88vh]">
                 {/* Header */}
-                <div className="flex-none flex items-center justify-between p-4 border-b border-white/20">
+                <div className={`flex-none flex items-center justify-between px-5 py-4 border-b ${meta.accentBg} ${meta.accentBorder}`}>
                     <div className="flex items-center gap-3">
-                        <div className="w-10 h-10 rounded-xl bg-white/20 flex items-center justify-center">
-                            {styles.icon}
+                        <div className="w-9 h-9 rounded-[10px] bg-[#fff] border border-[#e7e5e4] flex items-center justify-center">
+                            {meta.icon}
                         </div>
                         <div>
-                            <h3 className="font-bold text-white text-lg">Pengumuman</h3>
-                            <p className="text-xs text-white/60">
-                                {announcements.length > 1 && `${currentIndex + 1} dari ${announcements.length}`}
-                            </p>
+                            <h3 className="font-bold text-[#1c1917] text-[15px]">Pengumuman</h3>
+                            {announcements.length > 1 && (
+                                <p className="text-[12px] text-[#78716c]">
+                                    {currentIndex + 1} dari {announcements.length}
+                                </p>
+                            )}
                         </div>
                     </div>
+                    <Badge variant={meta.variant}>{meta.label}</Badge>
                 </div>
 
-                {/* Content */}
-                <div className="p-6 overflow-y-auto">
-                    <div className="flex items-start gap-2 mb-3">
-                        <span className={`px-2 py-0.5 rounded text-xs font-medium ${styles.badge}`}>
-                            {current.priority === 'urgent' ? 'PENTING!' :
-                                current.priority === 'high' ? 'Prioritas Tinggi' :
-                                    current.priority === 'normal' ? 'Info' : 'Umum'}
-                        </span>
-                    </div>
-                    <h4 className="text-xl font-bold text-white mb-3">{current.title}</h4>
-                    <p className="text-white/90 leading-relaxed whitespace-pre-wrap">{current.content}</p>
-
-                    <div className="mt-4 pt-4 border-t border-white/20 flex items-center justify-between text-xs text-white/50">
+                {/* Body */}
+                <div className="p-5 overflow-y-auto flex-1">
+                    <h4 id="announcement-popup-title" className="text-[18px] font-bold text-[#1c1917] mb-2">
+                        {current.title}
+                    </h4>
+                    <p className="text-[14px] text-[#57534e] leading-relaxed whitespace-pre-wrap">
+                        {current.content}
+                    </p>
+                    <div className="mt-4 pt-3 border-t border-[#f5f5f4] flex items-center justify-between text-[12px] text-[#78716c]">
                         <span>Dari: {current.createdBy.name}</span>
                         <span>{formatDateTimeShortWIB(current.createdAt)}</span>
                     </div>
                 </div>
 
-                {/* Footer / Navigation */}
-                <div className="flex-none flex items-center justify-between p-4 bg-black/20">
-                    <div className="flex items-center gap-2">
+                {/* Footer */}
+                <div className="flex-none flex items-center justify-between px-5 py-3.5 bg-[#fafaf9] border-t border-[#e7e5e4]">
+                    <div className="flex items-center gap-1.5">
                         {announcements.length > 1 && (
                             <>
-                                <button
-                                    onClick={handlePrev}
+                                <Button
+                                    variant="secondary"
+                                    size="sm"
                                     disabled={currentIndex === 0}
-                                    className="p-2 rounded-lg hover:bg-white/20 disabled:opacity-30 disabled:cursor-not-allowed transition-colors"
+                                    onClick={() => setCurrentIndex((i) => Math.max(0, i - 1))}
+                                    aria-label="Pengumuman sebelumnya"
                                 >
-                                    <ChevronLeft className="w-5 h-5 text-white" />
-                                </button>
-                                <button
-                                    onClick={handleNext}
+                                    <ChevronLeft className="w-4 h-4" />
+                                </Button>
+                                <Button
+                                    variant="secondary"
+                                    size="sm"
                                     disabled={currentIndex === announcements.length - 1}
-                                    className="p-2 rounded-lg hover:bg-white/20 disabled:opacity-30 disabled:cursor-not-allowed transition-colors"
+                                    onClick={() =>
+                                        setCurrentIndex((i) => Math.min(announcements.length - 1, i + 1))
+                                    }
+                                    aria-label="Pengumuman berikutnya"
                                 >
-                                    <ChevronRight className="w-5 h-5 text-white" />
-                                </button>
+                                    <ChevronRight className="w-4 h-4" />
+                                </Button>
                             </>
                         )}
                     </div>
                     <div className="flex items-center gap-2">
                         {announcements.length > 1 && (
-                            <button
-                                onClick={handleDismissAll}
-                                className="px-3 py-1.5 rounded-lg text-xs font-medium text-white/70 hover:text-white hover:bg-white/10 transition-colors"
-                            >
-                                Tutup Semua
-                            </button>
+                            <Button variant="ghost" size="sm" onClick={handleDismissAll}>
+                                Tutup semua
+                            </Button>
                         )}
-                        <button
-                            onClick={handleDismiss}
-                            className="px-4 py-2 rounded-lg bg-white/20 hover:bg-white/30 text-white font-medium transition-colors"
-                        >
+                        <Button variant="primary" size="sm" onClick={handleDismiss}>
                             OK, Mengerti
-                        </button>
+                        </Button>
                     </div>
                 </div>
-
-                {/* Pagination dots */}
-                {announcements.length > 1 && (
-                    <div className="absolute bottom-20 left-1/2 -translate-x-1/2 flex items-center gap-1">
-                        {announcements.map((_, i) => (
-                            <button
-                                key={i}
-                                onClick={() => setCurrentIndex(i)}
-                                className={`w-2 h-2 rounded-full transition-all ${i === currentIndex ? 'bg-white w-4' : 'bg-white/40 hover:bg-white/60'
-                                    }`}
-                            />
-                        ))}
-                    </div>
-                )}
             </div>
         </div>
     );

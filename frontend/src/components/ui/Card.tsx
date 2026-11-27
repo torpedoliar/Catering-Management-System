@@ -15,7 +15,7 @@ export function Card({ padding = 'md', className = '', children, ...rest }: Card
     return (
         <section
             className={[
-                'bg-[#fff] border border-[#e7e5e4] rounded-[14px]',
+                'w-full min-w-0 bg-[#fff] border border-[#e7e5e4] rounded-[14px]',
                 PADDING_MAP[padding],
                 className,
             ]

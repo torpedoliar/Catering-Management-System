@@ -1,7 +1,8 @@
 import React, { useState, useEffect } from 'react';
-import { api } from '../contexts/AuthContext';
 import { Lock, AlertCircle } from 'lucide-react';
 import toast from 'react-hot-toast';
+import { api } from '../contexts/AuthContext';
+import { Button, Field, Input } from './ui';
 
 interface ForcePasswordChangeProps {
     onPasswordChanged: () => void;
@@ -16,31 +17,30 @@ export default function ForcePasswordChange({ onPasswordChanged }: ForcePassword
     const [isAgreed, setIsAgreed] = useState(false);
 
     useEffect(() => {
-        // Fetch latest agreement
         api.get('/api/announcements/agreement/latest')
-            .then(res => {
+            .then((res) => {
                 if (res.data.agreement) {
                     setAgreement(res.data.agreement);
                 }
             })
-            .catch(err => console.error('Failed to load agreement:', err));
+            .catch((err) => console.error('Failed to load agreement:', err));
     }, []);
 
     const handleSubmit = async (e: React.FormEvent) => {
         e.preventDefault();
 
         if (agreement && !isAgreed) {
-            toast.error('You must agree to the terms to continue');
+            toast.error('Anda wajib menyetujui ketentuan penggunaan terlebih dahulu');
             return;
         }
 
         if (newPassword.length < 6) {
-            toast.error('New password must be at least 6 characters');
+            toast.error('Password baru minimal 6 karakter');
             return;
         }
 
         if (newPassword !== confirmPassword) {
-            toast.error('Passwords do not match');
+            toast.error('Konfirmasi password tidak cocok');
             return;
         }
 
@@ -50,98 +50,96 @@ export default function ForcePasswordChange({ onPasswordChanged }: ForcePassword
                 currentPassword,
                 newPassword,
             });
-            toast.success('Password changed successfully!');
+            toast.success('Password berhasil diperbarui');
             onPasswordChanged();
-        } catch (error: any) {
-            toast.error(error.response?.data?.error || 'Failed to change password');
+        } catch (error) {
+            const msg = (error as { response?: { data?: { error?: string } } })?.response?.data?.error;
+            toast.error(msg || 'Gagal mengganti password');
         } finally {
             setIsLoading(false);
         }
     };
 
     return (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/70 backdrop-blur-sm">
-            <div className="bg-slate-900 rounded-2xl p-8 max-w-md w-full border border-slate-700 shadow-2xl max-h-[90vh] overflow-y-auto">
-                <div className="text-center mb-6">
-                    <div className="w-16 h-16 mx-auto mb-4 rounded-full bg-amber-500/20 flex items-center justify-center">
-                        <Lock className="w-8 h-8 text-amber-400" />
+        <div
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="force-pw-title"
+            className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-[#0f172a]/70 backdrop-blur-sm"
+        >
+            <div className="bg-[#fff] rounded-[16px] p-6 sm:p-7 max-w-md w-full border border-[#e7e5e4] shadow-xl max-h-[90vh] overflow-y-auto">
+                <div className="text-center mb-5">
+                    <div className="w-12 h-12 mx-auto mb-3 rounded-full bg-[#fffbeb] border border-[#fde68a] flex items-center justify-center">
+                        <Lock className="w-5 h-5 text-[#b45309]" aria-hidden="true" />
                     </div>
-                    <h2 className="text-2xl font-bold text-white mb-2">Password Change Required</h2>
-                    <p className="text-slate-400">
-                        For security reasons, you must change your password before continuing.
+                    <h2 id="force-pw-title" className="text-[20px] font-bold text-[#1c1917]">
+                        Wajib Ganti Password
+                    </h2>
+                    <p className="text-[13px] text-[#78716c] mt-1">
+                        Demi keamanan akun, ganti password bawaan sebelum melanjutkan.
                     </p>
                 </div>
 
-                <form onSubmit={handleSubmit} className="space-y-4">
+                <form onSubmit={handleSubmit} className="space-y-3.5">
                     {agreement && (
-                        <div className="bg-slate-800/50 rounded-xl p-4 border border-slate-700 mb-6">
-                            <h3 className="text-lg font-semibold text-white mb-2">{agreement.title}</h3>
-                            <div className="h-40 overflow-y-auto pr-2 text-sm text-slate-300 whitespace-pre-wrap scrollbar-thin scrollbar-thumb-slate-600 mb-4 inner-shadow p-2 bg-black/20 rounded">
+                        <div className="bg-[#fafaf9] rounded-[12px] p-3.5 border border-[#e7e5e4]">
+                            <h3 className="text-[14px] font-bold text-[#1c1917] mb-2">{agreement.title}</h3>
+                            <div className="h-36 overflow-y-auto pr-2 text-[12.5px] text-[#57534e] whitespace-pre-wrap p-2.5 bg-[#fff] border border-[#e7e5e4] rounded-[8px] mb-3 leading-relaxed">
                                 {agreement.content}
                             </div>
-                            <div className="flex items-start gap-3 pt-2 border-t border-slate-700">
+                            <label className="flex items-start gap-2.5 pt-2 border-t border-[#e7e5e4] cursor-pointer text-[13px] text-[#1c1917] select-none">
                                 <input
                                     type="checkbox"
                                     id="agree"
                                     checked={isAgreed}
                                     onChange={(e) => setIsAgreed(e.target.checked)}
-                                    className="mt-1 w-4 h-4 rounded bg-slate-700 border-slate-600 text-amber-500 focus:ring-amber-500/30"
+                                    className="mt-0.5 w-4 h-4 rounded border-[#d6d3d1] accent-[#f59e0b]"
                                 />
-                                <label htmlFor="agree" className="text-sm text-slate-300 cursor-pointer select-none">
-                                    I have read and agree to the <strong>{agreement.title}</strong>
-                                </label>
-                            </div>
+                                <span>
+                                    Saya telah membaca dan menyetujui <b>{agreement.title}</b>
+                                </span>
+                            </label>
                         </div>
                     )}
 
-                    <div>
-                        <label className="block text-sm text-slate-400 mb-1">Current Password</label>
-                        <input
+                    <Field label="Password saat ini" required>
+                        <Input
                             type="password"
                             value={currentPassword}
                             onChange={(e) => setCurrentPassword(e.target.value)}
-                            className="input-field"
                             required
                         />
-                    </div>
+                    </Field>
 
-                    <div>
-                        <label className="block text-sm text-slate-400 mb-1">New Password</label>
-                        <input
+                    <Field label="Password baru" required>
+                        <Input
                             type="password"
                             value={newPassword}
                             onChange={(e) => setNewPassword(e.target.value)}
-                            className="input-field"
-                            required
                             minLength={6}
+                            required
                         />
-                    </div>
+                    </Field>
 
-                    <div>
-                        <label className="block text-sm text-slate-400 mb-1">Confirm New Password</label>
-                        <input
+                    <Field label="Konfirmasi password baru" required>
+                        <Input
                             type="password"
                             value={confirmPassword}
                             onChange={(e) => setConfirmPassword(e.target.value)}
-                            className="input-field"
                             required
                         />
-                    </div>
+                    </Field>
 
-                    <div className="flex items-start gap-2 p-3 bg-amber-500/10 rounded-lg border border-amber-500/30">
-                        <AlertCircle className="w-5 h-5 text-amber-400 flex-shrink-0 mt-0.5" />
-                        <p className="text-sm text-amber-200">
-                            Password must be at least 6 characters long.
+                    <div className="flex items-start gap-2 p-3 bg-[#fffbeb] rounded-[10px] border border-[#fde68a]">
+                        <AlertCircle className="w-4 h-4 text-[#b45309] flex-shrink-0 mt-0.5" aria-hidden="true" />
+                        <p className="text-[12.5px] text-[#92400e]">
+                            Password baru harus terdiri dari minimal 6 karakter.
                         </p>
                     </div>
 
-                    <button
-                        type="submit"
-                        disabled={isLoading}
-                        className="btn-primary w-full"
-                    >
-                        {isLoading ? 'Changing...' : 'Change Password'}
-                    </button>
+                    <Button type="submit" variant="primary" loading={isLoading} className="w-full">
+                        {isLoading ? 'Menyimpan...' : 'Simpan Password Baru'}
+                    </Button>
                 </form>
             </div>
         </div>

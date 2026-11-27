@@ -151,7 +151,7 @@ export function DataTable<T>({
     const showToolbar = Boolean(onSearchChange || (filters && filters.length > 0) || onResetFilters);
 
     return (
-        <section className="bg-[#fff] border border-[#e7e5e4] rounded-[14px] overflow-hidden">
+        <section className="w-full max-w-full min-w-0 bg-[#fff] border border-[#e7e5e4] rounded-[14px] overflow-hidden">
             {showToolbar && (
                 <div className="flex flex-wrap items-center gap-2.5 px-4 py-3.5 border-b border-[#f0efed]">
                     {onSearchChange && (
@@ -237,7 +237,7 @@ export function DataTable<T>({
             ) : data.length === 0 ? (
                 <EmptyState title={emptyTitle} description={emptyDescription} action={emptyAction} />
             ) : (
-                <div className="overflow-x-auto">
+                <div className="w-full overflow-x-auto [contain:layout]">
                     <table
                         className="w-full border-collapse text-[13px]"
                         style={{ minWidth: minTableWidth }}
