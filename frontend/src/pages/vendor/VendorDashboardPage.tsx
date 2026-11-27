@@ -1,8 +1,9 @@
-import { useState, useEffect, useCallback } from 'react';
-import { FileSpreadsheet, Calendar, TrendingUp, Package, Loader2, Download, ChevronLeft, ChevronRight, MapPin, XCircle, AlertTriangle } from 'lucide-react';
+import { useState, useEffect, useCallback, useMemo } from 'react';
 import toast from 'react-hot-toast';
 import { api } from '../../contexts/AuthContext';
 import { useSSERefresh, ORDER_EVENTS } from '../../contexts/SSEContext';
+import { getLocalDateString, formatOrderDate } from '../../utils/dateHelpers';
+import { Button, Card, PageHeader, StatTile, Tabs, Badge, SkeletonCard } from '../../components/ui';
 
 interface Shift {
     id: string;
@@ -12,8 +13,6 @@ interface Shift {
     mealPrice: number;
     breakStartTime?: string | null;
     breakEndTime?: string | null;
-    hasSpecialDayBreaks?: boolean;
-    dayBreaks?: { dayOfWeek: number; breakStartTime: string; breakEndTime: string }[];
 }
 
 interface ShiftGroup {
@@ -24,45 +23,30 @@ interface ShiftGroup {
     isGrouped: boolean;
 }
 
-// Group shifts by break time for merged columns
 const groupShiftsByBreakTime = (shifts: Shift[]): ShiftGroup[] => {
     const groups: Map<string, Shift[]> = new Map();
-
-    shifts.forEach(shift => {
-        // Use break time as key, or unique ID if no break times
-        const key = shift.breakStartTime && shift.breakEndTime
-            ? `${shift.breakStartTime}-${shift.breakEndTime}`
-            : `_shift_${shift.id}`;
-
+    shifts.forEach((shift) => {
+        const key =
+            shift.breakStartTime && shift.breakEndTime
+                ? `${shift.breakStartTime}–${shift.breakEndTime}`
+                : `_shift_${shift.id}`;
         if (!groups.has(key)) groups.set(key, []);
         groups.get(key)!.push(shift);
     });
-
-    return Array.from(groups.entries()).map(([key, shifts]) => ({
-        key,
-        label: key.startsWith('_shift_') ? shifts[0].name : key,
-        shifts,
-        shiftIds: shifts.map(s => s.id),
-        // Show shift names if break time is configured (not just when multiple shifts)
-        isGrouped: !key.startsWith('_shift_')
-    })).sort((a, b) => a.shifts[0].startTime.localeCompare(b.shifts[0].startTime));
+    return Array.from(groups.entries())
+        .map(([key, list]) => ({
+            key,
+            label: key.startsWith('_shift_') ? list[0].name : key,
+            shifts: list,
+            shiftIds: list.map((s) => s.id),
+            isGrouped: !key.startsWith('_shift_'),
+        }))
+        .sort((a, b) => a.shifts[0].startTime.localeCompare(b.shifts[0].startTime));
 };
 
 interface Canteen {
     id: string;
     name: string;
-    location: string | null;
-}
-
-interface ShiftData {
-    ordered: number;
-    pickedUp: number;
-    noShow: number;
-    cancelled: number;
-}
-
-interface CanteenData {
-    ordered: number;
     location: string | null;
 }
 
@@ -73,19 +57,10 @@ interface DayData {
     isHoliday: boolean;
     holidayName: string | null;
     isPast: boolean;
-    byShift: Record<string, ShiftData>;
-    byCanteen: Record<string, CanteenData>;
+    byShift: Record<string, { ordered: number; pickedUp: number; noShow: number; cancelled: number }>;
+    byCanteen: Record<string, { ordered: number; location: string | null }>;
     byCanteenShift: Record<string, Record<string, number>>;
     total: number;
-}
-
-interface Summary {
-    totalOrders: number;
-    totalPickedUp: number;
-    totalNoShow: number;
-    totalCancelled: number;
-    totalCost: number;
-    avgPerDay: number;
 }
 
 interface WeeklyData {
@@ -96,7 +71,14 @@ interface WeeklyData {
     shifts: Shift[];
     canteens: Canteen[];
     dailyData: DayData[];
-    summary: Summary;
+    summary: {
+        totalOrders: number;
+        totalPickedUp: number;
+        totalNoShow: number;
+        totalCancelled: number;
+        totalCost: number;
+        avgPerDay: number;
+    };
 }
 
 interface AvailableWeek {
@@ -105,17 +87,27 @@ interface AvailableWeek {
     label: string;
 }
 
+const MONTH_SHORT = ['Jan', 'Feb', 'Mar', 'Apr', 'Mei', 'Jun', 'Jul', 'Ags', 'Sep', 'Okt', 'Nov', 'Des'];
+
+function formatShortDate(dateStr: string): string {
+    const key = formatOrderDate(dateStr);
+    const [, m, d] = key.split('-').map(Number);
+    if (!m || !d) return key;
+    return `${d} ${MONTH_SHORT[m - 1] || ''}`;
+}
+
 export default function VendorDashboardPage() {
     const [isLoading, setIsLoading] = useState(true);
     const [data, setData] = useState<WeeklyData | null>(null);
     const [availableWeeks, setAvailableWeeks] = useState<AvailableWeek[]>([]);
     const [selectedWeek, setSelectedWeek] = useState<number>(0);
     const [selectedYear, setSelectedYear] = useState<number>(new Date().getFullYear());
+    const [activeCanteenTab, setActiveCanteenTab] = useState<string>('all');
 
     const loadAvailableWeeks = useCallback(async () => {
         try {
             const res = await api.get('/api/vendor/available-weeks');
-            setAvailableWeeks(res.data.weeks);
+            setAvailableWeeks(res.data.weeks || []);
             if (res.data.currentWeek) {
                 setSelectedWeek(res.data.currentWeek);
                 setSelectedYear(res.data.currentYear);
@@ -128,7 +120,6 @@ export default function VendorDashboardPage() {
 
     const loadWeeklyData = useCallback(async () => {
         if (!selectedWeek) return;
-
         setIsLoading(true);
         try {
             const res = await api.get(`/api/vendor/weekly-summary?week=${selectedWeek}&year=${selectedYear}`);
@@ -146,409 +137,267 @@ export default function VendorDashboardPage() {
     }, [loadAvailableWeeks]);
 
     useEffect(() => {
-        if (selectedWeek) {
-            loadWeeklyData();
-        }
+        if (selectedWeek) loadWeeklyData();
     }, [selectedWeek, selectedYear, loadWeeklyData]);
 
-    // Auto-refresh on order events (create, cancel, checkin, no-show, bulk)
     useSSERefresh(ORDER_EVENTS, loadWeeklyData);
 
-    const formatDate = (dateStr: string) => {
-        const date = new Date(dateStr);
-        return date.toLocaleDateString('id-ID', { day: 'numeric', month: 'short' });
-    };
-
-    const goToPreviousWeek = () => {
-        const currentIndex = availableWeeks.findIndex(w => w.week === selectedWeek && w.year === selectedYear);
-        if (currentIndex < availableWeeks.length - 1) {
-            const prev = availableWeeks[currentIndex + 1];
+    const currentIdx = availableWeeks.findIndex(
+        (w) => w.week === selectedWeek && w.year === selectedYear
+    );
+    const goPrevWeek = () => {
+        if (currentIdx >= 0 && currentIdx < availableWeeks.length - 1) {
+            const prev = availableWeeks[currentIdx + 1];
             setSelectedWeek(prev.week);
             setSelectedYear(prev.year);
         }
     };
-
-    const goToNextWeek = () => {
-        const currentIndex = availableWeeks.findIndex(w => w.week === selectedWeek && w.year === selectedYear);
-        if (currentIndex > 0) {
-            const next = availableWeeks[currentIndex - 1];
+    const goNextWeek = () => {
+        if (currentIdx > 0) {
+            const next = availableWeeks[currentIdx - 1];
             setSelectedWeek(next.week);
             setSelectedYear(next.year);
         }
     };
 
-    const exportToExcel = async () => {
+    const shiftGroups = useMemo(() => (data ? groupShiftsByBreakTime(data.shifts) : []), [data]);
+    const todayKey = getLocalDateString();
+
+    const exportToCsv = () => {
         if (!data) return;
-
-        toast.loading('Menyiapkan export...', { id: 'export' });
-
+        toast.loading('Menyiapkan ekspor…', { id: 'vendor-export' });
         try {
-            // Create CSV content
-            let csv = 'Rekap Mingguan - Week ' + data.week + ' ' + data.year + '\n';
-            csv += 'Periode: ' + data.weekStart + ' s/d ' + data.weekEnd + '\n\n';
-
-            // Header - use grouped columns
+            let csv = `Rekap Mingguan - Minggu ${data.week} ${data.year}\n`;
+            csv += `Periode: ${data.weekStart} s/d ${data.weekEnd}\n\n`;
             csv += 'Hari,Tanggal';
-            const shiftGroups = groupShiftsByBreakTime(data.shifts);
-            shiftGroups.forEach(group => {
-                csv += ',' + group.label;
+            shiftGroups.forEach((g) => {
+                csv += `,${g.label}`;
             });
             csv += ',Total\n';
-
-            // Data rows
-            data.dailyData.forEach(day => {
-                csv += day.dayName + ',' + day.date;
-                shiftGroups.forEach(group => {
-                    const total = group.shiftIds.reduce((sum, id) => sum + (day.byShift[id]?.ordered || 0), 0);
-                    csv += ',' + total;
+            data.dailyData.forEach((day) => {
+                csv += `${day.dayName},${day.date}`;
+                shiftGroups.forEach((g) => {
+                    const tot = g.shiftIds.reduce((s, id) => s + (day.byShift[id]?.ordered || 0), 0);
+                    csv += `,${tot}`;
                 });
-                csv += ',' + day.total + '\n';
+                csv += `,${day.total}\n`;
             });
-
-            // Summary
-            csv += '\nRingkasan\n';
-            csv += 'Total Order,' + data.summary.totalOrders + '\n';
-            csv += 'Total Picked Up,' + data.summary.totalPickedUp + '\n';
-            csv += 'Total Dibatalkan,' + data.summary.totalCancelled + '\n';
-            csv += 'Total No Show,' + data.summary.totalNoShow + '\n';
-            csv += 'Total Biaya,' + data.summary.totalCost + '\n';
-
-            // Download
             const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
             const link = document.createElement('a');
             link.href = URL.createObjectURL(blob);
-            link.download = `rekap-week${data.week}-${data.year}.csv`;
+            link.download = `rekap-minggu-${data.week}-${data.year}.csv`;
             link.click();
-
-            toast.success('Export berhasil!', { id: 'export' });
-        } catch (error) {
-            console.error('Export failed:', error);
-            toast.error('Export gagal', { id: 'export' });
+            toast.success('Ekspor berhasil', { id: 'vendor-export' });
+        } catch {
+            toast.error('Ekspor gagal', { id: 'vendor-export' });
         }
     };
 
     if (isLoading && !data) {
         return (
-            <div className="flex items-center justify-center h-64">
-                <Loader2 className="w-8 h-8 animate-spin text-teal-500" />
+            <div className="max-w-[1240px] space-y-4">
+                <SkeletonCard lines={2} />
+                <div className="grid grid-cols-2 md:grid-cols-4 gap-3.5">
+                    <SkeletonCard lines={2} />
+                    <SkeletonCard lines={2} />
+                    <SkeletonCard lines={2} />
+                    <SkeletonCard lines={2} />
+                </div>
+                <SkeletonCard lines={6} />
             </div>
         );
     }
 
+    const canteenTabs = data
+        ? [
+              { id: 'all', label: 'Semua kantin', count: data.summary.totalOrders.toLocaleString('id-ID') },
+              ...data.canteens.map((c) => {
+                  const totalC = data.dailyData.reduce(
+                      (sum, day) => sum + (day.byCanteen[c.id]?.ordered || 0),
+                      0
+                  );
+                  return { id: c.id, label: c.name, count: totalC.toLocaleString('id-ID') };
+              }),
+          ]
+        : [];
+
+    const getCellCount = (day: DayData, group: ShiftGroup) => {
+        if (activeCanteenTab === 'all') {
+            return group.shiftIds.reduce((sum, id) => sum + (day.byShift[id]?.ordered || 0), 0);
+        }
+        return group.shiftIds.reduce(
+            (sum, id) => sum + (day.byCanteenShift?.[activeCanteenTab]?.[id] || 0),
+            0
+        );
+    };
+
+    const getRowTotal = (day: DayData) => {
+        if (activeCanteenTab === 'all') return day.total;
+        return day.byCanteen[activeCanteenTab]?.ordered || 0;
+    };
+
+    const footerGroupTotals = shiftGroups.map((g) =>
+        data ? data.dailyData.reduce((sum, day) => sum + getCellCount(day, g), 0) : 0
+    );
+    const footerGrandTotal = data ? data.dailyData.reduce((sum, day) => sum + getRowTotal(day), 0) : 0;
+
     return (
-        <div className="space-y-6">
-            {/* Header */}
-            <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
-                <div>
-                    <h1 className="text-2xl font-bold text-slate-800">Rekap Order Makanan</h1>
-                    <p className="text-slate-500">Data order makanan per minggu</p>
-                </div>
+        <div className="max-w-[1240px] w-full flex flex-col gap-[18px]">
+            <PageHeader
+                title="Rekap order makanan"
+                subtitle={
+                    data
+                        ? `Minggu ${data.week} · ${formatShortDate(data.weekStart)}–${formatShortDate(data.weekEnd)} ${data.year}`
+                        : 'Data order makanan mingguan'
+                }
+                actions={
+                    <>
+                        <div className="inline-flex items-center border border-[#e7e5e4] bg-[#fff] rounded-[10px] h-[38px]">
+                            <button
+                                type="button"
+                                aria-label="Minggu sebelumnya"
+                                disabled={currentIdx < 0 || currentIdx >= availableWeeks.length - 1}
+                                onClick={goPrevWeek}
+                                className="w-[38px] h-9 border-0 bg-transparent cursor-pointer text-[16px] text-[#44403c] disabled:opacity-40 disabled:cursor-not-allowed hover:bg-[#fafaf9] rounded-l-[10px]"
+                            >
+                                ‹
+                            </button>
+                            <select
+                                aria-label="Pilih minggu"
+                                value={`${selectedWeek}-${selectedYear}`}
+                                onChange={(e) => {
+                                    const [w, y] = e.target.value.split('-');
+                                    setSelectedWeek(parseInt(w, 10));
+                                    setSelectedYear(parseInt(y, 10));
+                                }}
+                                className="border-0 border-x border-[#f0efed] px-2.5 h-9 text-[13px] font-semibold text-[#1c1917] bg-transparent cursor-pointer focus:outline-none"
+                            >
+                                {availableWeeks.map((w) => (
+                                    <option key={`${w.week}-${w.year}`} value={`${w.week}-${w.year}`}>
+                                        {w.label}
+                                    </option>
+                                ))}
+                            </select>
+                            <button
+                                type="button"
+                                aria-label="Minggu berikutnya"
+                                disabled={currentIdx <= 0}
+                                onClick={goNextWeek}
+                                className="w-[38px] h-9 border-0 bg-transparent cursor-pointer text-[16px] text-[#44403c] disabled:opacity-40 disabled:cursor-not-allowed hover:bg-[#fafaf9] rounded-r-[10px]"
+                            >
+                                ›
+                            </button>
+                        </div>
 
-                {/* Week Navigator */}
-                <div className="flex items-center gap-2">
-                    <button
-                        onClick={goToPreviousWeek}
-                        disabled={availableWeeks.findIndex(w => w.week === selectedWeek && w.year === selectedYear) >= availableWeeks.length - 1}
-                        className="p-2 rounded-lg bg-slate-100 hover:bg-slate-200 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
-                    >
-                        <ChevronLeft className="w-5 h-5" />
-                    </button>
+                        <Button variant="primary" onClick={exportToCsv} disabled={!data}>
+                            Ekspor Excel
+                        </Button>
+                    </>
+                }
+            />
 
-                    <select
-                        value={`${selectedWeek}-${selectedYear}`}
-                        onChange={(e) => {
-                            const [w, y] = e.target.value.split('-');
-                            setSelectedWeek(parseInt(w));
-                            setSelectedYear(parseInt(y));
-                        }}
-                        className="px-4 py-2 rounded-lg border border-slate-200 bg-white text-sm font-medium"
-                    >
-                        {availableWeeks.map(w => (
-                            <option key={`${w.week}-${w.year}`} value={`${w.week}-${w.year}`}>
-                                {w.label}
-                            </option>
-                        ))}
-                    </select>
-
-                    <button
-                        onClick={goToNextWeek}
-                        disabled={availableWeeks.findIndex(w => w.week === selectedWeek && w.year === selectedYear) <= 0}
-                        className="p-2 rounded-lg bg-slate-100 hover:bg-slate-200 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
-                    >
-                        <ChevronRight className="w-5 h-5" />
-                    </button>
-
-                    <button
-                        onClick={exportToExcel}
-                        disabled={!data}
-                        className="flex items-center gap-2 px-4 py-2 rounded-lg bg-teal-500 text-white hover:bg-teal-600 disabled:opacity-50 transition-colors"
-                    >
-                        <Download className="w-4 h-4" />
-                        <span className="hidden sm:inline">Export</span>
-                    </button>
-                </div>
-            </div>
-
-            {/* Period Info */}
             {data && (
-                <div className="flex items-center gap-2 text-sm text-slate-600 bg-slate-50 px-4 py-2 rounded-lg">
-                    <Calendar className="w-4 h-4" />
-                    <span>Periode: {formatDate(data.weekStart)} - {formatDate(data.weekEnd)}</span>
-                </div>
-            )}
+                <>
+                    <section aria-label="Ringkasan minggu" className="grid grid-cols-2 md:grid-cols-4 gap-3.5">
+                        <StatTile label="Total order" value={data.summary.totalOrders} />
+                        <StatTile label="Diambil" value={data.summary.totalPickedUp} valueColor="#15803d" />
+                        <StatTile label="Tidak diambil" value={data.summary.totalNoShow} valueColor="#b91c1c" />
+                        <StatTile label="Dibatalkan" value={data.summary.totalCancelled} valueColor="#57534e" />
+                    </section>
 
-            {/* Summary Cards */}
-            {data && (
-                <div className="grid grid-cols-5 gap-4">
-                    <div className="card p-4">
-                        <div className="flex items-center gap-3">
-                            <div className="w-10 h-10 rounded-xl bg-teal-100 flex items-center justify-center">
-                                <Package className="w-5 h-5 text-teal-600" />
-                            </div>
-                            <div>
-                                <p className="text-2xl font-bold text-slate-800">{data.summary.totalOrders}</p>
-                                <p className="text-xs text-slate-500">Total Order</p>
-                            </div>
+                    <Card padding="none" className="overflow-hidden">
+                        <div className="px-4">
+                            <Tabs
+                                ariaLabel="Kantin"
+                                items={canteenTabs}
+                                value={activeCanteenTab}
+                                onChange={setActiveCanteenTab}
+                                layoutId="vendor-canteen-tab"
+                            />
                         </div>
-                    </div>
 
-                    <div className="card p-4">
-                        <div className="flex items-center gap-3">
-                            <div className="w-10 h-10 rounded-xl bg-emerald-100 flex items-center justify-center">
-                                <TrendingUp className="w-5 h-5 text-emerald-600" />
-                            </div>
-                            <div>
-                                <p className="text-2xl font-bold text-slate-800">{data.summary.totalPickedUp}</p>
-                                <p className="text-xs text-slate-500">Picked Up</p>
-                            </div>
-                        </div>
-                    </div>
-
-                    <div className="card p-4">
-                        <div className="flex items-center gap-3">
-                            <div className="w-10 h-10 rounded-xl bg-red-100 flex items-center justify-center">
-                                <XCircle className="w-5 h-5 text-red-600" />
-                            </div>
-                            <div>
-                                <p className="text-2xl font-bold text-slate-800">{data.summary.totalCancelled}</p>
-                                <p className="text-xs text-slate-500">Dibatalkan</p>
-                            </div>
-                        </div>
-                    </div>
-
-                    <div className="card p-4">
-                        <div className="flex items-center gap-3">
-                            <div className="w-10 h-10 rounded-xl bg-orange-100 flex items-center justify-center">
-                                <AlertTriangle className="w-5 h-5 text-orange-600" />
-                            </div>
-                            <div>
-                                <p className="text-2xl font-bold text-slate-800">{data.summary.totalNoShow}</p>
-                                <p className="text-xs text-slate-500">No Show</p>
-                            </div>
-                        </div>
-                    </div>
-
-                    <div className="card p-4">
-                        <div className="flex items-center gap-3">
-                            <div className="w-10 h-10 rounded-xl bg-amber-100 flex items-center justify-center">
-                                <FileSpreadsheet className="w-5 h-5 text-amber-600" />
-                            </div>
-                            <div>
-                                <p className="text-2xl font-bold text-slate-800">{data.summary.avgPerDay}</p>
-                                <p className="text-xs text-slate-500">Rata-rata/Hari</p>
-                            </div>
-                        </div>
-                    </div>
-                </div>
-            )}
-
-            {/* Main Table */}
-            {data && (
-                <div className="card overflow-hidden">
-                    <div className="p-4 border-b border-slate-100">
-                        <h2 className="font-semibold text-slate-800">Total Order Keseluruhan Harian</h2>
-                    </div>
-                    <div className="overflow-x-auto">
-                        <table className="w-full">
-                            <thead>
-                                <tr className="bg-slate-50">
-                                    <th className="text-left px-4 py-3 text-xs font-semibold text-slate-600 uppercase">Hari</th>
-                                    <th className="text-left px-4 py-3 text-xs font-semibold text-slate-600 uppercase">Tanggal</th>
-                                    {groupShiftsByBreakTime(data.shifts).map(group => (
-                                        <th key={group.key} className="text-center px-4 py-3 text-xs font-semibold text-slate-600 uppercase">
-                                            {group.isGrouped ? (
-                                                <div className="flex flex-col gap-0.5">
-                                                    <span className="text-slate-700">{group.label}</span>
-                                                    <span className="text-[10px] text-slate-400 font-normal normal-case">
-                                                        {group.shifts.map(s => s.name).join(', ')}
-                                                    </span>
-                                                </div>
-                                            ) : (
-                                                <span>{group.label}</span>
-                                            )}
-                                        </th>
-                                    ))}
-                                    <th className="text-center px-4 py-3 text-xs font-semibold text-slate-600 uppercase bg-slate-100">Total</th>
-                                </tr>
-                            </thead>
-                            <tbody>
-                                {data.dailyData.map((day, index) => (
-                                    <tr
-                                        key={day.date}
-                                        className={`border-b border-slate-50 ${day.isHoliday ? 'bg-red-50' : day.isPast ? 'bg-slate-50/50' : ''} ${index % 2 === 0 ? '' : 'bg-slate-50/30'}`}
-                                    >
-                                        <td className="px-4 py-3">
-                                            <div className="font-medium text-slate-800">{day.dayName}</div>
-                                            {day.isHoliday && (
-                                                <div className="text-xs text-red-500">{day.holidayName}</div>
-                                            )}
-                                        </td>
-                                        <td className="px-4 py-3 text-slate-600">{formatDate(day.date)}</td>
-                                        {groupShiftsByBreakTime(data.shifts).map(group => {
-                                            const totalOrdered = group.shiftIds.reduce((sum, id) => sum + (day.byShift[id]?.ordered || 0), 0);
-                                            const totalNoShow = group.shiftIds.reduce((sum, id) => sum + (day.byShift[id]?.noShow || 0), 0);
-                                            return (
-                                                <td key={group.key} className="text-center px-4 py-3">
-                                                    {totalOrdered > 0 ? (
-                                                        <div>
-                                                            <span className="text-lg font-semibold text-slate-800">{totalOrdered}</span>
-                                                            {totalNoShow > 0 && (
-                                                                <span className="ml-1 text-xs text-red-500">(-{totalNoShow})</span>
-                                                            )}
-                                                        </div>
-                                                    ) : (
-                                                        <span className="text-slate-300">-</span>
+                        <div className="overflow-x-auto">
+                            <table className="w-full border-collapse text-[13.5px] min-w-[760px]">
+                                <thead>
+                                    <tr className="bg-[#fafaf9] text-[#57534e]">
+                                        <th className="text-left px-4 py-3 font-semibold">Hari</th>
+                                        {shiftGroups.map((g) => (
+                                            <th key={g.key} className="text-right px-4 py-3 font-semibold">
+                                                <div>{g.label}</div>
+                                                {g.isGrouped && (
+                                                    <div className="text-[11px] font-medium text-[#a8a29e]">
+                                                        {g.shifts.map((s) => s.name).join(' · ')}
+                                                    </div>
+                                                )}
+                                            </th>
+                                        ))}
+                                        <th className="text-right px-4 py-3 font-bold text-[#1c1917]">Total</th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    {data.dailyData.map((day) => {
+                                        const isToday = formatOrderDate(day.date) === todayKey;
+                                        const rowTotal = getRowTotal(day);
+                                        return (
+                                            <tr
+                                                key={day.date}
+                                                className={`border-t border-[#f5f5f4] ${
+                                                    isToday ? 'bg-[#fffbeb]' : day.isHoliday ? 'bg-[#fee2e2]/30' : ''
+                                                }`}
+                                            >
+                                                <td className="px-4 py-[11px]">
+                                                    <b className="text-[#1c1917]">{day.dayName}</b>{' '}
+                                                    <span className="text-[#78716c]">{formatShortDate(day.date)}</span>
+                                                    {isToday && (
+                                                        <Badge variant="warning" className="ml-1.5">
+                                                            Hari ini
+                                                        </Badge>
+                                                    )}
+                                                    {day.isHoliday && day.holidayName && (
+                                                        <Badge variant="danger" className="ml-1.5">
+                                                            {day.holidayName}
+                                                        </Badge>
                                                     )}
                                                 </td>
-                                            );
-                                        })}
-                                        <td className="text-center px-4 py-3 bg-slate-100/50">
-                                            <span className="text-lg font-bold text-teal-600">{day.total}</span>
-                                        </td>
-                                    </tr>
-                                ))}
-                            </tbody>
-                            <tfoot>
-                                <tr className="bg-slate-100 font-semibold">
-                                    <td colSpan={2} className="px-4 py-3 text-slate-800">Total Minggu</td>
-                                    {groupShiftsByBreakTime(data.shifts).map(group => {
-                                        const groupTotal = data.dailyData.reduce((sum, day) =>
-                                            sum + group.shiftIds.reduce((s, id) => s + (day.byShift[id]?.ordered || 0), 0)
-                                            , 0);
-                                        return (
-                                            <td key={group.key} className="text-center px-4 py-3 text-slate-800">
-                                                {groupTotal}
-                                            </td>
-                                        );
-                                    })}
-                                    <td className="text-center px-4 py-3 text-teal-600 text-xl">{data.summary.totalOrders}</td>
-                                </tr>
-                            </tfoot>
-                        </table>
-                    </div>
-                </div>
-            )}
-
-            {/* Canteen Breakdown - Detailed Tables */}
-            {data && data.canteens.length > 0 && (
-                <div className="space-y-4">
-                    {data.canteens.map(canteen => {
-                        const totalOrders = data.dailyData.reduce((sum, day) => {
-                            return sum + (day.byCanteen[canteen.id]?.ordered || 0);
-                        }, 0);
-
-                        return (
-                            <div key={canteen.id} className="card overflow-hidden">
-                                <div className="p-4 border-b border-slate-100 flex items-center justify-between">
-                                    <div>
-                                        <h2 className="font-semibold text-slate-800">{canteen.name}</h2>
-                                        {canteen.location && (
-                                            <p className="text-xs text-slate-500 flex items-center gap-1 mt-1">
-                                                <MapPin className="w-3 h-3" />
-                                                {canteen.location}
-                                            </p>
-                                        )}
-                                    </div>
-                                    <div className="text-right">
-                                        <p className="text-2xl font-bold text-teal-600">{totalOrders}</p>
-                                        <p className="text-xs text-slate-500">total order</p>
-                                    </div>
-                                </div>
-                                <div className="overflow-x-auto">
-                                    <table className="w-full">
-                                        <thead>
-                                            <tr className="bg-slate-50">
-                                                <th className="text-left px-4 py-2 text-xs font-semibold text-slate-600 uppercase">Hari</th>
-                                                <th className="text-left px-4 py-2 text-xs font-semibold text-slate-600 uppercase">Tanggal</th>
-                                                {groupShiftsByBreakTime(data.shifts).map(group => (
-                                                    <th key={group.key} className="text-center px-3 py-2 text-xs font-semibold text-slate-600 uppercase">
-                                                        {group.isGrouped ? (
-                                                            <div className="flex flex-col gap-0.5">
-                                                                <span className="text-slate-700">{group.label}</span>
-                                                                <span className="text-[10px] text-slate-400 font-normal normal-case">
-                                                                    {group.shifts.map(s => s.name).join(', ')}
-                                                                </span>
-                                                            </div>
-                                                        ) : (
-                                                            <span>{group.label}</span>
-                                                        )}
-                                                    </th>
-                                                ))}
-                                                <th className="text-center px-3 py-2 text-xs font-semibold text-slate-600 uppercase bg-slate-100">Total</th>
-                                            </tr>
-                                        </thead>
-                                        <tbody>
-                                            {data.dailyData.map((day, index) => {
-                                                const dayTotal = day.byCanteen[canteen.id]?.ordered || 0;
-                                                return (
-                                                    <tr
-                                                        key={day.date}
-                                                        className={`border-b border-slate-50 ${day.isHoliday ? 'bg-red-50' : index % 2 === 0 ? '' : 'bg-slate-50/30'}`}
-                                                    >
-                                                        <td className="px-4 py-2 text-sm font-medium text-slate-700">{day.dayName}</td>
-                                                        <td className="px-4 py-2 text-sm text-slate-600">{formatDate(day.date)}</td>
-                                                        {groupShiftsByBreakTime(data.shifts).map(group => {
-                                                            const count = group.shiftIds.reduce((sum, id) =>
-                                                                sum + (day.byCanteenShift?.[canteen.id]?.[id] || 0), 0);
-                                                            return (
-                                                                <td key={group.key} className="text-center px-3 py-2">
-                                                                    {count > 0 ? (
-                                                                        <span className="font-semibold text-slate-800">{count}</span>
-                                                                    ) : (
-                                                                        <span className="text-slate-300">-</span>
-                                                                    )}
-                                                                </td>
-                                                            );
-                                                        })}
-                                                        <td className="text-center px-3 py-2 bg-slate-100/50 font-bold text-teal-600">
-                                                            {dayTotal}
-                                                        </td>
-                                                    </tr>
-                                                );
-                                            })}
-                                        </tbody>
-                                        <tfoot>
-                                            <tr className="bg-slate-100 font-semibold">
-                                                <td colSpan={2} className="px-4 py-2 text-slate-800 text-sm">Total Minggu</td>
-                                                {groupShiftsByBreakTime(data.shifts).map(group => {
-                                                    const groupTotal = data.dailyData.reduce((sum, day) =>
-                                                        sum + group.shiftIds.reduce((s, id) => s + (day.byCanteenShift?.[canteen.id]?.[id] || 0), 0)
-                                                        , 0);
+                                                {shiftGroups.map((g) => {
+                                                    const val = getCellCount(day, g);
                                                     return (
-                                                        <td key={group.key} className="text-center px-3 py-2 text-slate-800">
-                                                            {groupTotal}
+                                                        <td
+                                                            key={g.key}
+                                                            className="px-4 py-[11px] text-right tabular-nums text-[#1c1917]"
+                                                        >
+                                                            {val > 0 ? val.toLocaleString('id-ID') : '–'}
                                                         </td>
                                                     );
                                                 })}
-                                                <td className="text-center px-3 py-2 text-teal-600 font-bold">{totalOrders}</td>
+                                                <td className="px-4 py-[11px] text-right font-extrabold tabular-nums text-[#1c1917]">
+                                                    {rowTotal > 0 ? rowTotal.toLocaleString('id-ID') : '–'}
+                                                </td>
                                             </tr>
-                                        </tfoot>
-                                    </table>
-                                </div>
-                            </div>
-                        );
-                    })}
-                </div>
+                                        );
+                                    })}
+                                </tbody>
+                                <tfoot>
+                                    <tr className="border-t-2 border-[#e7e5e4] bg-[#fafaf9] font-extrabold text-[#1c1917]">
+                                        <td className="px-4 py-3">Total minggu</td>
+                                        {footerGroupTotals.map((tot, idx) => (
+                                            <td key={shiftGroups[idx]?.key || idx} className="px-4 py-3 text-right tabular-nums">
+                                                {tot > 0 ? tot.toLocaleString('id-ID') : '–'}
+                                            </td>
+                                        ))}
+                                        <td className="px-4 py-3 text-right tabular-nums text-[#b45309]">
+                                            {footerGrandTotal.toLocaleString('id-ID')}
+                                        </td>
+                                    </tr>
+                                </tfoot>
+                            </table>
+                        </div>
+
+                        <p className="m-0 px-4 py-2.5 text-[12px] text-[#78716c] border-t border-[#f0efed]">
+                            Hari yang sudah lewat menampilkan jumlah yang benar-benar dimasak. Angka berubah sampai batas pesan tiap shift.
+                        </p>
+                    </Card>
+                </>
             )}
         </div>
     );

@@ -690,7 +690,7 @@ export default function CheckInPage() {
     return (
         <div className="mx-auto flex w-full max-w-7xl flex-col gap-3">
             {/* Top bar: which counter and which PC this screen is. */}
-            <div className="flex flex-wrap items-center gap-3 rounded-2xl border border-stone-200 bg-[#ffffff] px-4 py-3 shadow-sm">
+            <div className="flex flex-wrap items-center gap-3 rounded-[14px] border border-[#e7e5e4] bg-[#fff] px-4 py-3">
                 <div className="flex min-w-[15rem] flex-1 items-center gap-2">
                     <MapPin className="h-5 w-5 flex-shrink-0 text-amber-600" />
                     <label htmlFor="checkin-canteen" className="whitespace-nowrap text-sm font-semibold text-stone-600">Pos</label>
@@ -742,7 +742,7 @@ export default function CheckInPage() {
 
             <div className="grid gap-3 lg:grid-cols-[minmax(0,1.45fr)_minmax(0,1fr)]">
                 {/* Scan area */}
-                <section className="flex flex-col rounded-2xl border border-stone-200 bg-[#ffffff] p-5 shadow-sm">
+                <section className="flex flex-col rounded-[14px] border border-[#e7e5e4] bg-[#fff] p-5">
                     <div className="mb-3 flex items-center justify-between gap-3">
                         <h2 className="text-2xl font-black text-stone-900">Check-in Ambil Makan</h2>
                         <span
@@ -773,10 +773,10 @@ export default function CheckInPage() {
                     </div>
 
                     <div className="mt-3 grid grid-cols-2 gap-3">
-                        <button onClick={() => handleCheckIn('manual')} disabled={!searchInput.trim()} className="btn-success flex h-14 items-center justify-center gap-2 text-lg font-bold">
+                        <button onClick={() => handleCheckIn('manual')} disabled={!searchInput.trim()} className="flex h-14 items-center justify-center gap-2 rounded-[10px] bg-[#15803d] text-[#fff] hover:bg-[#166534] disabled:opacity-50 disabled:cursor-not-allowed text-lg font-bold transition-colors">
                             <CheckCircle2 className="h-6 w-6" />Ambil Makan
                         </button>
-                        <button onClick={openQRScanner} disabled={isProcessing} className="btn-primary flex h-14 items-center justify-center gap-2 text-lg font-bold">
+                        <button onClick={openQRScanner} disabled={isProcessing} className="flex h-14 items-center justify-center gap-2 rounded-[10px] bg-[#f59e0b] text-[#1c1917] hover:bg-[#d97706] disabled:opacity-50 disabled:cursor-not-allowed text-lg font-bold transition-colors">
                             <Camera className="h-6 w-6" />Scan pakai kamera
                         </button>
                     </div>
@@ -805,7 +805,7 @@ export default function CheckInPage() {
 
                 {/* Stats + this PC's history */}
                 <div className="flex min-h-0 flex-col gap-3">
-                    <section className="rounded-2xl border border-stone-200 bg-[#ffffff] p-4 shadow-sm">
+                    <section className="rounded-[14px] border border-[#e7e5e4] bg-[#fff] p-4">
                         <p className="mb-2 truncate text-sm text-stone-600">
                             {focusInfo?.scope === 'break' && focusInfo.breakStart && focusInfo.breakEnd ? (
                                 <>{focusInfo.upcoming ? 'Istirahat berikutnya' : 'Istirahat'} {focusInfo.breakStart}–{focusInfo.breakEnd} · <span className="font-bold text-amber-700">{focusInfo.shiftNames.join(', ')}</span></>
@@ -829,7 +829,7 @@ export default function CheckInPage() {
                         </div>
                     </section>
 
-                    <section className="flex min-h-0 flex-1 flex-col rounded-2xl border border-stone-200 bg-[#ffffff] p-4 shadow-sm">
+                    <section className="flex min-h-0 flex-1 flex-col rounded-[14px] border border-[#e7e5e4] bg-[#fff] p-4">
                         <div className="mb-2 flex items-center gap-2">
                             <HistoryIcon className="h-4 w-4 text-stone-500" />
                             <h3 className="text-sm font-bold uppercase tracking-wide text-stone-600">Scan terakhir di PC ini</h3>
@@ -868,9 +868,9 @@ export default function CheckInPage() {
                     <h2 id="pickup-photo-title" className="mb-3 text-lg font-bold">Foto bukti pengambilan</h2>
                     <Webcam audio={false} ref={webcamRef} screenshotFormat="image/webp" className="max-h-[55dvh] w-full object-contain" onUserMediaError={() => toast.error('Kamera tidak tersedia. Lanjut tanpa foto.')} />
                     <div className="mt-3 flex flex-wrap gap-2">
-                        <button className="btn-secondary" onClick={() => finishPhoto(undefined, true)}>Batal</button>
-                        <button className="btn-secondary" onClick={() => finishPhoto()}>Lanjut tanpa foto</button>
-                        <button className="btn-primary" onClick={capturePhoto}>Ambil foto</button>
+                        <button className="h-10 rounded-[10px] border border-[#e7e5e4] bg-[#fff] px-4 text-sm font-semibold text-[#44403c] hover:bg-[#fafaf9]" onClick={() => finishPhoto(undefined, true)}>Batal</button>
+                        <button className="h-10 rounded-[10px] border border-[#e7e5e4] bg-[#fff] px-4 text-sm font-semibold text-[#44403c] hover:bg-[#fafaf9]" onClick={() => finishPhoto()}>Lanjut tanpa foto</button>
+                        <button className="h-10 rounded-[10px] bg-[#f59e0b] px-4 text-sm font-bold text-[#1c1917] hover:bg-[#d97706]" onClick={capturePhoto}>Ambil foto</button>
                     </div>
                 </dialog>
             )}
@@ -879,23 +879,23 @@ export default function CheckInPage() {
 
             {showQRScanner && (
                 <dialog ref={node => { if (node && !node.open) node.showModal(); }} aria-labelledby="barcode-scanner-title" onCancel={event => { event.preventDefault(); closeQRScanner(); }} className="m-auto max-h-[90dvh] w-[min(92vw,32rem)] overflow-auto rounded-xl bg-transparent backdrop:bg-black/60">
-                    <div className="w-full max-w-lg space-y-4 rounded-2xl border border-stone-200 bg-[#ffffff] p-6 text-stone-900 shadow-2xl">
+                    <div className="w-full max-w-lg space-y-4 rounded-[14px] border border-[#e7e5e4] bg-[#fff] p-6 text-[#1c1917] shadow-2xl">
                         <div className="flex items-center justify-between">
                             <div className="flex items-center gap-3">
-                                <div className="flex h-12 w-12 items-center justify-center rounded-xl bg-amber-100">
-                                    <ScanLine className="h-6 w-6 text-amber-700" />
+                                <div className="flex h-12 w-12 items-center justify-center rounded-[10px] bg-[#fef3c7]">
+                                    <ScanLine className="h-6 w-6 text-[#b45309]" />
                                 </div>
                                 <div>
                                     <h3 id="barcode-scanner-title" className="text-xl font-bold">Pindai barcode / QR</h3>
-                                    <p className="text-sm text-stone-500">Arahkan kamera ke kode pesanan atau kartu karyawan</p>
+                                    <p className="text-sm text-[#78716c]">Arahkan kamera ke kode pesanan atau kartu karyawan</p>
                                 </div>
                             </div>
-                            <button onClick={closeQRScanner} aria-label="Tutup kamera" className="rounded-lg p-2 hover:bg-stone-100">
+                            <button onClick={closeQRScanner} aria-label="Tutup kamera" className="rounded-[8px] p-2 hover:bg-[#f5f5f4]">
                                 <X className="h-6 w-6" />
                             </button>
                         </div>
-                        <div ref={qrContainerRef} id="qr-reader" className="aspect-video w-full overflow-hidden rounded-2xl bg-black" />
-                        <button onClick={closeQRScanner} className="btn-secondary flex h-12 w-full items-center justify-center gap-2">
+                        <div ref={qrContainerRef} id="qr-reader" className="aspect-video w-full overflow-hidden rounded-[12px] bg-[#0f172a]" />
+                        <button onClick={closeQRScanner} className="flex h-12 w-full items-center justify-center gap-2 rounded-[10px] border border-[#e7e5e4] bg-[#fff] font-semibold text-[#44403c] hover:bg-[#fafaf9]">
                             <X className="h-5 w-5" />Batal
                         </button>
                     </div>

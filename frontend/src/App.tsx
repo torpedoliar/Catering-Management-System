@@ -37,6 +37,7 @@ const BackupRestorePage = lazy(() => import('./pages/admin/BackupRestorePage'));
 const UptimeHistoryPage = lazy(() => import('./pages/admin/UptimeHistoryPage'));
 const UpdatePage = lazy(() => import('./pages/admin/UpdatePage'));
 const CanteenManagementPage = lazy(() => import('./pages/admin/CanteenManagementPage'));
+const CanteenDashboardPage = lazy(() => import('./pages/canteen/CanteenDashboardPage'));
 const CheckInPage = lazy(() => import('./pages/canteen/CheckInPage'));
 const VendorDashboardPage = lazy(() => import('./pages/vendor/VendorDashboardPage'));
 const VendorPickupStatsPage = lazy(() => import('./pages/vendor/VendorPickupStatsPage'));
@@ -140,7 +141,7 @@ function AppRoutes() {
 
                 {/* Canteen Routes */}
                 <Route element={<ProtectedRoute roles={['CANTEEN', 'ADMIN']}><Suspense fallback={<div className="flex items-center justify-center h-screen"><div className="animate-spin rounded-full h-12 w-12 border-t-2 border-b-2 border-[#f59e0b]"></div></div>}><Outlet /></Suspense></ProtectedRoute>}>
-                    <Route path="/canteen" element={<Navigate to="/canteen/checkin" replace />} />
+                    <Route path="/canteen" element={<CanteenDashboardPage />} />
                     <Route path="/canteen/checkin" element={<CheckInPage />} />
                 </Route>
 

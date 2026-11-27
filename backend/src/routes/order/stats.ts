@@ -1176,4 +1176,262 @@ router.get('/stats/today', authMiddleware, canteenMiddleware, async (req: AuthRe
     }
 });
 
+/**
+ * GET /api/orders/stats/canteen-live?canteenId=
+ * Live break-window stats for the Operator Canteen Dashboard (/canteen).
+ * Strictly uses Fake-UTC (getNow/getToday/getTomorrow) and 3s Redis cache.
+ */
+router.get('/stats/canteen-live', authMiddleware, canteenMiddleware, async (req: AuthRequest, res: Response) => {
+    try {
+        const canteenIdFilter =
+            typeof req.query.canteenId === 'string' && req.query.canteenId ? req.query.canteenId : null;
+        const cacheKey = `canteen-live:${canteenIdFilter || 'all'}`;
+        const cached = await cacheService.get<any>(cacheKey);
+        if (cached) {
+            return res.json(cached);
+        }
+
+        const now = getNow();
+        const today = getToday();
+        const tomorrow = getTomorrow();
+        const yesterday = new Date(today);
+        yesterday.setUTCDate(yesterday.getUTCDate() - 1);
+
+        const [shifts, orders] = await Promise.all([
+            prisma.shift.findMany({
+                where: { isActive: true },
+                include: { dayBreaks: true },
+                orderBy: { startTime: 'asc' },
+            }),
+            prisma.order.findMany({
+                where: {
+                    orderDate: { gte: yesterday, lt: tomorrow },
+                    ...(canteenIdFilter ? { canteenId: canteenIdFilter } : {}),
+                },
+                select: {
+                    id: true,
+                    shiftId: true,
+                    canteenId: true,
+                    status: true,
+                    orderDate: true,
+                    checkInTime: true,
+                    checkedInBy: true,
+                },
+            }),
+        ]);
+
+        const hhmm = (d: Date) => d.toISOString().slice(11, 16);
+        const shiftStartOn = (date: Date, time: string) => {
+            const start = new Date(date);
+            const { hours, minutes } = parseShiftTime(time);
+            start.setUTCHours(hours, minutes, 0, 0);
+            return start;
+        };
+
+        interface BreakCandidate {
+            shiftId: string;
+            shiftName: string;
+            orderDate: Date;
+            breakStart: Date;
+            breakEnd: Date;
+        }
+
+        const candidates: BreakCandidate[] = [];
+        for (const shift of shifts) {
+            if (!shift.breakStartTime || !shift.breakEndTime) continue;
+            const dayBreaks = shift.hasSpecialDayBreaks ? shift.dayBreaks : [];
+            const withBreaks = {
+                startTime: shift.startTime,
+                endTime: shift.endTime,
+                breakStartTime: shift.breakStartTime,
+                breakEndTime: shift.breakEndTime,
+                hasSpecialDayBreaks: shift.hasSpecialDayBreaks,
+                dayBreaks: dayBreaks.map((db) => ({
+                    dayOfWeek: db.dayOfWeek,
+                    breakStartTime: db.breakStartTime,
+                    breakEndTime: db.breakEndTime,
+                })),
+            };
+            const isOvernight = isOvernightShift(shift.startTime, shift.endTime);
+            const datesToCheck = isOvernight ? [yesterday, today] : [today];
+
+            for (const orderDate of datesToCheck) {
+                const resolved = resolveBreakTimeForDay(withBreaks, isOvernight ? now : orderDate);
+                if (!resolved.breakStartTime || !resolved.breakEndTime) continue;
+                const dayStart = new Date(orderDate);
+                dayStart.setUTCHours(0, 0, 0, 0);
+                const win = calculateBreakWindow(
+                    dayStart,
+                    {
+                        ...withBreaks,
+                        breakStartTime: resolved.breakStartTime,
+                        breakEndTime: resolved.breakEndTime,
+                    },
+                    shiftStartOn(dayStart, shift.startTime),
+                    dayStart
+                );
+                if (!win) continue;
+                // Keep windows relevant to today's cycle (started within last 18h or ending within next 24h)
+                if (win.breakEnd.getTime() >= today.getTime() && win.breakStart.getTime() < tomorrow.getTime() + 12 * 3600 * 1000) {
+                    candidates.push({
+                        shiftId: shift.id,
+                        shiftName: shift.name,
+                        orderDate,
+                        breakStart: win.breakStart,
+                        breakEnd: win.breakEnd,
+                    });
+                }
+            }
+        }
+
+        // Group candidates by identical breakStart-breakEnd window (concurrent breaks merge)
+        const windowMap = new Map<string, { breakStart: Date; breakEnd: Date; items: BreakCandidate[] }>();
+        for (const c of candidates) {
+            const key = `${hhmm(c.breakStart)}-${hhmm(c.breakEnd)}-${c.breakStart.toISOString().slice(0, 10)}`;
+            if (!windowMap.has(key)) {
+                windowMap.set(key, { breakStart: c.breakStart, breakEnd: c.breakEnd, items: [] });
+            }
+            windowMap.get(key)!.items.push(c);
+        }
+
+        const windows = Array.from(windowMap.values()).sort(
+            (a, b) => a.breakStart.getTime() - b.breakStart.getTime()
+        );
+
+        const todayBreaks = windows.map((w) => {
+            const keys = new Set(w.items.map((it) => `${it.shiftId}:${it.orderDate.toISOString().slice(0, 10)}`));
+            const wOrders = orders.filter(
+                (o) => o.status !== 'CANCELLED' && keys.has(`${o.shiftId}:${o.orderDate.toISOString().slice(0, 10)}`)
+            );
+            const state =
+                now >= w.breakStart && now <= w.breakEnd
+                    ? 'Berjalan'
+                    : now < w.breakStart
+                        ? 'Nanti'
+                        : 'Selesai';
+            return {
+                time: `${hhmm(w.breakStart)}–${hhmm(w.breakEnd)}`,
+                shiftNames: w.items.map((it) => it.shiftName),
+                total: wOrders.length,
+                pickedUp: wOrders.filter((o) => o.status === 'PICKED_UP').length,
+                state,
+            };
+        });
+
+        // Pick active window, or next upcoming within 60 mins, or next upcoming today, or most recent window
+        const activeWindow =
+            windows.find((w) => now >= w.breakStart && now <= w.breakEnd) ||
+            windows.find((w) => w.breakStart > now && w.breakStart.getTime() - now.getTime() <= 60 * 60000) ||
+            windows.find((w) => w.breakStart > now) ||
+            windows[windows.length - 1] ||
+            null;
+
+        let activeBreak: {
+            status: 'active' | 'upcoming' | 'finished';
+            time: string;
+            shiftNames: string[];
+            remainingMinutes: number;
+            total: number;
+            pickedUp: number;
+            pending: number;
+            ratePerMinute: number;
+            buckets: Array<{ label: string; count: number | null }>;
+            posts: Array<{ name: string; count: number; lastScanAt: string; idleMinutes: number }>;
+        } | null = null;
+
+        if (activeWindow) {
+            const keys = new Set(
+                activeWindow.items.map((it) => `${it.shiftId}:${it.orderDate.toISOString().slice(0, 10)}`)
+            );
+            const wOrders = orders.filter(
+                (o) => o.status !== 'CANCELLED' && keys.has(`${o.shiftId}:${o.orderDate.toISOString().slice(0, 10)}`)
+            );
+            const pickedUpOrders = wOrders.filter((o) => o.status === 'PICKED_UP');
+            const pendingCount = wOrders.filter((o) => o.status === 'ORDERED').length;
+
+            const isLive = now >= activeWindow.breakStart && now <= activeWindow.breakEnd;
+            const status = isLive ? 'active' : now < activeWindow.breakStart ? 'upcoming' : 'finished';
+            const remainingMinutes = isLive
+                ? Math.max(0, Math.ceil((activeWindow.breakEnd.getTime() - now.getTime()) / 60000))
+                : status === 'upcoming'
+                    ? Math.max(0, Math.ceil((activeWindow.breakStart.getTime() - now.getTime()) / 60000))
+                    : 0;
+
+            const elapsedMin = isLive
+                ? Math.max(1, (now.getTime() - activeWindow.breakStart.getTime()) / 60000)
+                : Math.max(1, (activeWindow.breakEnd.getTime() - activeWindow.breakStart.getTime()) / 60000);
+            const ratePerMinute =
+                status === 'upcoming' ? 0 : Math.round((pickedUpOrders.length / elapsedMin) * 10) / 10;
+
+            // 10-minute buckets across break window
+            const buckets: Array<{ label: string; count: number | null }> = [];
+            const startMs = activeWindow.breakStart.getTime();
+            const endMs = activeWindow.breakEnd.getTime();
+            for (let t = startMs; t < endMs; t += 10 * 60000) {
+                const bucketEnd = Math.min(endMs, t + 10 * 60000);
+                const label = hhmm(new Date(t));
+                if (t > now.getTime()) {
+                    buckets.push({ label, count: null });
+                } else {
+                    const count = pickedUpOrders.filter((o) => {
+                        if (!o.checkInTime) return false;
+                        const ct = o.checkInTime.getTime();
+                        return ct >= t && ct < bucketEnd;
+                    }).length;
+                    buckets.push({ label, count });
+                }
+            }
+
+            // Per pos check-in aggregation
+            const postMap = new Map<string, { count: number; latestMs: number }>();
+            for (const o of pickedUpOrders) {
+                const posName = (o.checkedInBy || 'Pos Umum').trim() || 'Pos Umum';
+                const scanMs = o.checkInTime ? o.checkInTime.getTime() : 0;
+                const prev = postMap.get(posName);
+                if (!prev) {
+                    postMap.set(posName, { count: 1, latestMs: scanMs });
+                } else {
+                    prev.count += 1;
+                    if (scanMs > prev.latestMs) prev.latestMs = scanMs;
+                }
+            }
+
+            const posts = Array.from(postMap.entries())
+                .map(([name, info]) => ({
+                    name,
+                    count: info.count,
+                    lastScanAt: info.latestMs > 0 ? hhmm(new Date(info.latestMs)) : '—',
+                    idleMinutes: info.latestMs > 0 ? Math.max(0, Math.floor((now.getTime() - info.latestMs) / 60000)) : 0,
+                }))
+                .sort((a, b) => b.count - a.count);
+
+            activeBreak = {
+                status,
+                time: `${hhmm(activeWindow.breakStart)}–${hhmm(activeWindow.breakEnd)}`,
+                shiftNames: activeWindow.items.map((it) => it.shiftName),
+                remainingMinutes,
+                total: wOrders.length,
+                pickedUp: pickedUpOrders.length,
+                pending: pendingCount,
+                ratePerMinute,
+                buckets,
+                posts,
+            };
+        }
+
+        const payload = {
+            date: today.toISOString().split('T')[0],
+            serverTime: now.toISOString(),
+            activeBreak,
+            todayBreaks,
+        };
+
+        await cacheService.set(cacheKey, payload, { ttl: 3 });
+        res.json(payload);
+    } catch (error) {
+        console.error('Get canteen live stats error:', error);
+        res.status(500).json({ error: 'Gagal memuat statistik kantin' });
+    }
+});
+
 export default router;

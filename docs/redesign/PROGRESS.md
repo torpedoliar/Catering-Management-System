@@ -27,10 +27,19 @@ Acuan utama: `docs/redesign/SPEC.md` dan `docs/redesign/mockups/*.dc.html`.
 ## Status Saat Ini
 
 - **Fase 1:** Selesai (`done`) — commit `fbee36f`
-- **Fase 2:** Selesai (`done`) — 27 November 2026
-- **Fase 3:** Sedang dikerjakan (`in_progress`)
-- **Fase 4:** Menunggu
+- **Fase 2:** Selesai (`done`) — commit `eb287a4`
+- **Fase 3:** Selesai (`done`) — 27 November 2026
+- **Fase 4:** Sedang dikerjakan (`in_progress`)
 - **Fase 5:** Menunggu
+
+### Ringkasan Hasil Fase 3
+- **Backend (`backend/src/routes/order/stats.ts`):** Endpoint baru `GET /api/orders/stats/canteen-live?canteenId=` (`authMiddleware, canteenMiddleware`), memakai Fake-UTC (`getNow()`, `getToday()`, `getTomorrow()`), cache Redis 3 detik, jendela istirahat aktif/mendatang, bucket 10 menit, agregat per `checkedInBy`, dan jadwal istirahat hari ini.
+- **Frontend:**
+  - `CanteenDashboardPage.tsx` (`/canteen` — `DashOperator.dc.html`): kartu gelap hero + sisa menit + progres + tombol "Buka Check-in", grafik pengambilan per 10 menit, per pos check-in ("Diam N mnt" > 15 menit saat aktif), jadwal istirahat hari ini.
+  - `CheckInPage.tsx` (`/canteen/checkin`): penyelarasan token dan radius tanpa mengubah logika antrean/scan/isolasi/popup/suara/fokus.
+  - `VendorDashboardPage.tsx` (`/vendor` — `Rekap.dc.html`): 4 `StatTile`, tab per kantin ("Semua kantin" + tiap kantin), tabel hari × jam istirahat dengan sorotan hari ini & footer total minggu.
+  - `VendorPickupStatsPage.tsx` (`/vendor/pickup-stats`): filter tanggal, 4 `StatTile`, kartu progres per jam istirahat.
+- **Verifikasi:** `backend` build lolos, `frontend` build + lint 0 error/warning di file Fase 3, Playwright cek 7 kombinasi (`/canteen`, `/canteen/checkin`, `/vendor`, `/vendor/pickup-stats`) di `1366×768` & `390×844` lolos tanpa overflow atau error.
 
 ### Ringkasan Hasil Fase 2
 - **Halaman diubah:**
