@@ -26,11 +26,19 @@ Acuan utama: `docs/redesign/SPEC.md` dan `docs/redesign/mockups/*.dc.html`.
 
 ## Status Saat Ini
 
-- **Fase 1:** Selesai (`done`) — 27 November 2026
-- **Fase 2:** Menunggu konfirmasi & mulai berikutnya
-- **Fase 3:** Menunggu
+- **Fase 1:** Selesai (`done`) — commit `fbee36f`
+- **Fase 2:** Selesai (`done`) — 27 November 2026
+- **Fase 3:** Sedang dikerjakan (`in_progress`)
 - **Fase 4:** Menunggu
 - **Fase 5:** Menunggu
+
+### Ringkasan Hasil Fase 2
+- **Halaman diubah:**
+  - `OrderPage.tsx` (`/` — `Pesan.dc.html` & `PesanMobile.dc.html`): alur 3 langkah (pilih tanggal, shift, kantin) + ringkasan kanan desktop, header gelap & kartu makan hari ini + geser tanggal & CTA tetap di HP `< 768 px`, helper Fake-UTC `dateHelpers.ts`, barcode + batal pesanan modal.
+  - `HistoryPage.tsx` (`/history` — `Riwayat.dc.html`): tab status dengan jumlah, filter periode, blok tanggal, badge status, aksi kontekstual (Batalkan / Ajukan sanggahan / Kirim komplain), pagination user `[8, 20, 50]` sinkron URL.
+  - `FoodMenuPage.tsx` (`/menu`): navigasi minggu, kartu harian per jam istirahat, modal zoom/rotate foto menu.
+  - `SettingsPage.tsx` (`/settings`), `AboutPage.tsx` (`/about`), `TermsPage.tsx` (`/terms`), `LoginPage.tsx` (`/login`), `KioskPage.tsx` (`/kiosk`).
+- **Verifikasi:** `npm run build` lolos, `eslint` 0 error & 0 warning di seluruh file Fase 2, Playwright cek 15 kombinasi halaman/viewport (`1366×768`, `1280×720`, `390×844`) lolos tanpa overflow horizontal atau error runtime.
 
 ### Ringkasan Hasil Fase 1
 - **Token & CSS (`frontend/tailwind.config.js`, `frontend/src/index.css`):** Token warna v2 (`brand`, `brand-strong`, `brand-soft`, `brand-tint`, `sidebar`, `ink`, `muted`, `line`, `canvas`, `surface-2`, `semantic.*`) ditambahkan ke Tailwind & `:root`, plus animasi shimmer `.sk-shimmer`. Token dan override lama dipertahankan hingga Fase 5.

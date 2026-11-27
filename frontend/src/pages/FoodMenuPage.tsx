@@ -1,8 +1,9 @@
 import { useState, useEffect, useCallback } from 'react';
-import { ChevronLeft, ChevronRight, Calendar, Store, Pizza, UtensilsCrossed } from 'lucide-react';
+import { Store, UtensilsCrossed, ZoomIn, ZoomOut, RotateCcw, RotateCw, X } from 'lucide-react';
 import { api } from '../contexts/AuthContext';
 import { useSSERefresh, MENU_EVENTS } from '../contexts/SSEContext';
-import { getLocalDateString } from '../utils/dateHelpers';
+import { getLocalDateString, formatOrderDate } from '../utils/dateHelpers';
+import { Card, PageHeader, Badge, EmptyState, SkeletonCard } from '../components/ui';
 
 interface Vendor {
     id: string;
@@ -42,8 +43,6 @@ interface Shift {
     endTime: string;
     breakStartTime?: string | null;
     breakEndTime?: string | null;
-    hasSpecialDayBreaks?: boolean;
-    dayBreaks?: { dayOfWeek: number; breakStartTime: string; breakEndTime: string }[];
 }
 
 interface MenuGroup {
@@ -54,155 +53,154 @@ interface MenuGroup {
     isGrouped: boolean;
 }
 
-// Group menus by break time for merged display
+const MONTH_LONG = [
+    'Januari', 'Februari', 'Maret', 'April', 'Mei', 'Juni',
+    'Juli', 'Agustus', 'September', 'Oktober', 'November', 'Desember',
+];
+
+function formatIndoDate(dateStr: string): string {
+    const key = formatOrderDate(dateStr);
+    const [, m, d] = key.split('-').map(Number);
+    if (!m || !d) return key;
+    return `${d} ${MONTH_LONG[m - 1] || ''}`;
+}
+
 const groupMenusByBreakTime = (menus: DayMenu[], shifts: Shift[]): MenuGroup[] => {
     const groups: Map<string, DayMenu[]> = new Map();
-    const shiftMap = new Map(shifts.map(s => [s.id, s]));
+    const shiftMap = new Map(shifts.map((s) => [s.id, s]));
 
-    menus.forEach(menu => {
+    menus.forEach((menu) => {
         const shift = menu.shiftId ? shiftMap.get(menu.shiftId) : null;
-        const key = shift?.breakStartTime && shift?.breakEndTime
-            ? `${shift.breakStartTime}-${shift.breakEndTime}`
-            : menu.shiftId ? `_shift_${menu.shiftId}` : '_no_shift';
+        const key =
+            shift?.breakStartTime && shift?.breakEndTime
+                ? `${shift.breakStartTime}–${shift.breakEndTime}`
+                : menu.shiftId
+                    ? `_shift_${menu.shiftId}`
+                    : '_no_shift';
 
         if (!groups.has(key)) groups.set(key, []);
         groups.get(key)!.push(menu);
     });
 
-    return Array.from(groups.entries()).map(([key, menusInGroup]) => {
-        const shiftNames = [...new Set(menusInGroup.map(m => m.shiftName).filter(Boolean))] as string[];
-
-        return {
-            key,
-            label: key.startsWith('_') ? (shiftNames[0] || 'Menu') : key,
-            shiftNames,
-            menus: menusInGroup,
-            isGrouped: !key.startsWith('_')
-        };
-    }).sort((a, b) => {
-        const timeA = a.key.startsWith('_') ? '99:99' : a.key;
-        const timeB = b.key.startsWith('_') ? '99:99' : b.key;
-        return timeA.localeCompare(timeB);
-    });
+    return Array.from(groups.entries())
+        .map(([key, menusInGroup]) => {
+            const shiftNames = [...new Set(menusInGroup.map((m) => m.shiftName).filter(Boolean))] as string[];
+            return {
+                key,
+                label: key.startsWith('_') ? shiftNames[0] || 'Menu' : key,
+                shiftNames,
+                menus: menusInGroup,
+                isGrouped: !key.startsWith('_'),
+            };
+        })
+        .sort((a, b) => {
+            const timeA = a.key.startsWith('_') ? '99:99' : a.key;
+            const timeB = b.key.startsWith('_') ? '99:99' : b.key;
+            return timeA.localeCompare(timeB);
+        });
 };
 
-// ImageLightbox Component with Zoom Controls
 function ImageLightbox({ src, onClose }: { src: string; onClose: () => void }) {
     const [scale, setScale] = useState(1);
     const [rotation, setRotation] = useState(0);
 
-    const zoomIn = () => setScale(s => Math.min(s + 0.25, 3));
-    const zoomOut = () => setScale(s => Math.max(s - 0.25, 0.5));
-    const resetZoom = () => { setScale(1); setRotation(0); };
-    const rotate = () => setRotation(r => (r + 90) % 360);
+    useEffect(() => {
+        const onKey = (e: KeyboardEvent) => {
+            if (e.key === 'Escape') onClose();
+        };
+        document.addEventListener('keydown', onKey);
+        return () => document.removeEventListener('keydown', onKey);
+    }, [onClose]);
 
     return (
         <div
-            className="fixed inset-0 z-50 flex items-center justify-center bg-black/90 backdrop-blur-sm"
+            role="dialog"
+            aria-modal="true"
+            aria-label="Pratinjau foto menu"
+            className="fixed inset-0 z-50 flex items-center justify-center bg-[rgba(28,25,23,0.85)]"
             onClick={onClose}
         >
-            {/* Close Button */}
             <button
+                type="button"
+                aria-label="Tutup pratinjau"
                 onClick={onClose}
-                className="absolute top-4 right-4 p-2 text-white/70 hover:text-white transition-colors z-10"
+                className="absolute top-4 right-4 w-10 h-10 rounded-full bg-[rgba(0,0,0,0.5)] text-[#fff] flex items-center justify-center border-0 cursor-pointer hover:bg-[rgba(0,0,0,0.7)]"
             >
-                <svg xmlns="http://www.w3.org/2000/svg" className="h-8 w-8" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
-                </svg>
+                <X className="w-5 h-5" aria-hidden="true" />
             </button>
 
-            {/* Image Container */}
-            <div
-                className="relative overflow-hidden max-w-[90vw] max-h-[80vh]"
-                onClick={(e) => e.stopPropagation()}
-            >
+            <div className="relative overflow-hidden max-w-[90vw] max-h-[80vh]" onClick={(e) => e.stopPropagation()}>
                 <img
                     src={src}
-                    alt="Menu Preview"
-                    className="max-w-full max-h-[80vh] object-contain rounded-lg shadow-2xl transition-transform duration-200"
-                    style={{
-                        transform: `scale(${scale}) rotate(${rotation}deg)`,
-                    }}
+                    alt="Pratinjau menu"
+                    className="max-w-full max-h-[80vh] object-contain rounded-[10px] transition-transform duration-200"
+                    style={{ transform: `scale(${scale}) rotate(${rotation}deg)` }}
                     draggable={false}
                 />
             </div>
 
-            {/* Zoom Controls Toolbar */}
             <div
-                className="absolute bottom-6 left-1/2 -translate-x-1/2 flex items-center gap-1 p-1.5 bg-black/60 backdrop-blur-md rounded-full shadow-lg"
+                className="absolute bottom-6 left-1/2 -translate-x-1/2 flex items-center gap-1 p-1.5 bg-[rgba(28,25,23,0.8)] rounded-full"
                 onClick={(e) => e.stopPropagation()}
             >
                 <button
-                    onClick={zoomIn}
-                    className="p-2.5 text-white hover:bg-white/20 rounded-full transition-colors"
-                    title="Zoom In"
+                    type="button"
+                    aria-label="Perbesar"
+                    onClick={() => setScale((s) => Math.min(s + 0.25, 3))}
+                    className="p-2.5 text-[#fff] bg-transparent border-0 rounded-full cursor-pointer hover:bg-[rgba(255,255,255,0.15)]"
                 >
-                    <svg xmlns="http://www.w3.org/2000/svg" className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-                        <circle cx="11" cy="11" r="8" />
-                        <path d="M21 21l-4.35-4.35M11 8v6M8 11h6" />
-                    </svg>
+                    <ZoomIn className="w-4 h-4" aria-hidden="true" />
                 </button>
                 <button
-                    onClick={zoomOut}
-                    className="p-2.5 text-white hover:bg-white/20 rounded-full transition-colors"
-                    title="Zoom Out"
+                    type="button"
+                    aria-label="Perkecil"
+                    onClick={() => setScale((s) => Math.max(s - 0.25, 0.5))}
+                    className="p-2.5 text-[#fff] bg-transparent border-0 rounded-full cursor-pointer hover:bg-[rgba(255,255,255,0.15)]"
                 >
-                    <svg xmlns="http://www.w3.org/2000/svg" className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-                        <circle cx="11" cy="11" r="8" />
-                        <path d="M21 21l-4.35-4.35M8 11h6" />
-                    </svg>
+                    <ZoomOut className="w-4 h-4" aria-hidden="true" />
                 </button>
                 <button
-                    onClick={resetZoom}
-                    className="p-2.5 text-white hover:bg-white/20 rounded-full transition-colors"
-                    title="Reset"
+                    type="button"
+                    aria-label="Reset zoom"
+                    onClick={() => {
+                        setScale(1);
+                        setRotation(0);
+                    }}
+                    className="p-2.5 text-[#fff] bg-transparent border-0 rounded-full cursor-pointer hover:bg-[rgba(255,255,255,0.15)]"
                 >
-                    <svg xmlns="http://www.w3.org/2000/svg" className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-                        <path d="M3 12a9 9 0 1 0 9-9 9.75 9.75 0 0 0-6.74 2.74L3 8" />
-                        <path d="M3 3v5h5" />
-                    </svg>
+                    <RotateCcw className="w-4 h-4" aria-hidden="true" />
                 </button>
                 <button
-                    onClick={rotate}
-                    className="p-2.5 text-white hover:bg-white/20 rounded-full transition-colors"
-                    title="Rotate"
+                    type="button"
+                    aria-label="Putar gambar"
+                    onClick={() => setRotation((r) => (r + 90) % 360)}
+                    className="p-2.5 text-[#fff] bg-transparent border-0 rounded-full cursor-pointer hover:bg-[rgba(255,255,255,0.15)]"
                 >
-                    <svg xmlns="http://www.w3.org/2000/svg" className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-                        <path d="M21 12a9 9 0 1 1-9-9c2.52 0 4.93 1 6.74 2.74L21 8" />
-                        <path d="M21 3v5h-5" />
-                    </svg>
+                    <RotateCw className="w-4 h-4" aria-hidden="true" />
                 </button>
-            </div>
-
-            {/* Zoom Level Indicator */}
-            <div className="absolute top-4 left-4 px-3 py-1.5 bg-black/60 backdrop-blur-md rounded-full text-white text-sm">
-                {Math.round(scale * 100)}%
-            </div>
-
-            {/* Label */}
-            <div className="absolute bottom-6 left-4 text-white/70 text-sm">
-                Menu Preview
             </div>
         </div>
     );
 }
 
 export default function FoodMenuPage() {
-    const [weekData, setWeekData] = useState<{ week: number; year: number; weekStart: string; weekEnd: string; shifts: Shift[]; dailyMenus: DailyMenuData[] } | null>(null);
+    const [weekData, setWeekData] = useState<{
+        week: number;
+        year: number;
+        weekStart: string;
+        weekEnd: string;
+        shifts: Shift[];
+        dailyMenus: DailyMenuData[];
+    } | null>(null);
     const [loading, setLoading] = useState(true);
     const [selectedWeek, setSelectedWeek] = useState<{ week: number; year: number } | null>(null);
     const [selectedImage, setSelectedImage] = useState<string | null>(null);
-
-    useEffect(() => {
-        loadData();
-    }, [selectedWeek]);
 
     const loadData = useCallback(async () => {
         setLoading(true);
         try {
             const weekParam = selectedWeek ? `?week=${selectedWeek.week}&year=${selectedWeek.year}` : '';
             const res = await api.get(`/api/weekly-menu${weekParam}`);
-
             if (res.data) {
                 setWeekData(res.data);
                 if (!selectedWeek) {
@@ -216,14 +214,16 @@ export default function FoodMenuPage() {
         }
     }, [selectedWeek]);
 
-    // SSE integration for real-time updates
+    useEffect(() => {
+        loadData();
+    }, [loadData]);
+
     useSSERefresh(MENU_EVENTS, loadData);
 
     const navigateWeek = (direction: number) => {
         if (!selectedWeek) return;
         let newWeek = selectedWeek.week + direction;
         let newYear = selectedWeek.year;
-
         if (newWeek < 1) {
             newWeek = 52;
             newYear--;
@@ -231,165 +231,166 @@ export default function FoodMenuPage() {
             newWeek = 1;
             newYear++;
         }
-
         setSelectedWeek({ week: newWeek, year: newYear });
     };
 
-    const formatDate = (dateStr: string) => {
-        const d = new Date(dateStr);
-        return d.toLocaleDateString('id-ID', { day: 'numeric', month: 'long' });
-    };
-
-    const isToday = (dateStr: string) => {
-        return dateStr === getLocalDateString();
-    };
+    const todayKey = getLocalDateString();
 
     if (loading && !weekData) {
         return (
-            <div className="flex items-center justify-center h-64">
-                <div className="animate-spin rounded-full h-8 w-8 border-t-2 border-b-2 border-amber-500"></div>
+            <div className="max-w-[1080px] space-y-4">
+                <SkeletonCard lines={2} />
+                <SkeletonCard lines={4} />
+                <SkeletonCard lines={4} />
             </div>
         );
     }
 
     return (
-        <div className="space-y-6">
-            {/* Header */}
-            <div>
-                <h1 className="text-2xl font-bold text-slate-800 flex items-center gap-2">
-                    <UtensilsCrossed className="w-7 h-7 text-amber-500" />
-                    Menu Makanan
-                </h1>
-                <p className="text-slate-500">Lihat menu makanan mingguan</p>
-            </div>
-
-            {/* Week Navigator */}
-            <div className="card p-4">
-                <div className="flex items-center justify-between">
-                    <button onClick={() => navigateWeek(-1)} className="p-2 rounded-lg hover:bg-slate-100 transition-colors">
-                        <ChevronLeft className="w-5 h-5 text-slate-600" />
-                    </button>
-                    <div className="text-center">
-                        <div className="flex items-center justify-center gap-2 text-amber-600">
-                            <Calendar className="w-5 h-5" />
-                            <span className="font-semibold">Week {selectedWeek?.week}, {selectedWeek?.year}</span>
-                        </div>
-                        {weekData && (
-                            <p className="text-sm text-slate-500 mt-1">
-                                {formatDate(weekData.weekStart)} - {formatDate(weekData.weekEnd)}
-                            </p>
-                        )}
-                    </div>
-                    <button onClick={() => navigateWeek(1)} className="p-2 rounded-lg hover:bg-slate-100 transition-colors">
-                        <ChevronRight className="w-5 h-5 text-slate-600" />
-                    </button>
-                </div>
-            </div>
-
-            {/* Daily Menus */}
-            {weekData && (
-                <div className="space-y-4">
-                    {weekData.dailyMenus.map(day => (
-                        <div
-                            key={day.date}
-                            className={`card overflow-hidden ${isToday(day.date) ? 'ring-2 ring-amber-500' : ''}`}
+        <div className="max-w-[1080px] w-full space-y-[18px]">
+            <PageHeader
+                title="Lihat menu"
+                subtitle={
+                    weekData
+                        ? `Minggu ${weekData.week}, ${weekData.year} · ${formatIndoDate(weekData.weekStart)}–${formatIndoDate(weekData.weekEnd)}`
+                        : 'Jadwal menu mingguan'
+                }
+                actions={
+                    <div className="inline-flex items-center border border-[#e7e5e4] bg-[#fff] rounded-[10px] h-[38px]">
+                        <button
+                            type="button"
+                            aria-label="Minggu sebelumnya"
+                            onClick={() => navigateWeek(-1)}
+                            className="w-[38px] h-9 border-0 bg-transparent cursor-pointer text-[16px] text-[#44403c] hover:bg-[#fafaf9] rounded-l-[10px]"
                         >
-                            <div className={`px-4 py-3 ${isToday(day.date) ? 'bg-amber-500 text-white' : 'bg-slate-50'}`}>
-                                <div className="flex items-center justify-between">
+                            ‹
+                        </button>
+                        <span className="px-3 text-[13px] font-semibold text-[#1c1917] border-x border-[#f0efed] leading-9 tabular-nums">
+                            Minggu {selectedWeek?.week || '-'}
+                        </span>
+                        <button
+                            type="button"
+                            aria-label="Minggu berikutnya"
+                            onClick={() => navigateWeek(1)}
+                            className="w-[38px] h-9 border-0 bg-transparent cursor-pointer text-[16px] text-[#44403c] hover:bg-[#fafaf9] rounded-r-[10px]"
+                        >
+                            ›
+                        </button>
+                    </div>
+                }
+            />
+
+            {weekData && (
+                <div className="space-y-3.5">
+                    {weekData.dailyMenus.map((day) => {
+                        const isToday = formatOrderDate(day.date) === todayKey;
+                        const groups = groupMenusByBreakTime(day.menus, weekData.shifts);
+
+                        return (
+                            <Card
+                                key={day.date}
+                                padding="none"
+                                className={`overflow-hidden ${isToday ? 'border-2 border-[#f59e0b]' : ''}`}
+                            >
+                                <div
+                                    className={`px-5 py-3 flex items-center justify-between border-b ${
+                                        isToday
+                                            ? 'bg-[#fffbeb] border-[#fef3c7]'
+                                            : 'bg-[#fafaf9] border-[#f0efed]'
+                                    }`}
+                                >
                                     <div className="flex items-center gap-2">
-                                        <Calendar className={`w-4 h-4 ${isToday(day.date) ? 'text-white' : 'text-slate-400'}`} />
-                                        <span className="font-semibold">{day.dayName}</span>
-                                        {isToday(day.date) && (
-                                            <span className="px-2 py-0.5 bg-white/20 rounded text-xs">Hari Ini</span>
-                                        )}
+                                        <span className="font-bold text-[14.5px] text-[#1c1917]">{day.dayName}</span>
+                                        {isToday && <Badge variant="warning">Hari ini</Badge>}
                                     </div>
-                                    <span className={`text-sm ${isToday(day.date) ? 'text-white/80' : 'text-slate-500'}`}>
-                                        {formatDate(day.date)}
+                                    <span className="text-[13px] text-[#78716c] font-medium">
+                                        {formatIndoDate(day.date)}
                                     </span>
                                 </div>
-                            </div>
 
-                            <div className="p-4">
-                                {day.menus.length > 0 ? (
-                                    <div className="space-y-3">
-                                        {groupMenusByBreakTime(day.menus, weekData.shifts).map(group => {
-                                            const displayMenu = group.menus[0];
-                                            return (
-                                                <div key={group.key} className="flex gap-4 p-3 bg-slate-50 rounded-xl">
-                                                    {displayMenu.menuItem.imageUrl ? (
-                                                        <img
-                                                            src={displayMenu.menuItem.imageUrl}
-                                                            alt={displayMenu.menuItem.name}
-                                                            className="w-24 h-24 object-cover rounded-lg flex-shrink-0 cursor-zoom-in hover:opacity-80 transition-opacity"
-                                                            onClick={() => setSelectedImage(displayMenu.menuItem.imageUrl)}
-                                                        />
-                                                    ) : (
-                                                        <div className="w-24 h-24 bg-slate-200 rounded-lg flex items-center justify-center flex-shrink-0">
-                                                            <Pizza className="w-8 h-8 text-slate-400" />
-                                                        </div>
-                                                    )}
-                                                    <div className="flex-1 min-w-0">
-                                                        <div className="flex flex-wrap gap-1 mb-1">
-                                                            <span className="inline-block px-2 py-0.5 bg-amber-100 text-amber-700 text-xs rounded font-medium">
-                                                                {group.label}
-                                                            </span>
-                                                            {group.isGrouped && (
-                                                                <span className="inline-block px-2 py-0.5 bg-slate-200 text-slate-600 text-xs rounded">
-                                                                    {group.shiftNames.join(', ')}
-                                                                </span>
-                                                            )}
-                                                        </div>
-                                                        <h3 className="font-semibold text-slate-800">{displayMenu.menuItem.name}</h3>
-                                                        {displayMenu.menuItem.description && (
-                                                            <p className="text-sm text-slate-500 mt-1 line-clamp-2">{displayMenu.menuItem.description}</p>
-                                                        )}
-                                                        <div className="flex items-center gap-2 mt-2">
-                                                            {displayMenu.menuItem.vendor.logoUrl ? (
+                                <div className="p-4 md:p-5">
+                                    {groups.length > 0 ? (
+                                        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3">
+                                            {groups.map((group) => {
+                                                const displayMenu = group.menus[0];
+                                                return (
+                                                    <div
+                                                        key={group.key}
+                                                        className="flex gap-3 p-3 rounded-[12px] border border-[#f0efed] bg-[#fafaf9]"
+                                                    >
+                                                        {displayMenu.menuItem.imageUrl ? (
+                                                            <button
+                                                                type="button"
+                                                                aria-label={`Perbesar foto ${displayMenu.menuItem.name}`}
+                                                                onClick={() => setSelectedImage(displayMenu.menuItem.imageUrl)}
+                                                                className="w-20 h-20 rounded-[9px] overflow-hidden flex-shrink-0 border-0 p-0 bg-transparent cursor-zoom-in"
+                                                            >
                                                                 <img
-                                                                    src={displayMenu.menuItem.vendor.logoUrl}
-                                                                    alt={displayMenu.menuItem.vendor.name}
-                                                                    className="w-5 h-5 rounded object-cover"
+                                                                    src={displayMenu.menuItem.imageUrl}
+                                                                    alt={displayMenu.menuItem.name}
+                                                                    className="w-full h-full object-cover"
                                                                 />
-                                                            ) : (
-                                                                <Store className="w-4 h-4 text-slate-400" />
-                                                            )}
-                                                            <span className="text-xs text-slate-500">{displayMenu.menuItem.vendor.name}</span>
-                                                        </div>
-                                                        {displayMenu.notes && (
-                                                            <p className="text-xs text-amber-600 mt-2 italic">{displayMenu.notes}</p>
+                                                            </button>
+                                                        ) : (
+                                                            <div className="w-20 h-20 bg-[#f5f5f4] rounded-[9px] flex items-center justify-center flex-shrink-0 text-[#a8a29e]">
+                                                                <UtensilsCrossed className="w-6 h-6" aria-hidden="true" />
+                                                            </div>
                                                         )}
+                                                        <div className="flex-1 min-w-0">
+                                                            <div className="flex flex-wrap gap-1 mb-1">
+                                                                <span className="inline-block px-2 py-0.5 bg-[#fef3c7] text-[#92400e] text-[11px] rounded-full font-bold tabular-nums">
+                                                                    {group.label}
+                                                                </span>
+                                                                {group.isGrouped && group.shiftNames.length > 0 && (
+                                                                    <span className="inline-block px-2 py-0.5 bg-[#f5f5f4] text-[#57534e] text-[11px] rounded-full font-medium">
+                                                                        {group.shiftNames.join(', ')}
+                                                                    </span>
+                                                                )}
+                                                            </div>
+                                                            <h3 className="m-0 font-bold text-[13.5px] text-[#1c1917] leading-snug line-clamp-2">
+                                                                {displayMenu.menuItem.name}
+                                                            </h3>
+                                                            {displayMenu.menuItem.description && (
+                                                                <p className="m-0 text-[12px] text-[#78716c] mt-1 line-clamp-2">
+                                                                    {displayMenu.menuItem.description}
+                                                                </p>
+                                                            )}
+                                                            <div className="flex items-center gap-1.5 mt-1.5 text-[11.5px] text-[#78716c]">
+                                                                <Store className="w-3.5 h-3.5 flex-shrink-0" aria-hidden="true" />
+                                                                <span className="truncate">{displayMenu.menuItem.vendor.name}</span>
+                                                            </div>
+                                                            {displayMenu.notes && (
+                                                                <p className="m-0 text-[11.5px] text-[#b45309] mt-1">
+                                                                    {displayMenu.notes}
+                                                                </p>
+                                                            )}
+                                                        </div>
                                                     </div>
-                                                </div>
-                                            );
-                                        })}
-                                    </div>
-                                ) : (
-                                    <div className="text-center py-6 text-slate-400">
-                                        <Pizza className="w-8 h-8 mx-auto mb-2 opacity-50" />
-                                        <p className="text-sm">Belum ada menu</p>
-                                    </div>
-                                )}
-                            </div>
-                        </div>
-                    ))}
+                                                );
+                                            })}
+                                        </div>
+                                    ) : (
+                                        <p className="m-0 py-4 text-center text-[13px] text-[#a8a29e]">
+                                            Belum ada menu untuk hari ini.
+                                        </p>
+                                    )}
+                                </div>
+                            </Card>
+                        );
+                    })}
                 </div>
             )}
 
-            {weekData && weekData.dailyMenus.every(d => d.menus.length === 0) && (
-                <div className="text-center py-12">
-                    <UtensilsCrossed className="w-16 h-16 mx-auto mb-4 text-slate-200" />
-                    <p className="text-slate-500">Belum ada menu untuk minggu ini</p>
-                    <p className="text-sm text-slate-400 mt-1">Menu akan ditampilkan setelah diatur oleh admin</p>
-                </div>
+            {weekData && weekData.dailyMenus.every((d) => d.menus.length === 0) && (
+                <Card>
+                    <EmptyState
+                        title="Belum ada menu untuk minggu ini"
+                        description="Menu akan ditampilkan setelah diatur oleh admin."
+                    />
+                </Card>
             )}
 
-            {/* Image Lightbox with Zoom Controls */}
-            {selectedImage && (
-                <ImageLightbox
-                    src={selectedImage}
-                    onClose={() => setSelectedImage(null)}
-                />
-            )}
+            {selectedImage && <ImageLightbox src={selectedImage} onClose={() => setSelectedImage(null)} />}
         </div>
     );
 }

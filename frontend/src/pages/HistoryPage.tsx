@@ -2,11 +2,31 @@ import { useState, useEffect, useCallback, useRef } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import { api } from '../contexts/AuthContext';
 import { useSSERefresh, ORDER_EVENTS } from '../contexts/SSEContext';
-import { format } from 'date-fns';
 import { formatDateTimeShortWIB } from '../utils/timezone';
-import { Calendar, ChevronLeft, ChevronRight, Loader2, X, CheckCircle, XCircle, Clock, Ban, History, MessageSquare, Send, MapPin, Upload, ShieldAlert, ShieldCheck, ShieldX } from 'lucide-react';
+import { getLocalDateString, addDays, formatOrderDate } from '../utils/dateHelpers';
+import {
+    Clock,
+    ShieldAlert,
+    ShieldCheck,
+    ShieldX,
+    Upload,
+    X,
+} from 'lucide-react';
 import OrderBarcode from '../components/OrderBarcode';
 import toast from 'react-hot-toast';
+import {
+    Button,
+    Card,
+    PageHeader,
+    OrderStatusBadge,
+    Tabs,
+    Pagination,
+    EmptyState,
+    SkeletonTable,
+    Modal,
+    Textarea,
+    Badge,
+} from '../components/ui';
 
 interface Order {
     id: string;
@@ -20,6 +40,8 @@ interface Order {
         name: string;
         startTime: string;
         endTime: string;
+        breakStartTime?: string | null;
+        breakEndTime?: string | null;
     };
     canteen?: {
         id: string;
@@ -37,806 +59,727 @@ interface Order {
     }[];
 }
 
-export default function HistoryPage() {
-    const [orders, setOrders] = useState<Order[]>([]);
-    const [isLoading, setIsLoading] = useState(true);
-    const [page, setPage] = useState(1);
-    const [totalPages, setTotalPages] = useState(1);
-    const [statusFilter, setStatusFilter] = useState('');
-    const [selectedOrder, setSelectedOrder] = useState<Order | null>(null);
-    const deepLinkConsumed = useRef(false);
+const DOW_LONG = ['Minggu', 'Senin', 'Selasa', 'Rabu', 'Kamis', 'Jumat', 'Sabtu'];
+const MONTH_SHORT = ['Jan', 'Feb', 'Mar', 'Apr', 'Mei', 'Jun', 'Jul', 'Ags', 'Sep', 'Okt', 'Nov', 'Des'];
 
-    // FE-NOTIF-NAV: deep-link support. Notification mapper appends
-    // `?id=<orderId>` so the destination can auto-open the matching row.
+function getOrderDateMeta(isoDate: string) {
+    const key = formatOrderDate(isoDate);
+    const [y, m, d] = key.split('-').map(Number);
+    if (!y || !m || !d) return { mon: '-', day: '-', dow: '-', full: key };
+    const dt = new Date(y, m - 1, d);
+    return {
+        mon: MONTH_SHORT[m - 1] || '-',
+        day: String(d),
+        dow: DOW_LONG[dt.getDay()] || '-',
+        full: `${DOW_LONG[dt.getDay()]}, ${d} ${MONTH_SHORT[m - 1]} ${y}`,
+    };
+}
+
+function getPeriodRange(period: '3m' | 'month' | 'all'): { startDate?: string; endDate?: string } {
+    if (period === 'all') return {};
+    const today = getLocalDateString();
+    if (period === 'month') {
+        return { startDate: `${today.slice(0, 7)}-01` };
+    }
+    // 3 bulan terakhir (~90 hari)
+    return { startDate: addDays(today, -90) };
+}
+
+export default function HistoryPage() {
     const [searchParams, setSearchParams] = useSearchParams();
     const deepLinkOrderId = searchParams.get('id');
 
-    // Cancel modal states
+    const [orders, setOrders] = useState<Order[]>([]);
+    const [isLoading, setIsLoading] = useState(true);
+    const [page, setPage] = useState(() => Math.max(1, parseInt(searchParams.get('page') || '1', 10) || 1));
+    const [limit, setLimit] = useState(() => parseInt(searchParams.get('limit') || '8', 10) || 8);
+    const [total, setTotal] = useState(0);
+    const [totalPages, setTotalPages] = useState(1);
+    const [statusFilter, setStatusFilter] = useState('');
+    const [period, setPeriod] = useState<'3m' | 'month' | 'all'>('3m');
+    const [counts, setCounts] = useState<Record<string, number>>({});
+
+    const [selectedOrder, setSelectedOrder] = useState<Order | null>(null);
+    const deepLinkConsumed = useRef(false);
+
+    // Modals
     const [showCancelModal, setShowCancelModal] = useState(false);
     const [cancelReason, setCancelReason] = useState('');
     const [isCancelling, setIsCancelling] = useState(false);
     const [orderToCancel, setOrderToCancel] = useState<Order | null>(null);
 
-    // Complaint modal states
     const [showComplaintModal, setShowComplaintModal] = useState(false);
     const [complaintContent, setComplaintContent] = useState('');
     const [isSubmittingComplaint, setIsSubmittingComplaint] = useState(false);
     const [orderToComplain, setOrderToComplain] = useState<Order | null>(null);
 
-    // Appeal modal states
     const [showAppealModal, setShowAppealModal] = useState(false);
     const [appealContent, setAppealContent] = useState('');
     const [appealPhoto, setAppealPhoto] = useState<File | null>(null);
     const [isSubmittingAppeal, setIsSubmittingAppeal] = useState(false);
     const [orderToAppeal, setOrderToAppeal] = useState<Order | null>(null);
 
+    const syncPaginationUrl = useCallback(
+        (nextPage: number, nextLimit: number) => {
+            const next = new URLSearchParams(searchParams);
+            next.set('page', String(nextPage));
+            next.set('limit', String(nextLimit));
+            setSearchParams(next, { replace: true });
+        },
+        [searchParams, setSearchParams]
+    );
+
     const loadOrders = useCallback(async () => {
         setIsLoading(true);
         try {
-            const params = new URLSearchParams({ page: page.toString(), limit: '10' });
+            const range = getPeriodRange(period);
+            const params = new URLSearchParams({
+                page: page.toString(),
+                limit: limit.toString(),
+            });
             if (statusFilter) params.append('status', statusFilter);
+            if (range.startDate) params.append('startDate', range.startDate);
+            if (range.endDate) params.append('endDate', range.endDate);
 
             const res = await api.get(`/api/orders/my-orders?${params}`);
-            setOrders(res.data.orders);
-            setTotalPages(res.data.pagination.totalPages);
+            setOrders(res.data.orders || []);
+            setTotal(res.data.pagination?.total ?? 0);
+            setTotalPages(res.data.pagination?.totalPages ?? 1);
         } catch (error) {
             console.error('Failed to load orders:', error);
+            toast.error('Gagal memuat riwayat pesanan');
         } finally {
             setIsLoading(false);
         }
-    }, [page, statusFilter]);
+    }, [page, limit, statusFilter, period]);
+
+    const loadCounts = useCallback(async () => {
+        try {
+            const range = getPeriodRange(period);
+            const statuses = ['', 'ORDERED', 'PICKED_UP', 'NO_SHOW', 'CANCELLED'];
+            const responses = await Promise.all(
+                statuses.map((st) => {
+                    const p = new URLSearchParams({ page: '1', limit: '1' });
+                    if (st) p.append('status', st);
+                    if (range.startDate) p.append('startDate', range.startDate);
+                    return api.get(`/api/orders/my-orders?${p}`);
+                })
+            );
+            const nextCounts: Record<string, number> = {};
+            statuses.forEach((st, idx) => {
+                nextCounts[st] = responses[idx].data?.pagination?.total ?? 0;
+            });
+            setCounts(nextCounts);
+        } catch {
+            // non-fatal
+        }
+    }, [period]);
 
     useEffect(() => {
         loadOrders();
     }, [loadOrders]);
 
-    useSSERefresh(ORDER_EVENTS, loadOrders);
-
-    // FE-NOTIF-NAV: when the page is opened via `?id=<orderId>` and the
-    // matching order is already in the loaded list, auto-open its detail
-    // modal and clear the query so a refresh doesn't re-open it.
     useEffect(() => {
-        if (deepLinkConsumed.current) return;
-        if (!deepLinkOrderId || isLoading) return;
-        const match = orders.find(o => o.id === deepLinkOrderId);
+        loadCounts();
+    }, [loadCounts]);
+
+    useSSERefresh(ORDER_EVENTS, () => {
+        loadOrders();
+        loadCounts();
+    });
+
+    // FE-NOTIF-NAV deep link support
+    useEffect(() => {
+        if (deepLinkConsumed.current || !deepLinkOrderId || isLoading) return;
+        const match = orders.find((o) => o.id === deepLinkOrderId);
         if (match) {
             setSelectedOrder(match);
             deepLinkConsumed.current = true;
-            // Strip the query so a reload of the same page doesn't keep
-            // re-opening the modal.
             const next = new URLSearchParams(searchParams);
             next.delete('id');
             setSearchParams(next, { replace: true });
         }
     }, [deepLinkOrderId, isLoading, orders, searchParams, setSearchParams]);
 
-    // FE-NOTIF-NAV: if the order isn't on the first page, paginate until
-    // we find it (capped to a few pages so a stale id never loops forever).
     useEffect(() => {
-        if (deepLinkConsumed.current) return;
-        if (!deepLinkOrderId) return;
-        if (isLoading) return;
-        const onPage = orders.some(o => o.id === deepLinkOrderId);
+        if (deepLinkConsumed.current || !deepLinkOrderId || isLoading) return;
+        const onPage = orders.some((o) => o.id === deepLinkOrderId);
         if (!onPage && page < totalPages && page < 5) {
-            setPage(p => p + 1);
+            setPage((p) => p + 1);
         }
     }, [deepLinkOrderId, isLoading, orders, page, totalPages]);
 
-    const getStatusConfig = (status: string) => {
-        switch (status) {
-            case 'PICKED_UP':
-                return {
-                    icon: <CheckCircle className="w-5 h-5" />,
-                    label: 'Sudah Diambil',
-                    class: 'bg-emerald-50 text-emerald-600',
-                    bgClass: 'bg-emerald-50',
-                    iconClass: 'text-emerald-600'
-                };
-            case 'ORDERED':
-                return {
-                    icon: <Clock className="w-5 h-5" />,
-                    label: 'Menunggu',
-                    class: 'bg-blue-50 text-blue-600',
-                    bgClass: 'bg-blue-50',
-                    iconClass: 'text-blue-600'
-                };
-            case 'NO_SHOW':
-                return {
-                    icon: <XCircle className="w-5 h-5" />,
-                    label: 'Tidak Diambil',
-                    class: 'bg-red-50 text-red-600',
-                    bgClass: 'bg-red-50',
-                    iconClass: 'text-red-600'
-                };
-            case 'CANCELLED':
-                return {
-                    icon: <Ban className="w-5 h-5" />,
-                    label: 'Dibatalkan',
-                    class: 'bg-amber-50 text-amber-600',
-                    bgClass: 'bg-amber-50',
-                    iconClass: 'text-amber-600'
-                };
-            default:
-                return {
-                    icon: <Clock className="w-5 h-5" />,
-                    label: status,
-                    class: 'bg-slate-100 text-slate-600',
-                    bgClass: 'bg-slate-100',
-                    iconClass: 'text-slate-500'
-                };
-        }
+    const isCancelLocked = (order: Order) => {
+        const orderKey = formatOrderDate(order.orderDate);
+        const todayKey = getLocalDateString();
+        if (orderKey !== todayKey) return orderKey < todayKey;
+        const now = new Date();
+        const [startHour, startMin] = order.shift.startTime.split(':').map(Number);
+        const shiftStart = new Date(now);
+        shiftStart.setHours(startHour, startMin, 0, 0);
+        return now.getTime() >= shiftStart.getTime();
     };
 
-    const filterOptions = [
-        { value: '', label: 'Semua' },
-        { value: 'PICKED_UP', label: 'Diambil' },
-        { value: 'ORDERED', label: 'Pending' },
-        { value: 'NO_SHOW', label: 'Tidak Diambil', highlight: true },
-        { value: 'CANCELLED', label: 'Batal' },
+    const isAppealExpired = (orderDateIso: string) => {
+        const orderKey = formatOrderDate(orderDateIso);
+        const todayKey = getLocalDateString();
+        const diffDays = (Date.parse(todayKey) - Date.parse(orderKey)) / 86_400_000;
+        return diffDays > 7;
+    };
+
+    const tabItems = [
+        { id: '', label: 'Semua', count: counts[''] },
+        { id: 'ORDERED', label: 'Menunggu', count: counts['ORDERED'] },
+        { id: 'PICKED_UP', label: 'Diambil', count: counts['PICKED_UP'] },
+        { id: 'NO_SHOW', label: 'Tidak diambil', count: counts['NO_SHOW'] },
+        { id: 'CANCELLED', label: 'Dibatalkan', count: counts['CANCELLED'] },
     ];
 
     return (
-        <div className="w-full max-w-7xl mx-auto animate-fade-in">
-            {/* Header */}
-            <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 mb-8">
-                <div className="flex items-center gap-4">
-                    <div className="w-14 h-14 rounded-2xl bg-gradient-to-br from-orange-500 to-amber-500 flex items-center justify-center shadow-lg shadow-orange-500/20">
-                        <History className="w-7 h-7 text-white" />
-                    </div>
-                    <div>
-                        <h1 className="text-2xl font-bold text-[#1a1f37]">Riwayat Pesanan</h1>
-                        <p className="text-slate-500">Lihat semua pesanan Anda</p>
-                    </div>
-                </div>
-
-                {/* Filter Tabs */}
-                <div className="flex items-center gap-1 p-1.5 bg-slate-100 rounded-2xl">
-                    {filterOptions.map((option) => (
-                        <button
-                            key={option.value}
-                            onClick={() => { setStatusFilter(option.value); setPage(1); }}
-                            className={`px-4 py-2 rounded-xl text-sm font-medium transition-all duration-200 ${statusFilter === option.value
-                                ? option.highlight
-                                    ? 'bg-red-500 text-white shadow-lg shadow-red-500/30'
-                                    : 'bg-orange-500 text-white shadow-lg'
-                                : option.highlight
-                                    ? 'text-red-600 hover:text-red-700 hover:bg-red-50 border border-red-200'
-                                    : 'text-slate-600 hover:text-slate-900 hover:bg-white'
-                                }`}
+        <div className="max-w-[1080px] w-full flex flex-col gap-[18px]">
+            <PageHeader
+                title="Riwayat pesanan"
+                subtitle={`${(counts[''] ?? total).toLocaleString('id-ID')} pesanan`}
+                actions={
+                    <label className="flex items-center gap-2 h-[38px] border border-[#e7e5e4] rounded-[10px] px-3 bg-[#fff] text-[13px] text-[#57534e]">
+                        <span>Periode</span>
+                        <select
+                            aria-label="Periode riwayat"
+                            value={period}
+                            onChange={(e) => {
+                                setPeriod(e.target.value as '3m' | 'month' | 'all');
+                                setPage(1);
+                                syncPaginationUrl(1, limit);
+                            }}
+                            className="border-0 outline-none font-semibold text-[#1c1917] bg-transparent cursor-pointer"
                         >
-                            {option.label}
-                        </button>
-                    ))}
-                </div>
-            </div>
+                            <option value="3m">3 bulan terakhir</option>
+                            <option value="month">Bulan ini</option>
+                            <option value="all">Semua</option>
+                        </select>
+                    </label>
+                }
+            />
 
-            {/* Content */}
-            <div className="card p-0 overflow-hidden">
+            <Tabs
+                ariaLabel="Status pesanan"
+                items={tabItems}
+                value={statusFilter}
+                onChange={(val) => {
+                    setStatusFilter(val);
+                    setPage(1);
+                    syncPaginationUrl(1, limit);
+                }}
+            />
+
+            <Card padding="none" className="overflow-hidden">
                 {isLoading ? (
-                    <div className="flex items-center justify-center py-20">
-                        <div className="text-center">
-                            <Loader2 className="w-10 h-10 animate-spin text-orange-500 mx-auto" />
-                            <p className="text-slate-400 mt-4">Memuat riwayat...</p>
-                        </div>
-                    </div>
+                    <SkeletonTable rows={6} cols={4} />
                 ) : orders.length === 0 ? (
-                    <div className="text-center py-20">
-                        <div className="w-20 h-20 mx-auto mb-4 rounded-full bg-slate-100 flex items-center justify-center">
-                            <Calendar className="w-10 h-10 text-slate-300" />
-                        </div>
-                        <p className="text-slate-500 text-lg">Belum ada pesanan</p>
-                        <p className="text-slate-400 text-sm mt-1">Riwayat pesanan Anda akan muncul di sini</p>
-                    </div>
+                    <EmptyState
+                        title="Tidak ada pesanan dengan status ini"
+                        description="Coba pilih status lain atau ubah periode."
+                    />
                 ) : (
-                    <>
-                        {/* Order List */}
-                        <div className="divide-y divide-slate-100">
-                            {orders.map((order, index) => {
-                                const statusConfig = getStatusConfig(order.status);
-                                return (
-                                    <div
-                                        key={order.id}
+                    <div className="divide-y divide-[#f5f5f4]">
+                        {orders.map((order) => {
+                            const meta = getOrderDateMeta(order.orderDate);
+                            const appeal = order.messages?.[0];
+                            const canCancel = order.status === 'ORDERED' && !isCancelLocked(order);
+                            const canAppeal =
+                                order.status === 'NO_SHOW' &&
+                                !appeal &&
+                                !isAppealExpired(order.orderDate);
+
+                            return (
+                                <div
+                                    key={order.id}
+                                    className="flex flex-wrap sm:flex-nowrap items-center gap-3 sm:gap-4 px-4 sm:px-5 py-3.5 hover:bg-[#fafaf9] transition-colors"
+                                >
+                                    <button
+                                        type="button"
                                         onClick={() => setSelectedOrder(order)}
-                                        className="p-5 hover:bg-slate-50 transition-all cursor-pointer group"
-                                        style={{ animationDelay: `${index * 50}ms` }}
+                                        className="flex items-center gap-3 sm:gap-4 flex-1 min-w-0 text-left bg-transparent border-0 p-0 cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#f59e0b] rounded-[8px]"
                                     >
-                                        <div className="flex items-center justify-between">
-                                            <div className="flex items-center gap-4">
-                                                <div className={`w-12 h-12 rounded-2xl ${statusConfig.bgClass} flex items-center justify-center ${statusConfig.iconClass} group-hover:scale-110 transition-transform`}>
-                                                    {statusConfig.icon}
-                                                </div>
-                                                <div>
-                                                    <p className="font-semibold text-[#1a1f37]">
-                                                        {format(new Date(order.orderDate), 'dd MMM yyyy')}
-                                                    </p>
-                                                    <p className="text-sm text-slate-500">
-                                                        {order.shift.name} • {order.shift.startTime} - {order.shift.endTime}
-                                                        {order.canteen && (
-                                                            <span className="ml-2 inline-flex items-center gap-1 text-orange-600 bg-orange-50 px-2 py-0.5 rounded-full text-xs font-medium">
-                                                                <MapPin className="w-3 h-3" />
-                                                                {order.canteen.name}
-                                                            </span>
-                                                        )}
-                                                    </p>
-                                                    <p className="text-xs text-slate-400 mt-0.5">
-                                                        Dipesan: {formatDateTimeShortWIB(order.orderTime)}
-                                                    </p>
-                                                </div>
+                                        <div className="w-[52px] text-center flex-shrink-0">
+                                            <div className="text-[11px] font-bold text-[#78716c] uppercase">
+                                                {meta.mon}
                                             </div>
-                                            <div className="flex flex-col sm:flex-row items-end sm:items-center gap-2 sm:gap-4">
-                                                {order.messages && order.messages.length > 0 && order.status === 'NO_SHOW' && (
-                                                    <span className={`px-2.5 py-1 rounded-full text-[10px] font-bold tracking-wide uppercase ${
-                                                        order.messages[0].status === 'APPROVED' ? 'bg-emerald-100 text-emerald-700' :
-                                                        order.messages[0].status === 'REJECTED' ? 'bg-red-100 text-red-700' :
-                                                        'bg-amber-100 text-amber-700'
-                                                    }`}>
-                                                        {order.messages[0].status === 'APPROVED' ? 'Sanggah Diterima' :
-                                                         order.messages[0].status === 'REJECTED' ? 'Sanggah Ditolak' :
-                                                         'Sanggah Proses'}
-                                                    </span>
-                                                )}
-                                                <div className="flex items-center gap-2 sm:gap-4">
-                                                    <span className={`px-3 py-1.5 rounded-full text-xs font-medium ${statusConfig.class}`}>
-                                                        {statusConfig.label}
-                                                    </span>
-                                                    <ChevronRight className="w-5 h-5 text-slate-300 group-hover:text-slate-500 group-hover:translate-x-1 transition-all flex-shrink-0" />
-                                                </div>
+                                            <div className="text-[22px] font-extrabold leading-[1.1] text-[#1c1917] tabular-nums">
+                                                {meta.day}
                                             </div>
                                         </div>
-                                    </div>
-                                );
-                            })}
-                        </div>
 
-                        {/* Pagination */}
-                        {totalPages > 1 && (
-                            <div className="flex items-center justify-between px-6 py-4 border-t border-slate-100 bg-slate-50/50">
-                                <p className="text-sm text-slate-500">
-                                    Halaman {page} dari {totalPages}
-                                </p>
-                                <div className="flex items-center gap-2">
-                                    <button
-                                        onClick={() => setPage(p => Math.max(1, p - 1))}
-                                        disabled={page === 1}
-                                        className="p-2 rounded-lg hover:bg-slate-200 disabled:opacity-30 transition-colors"
-                                    >
-                                        <ChevronLeft className="w-5 h-5 text-slate-600" />
+                                        <div className="flex-1 min-w-0">
+                                            <div className="font-bold text-[14px] text-[#1c1917] truncate">
+                                                {meta.dow} · {order.shift.name}
+                                            </div>
+                                            <div className="text-[12.5px] text-[#78716c] mt-0.5 truncate">
+                                                Istirahat{' '}
+                                                {order.shift.breakStartTime && order.shift.breakEndTime
+                                                    ? `${order.shift.breakStartTime}–${order.shift.breakEndTime}`
+                                                    : `${order.shift.startTime}–${order.shift.endTime}`}
+                                                {order.canteen ? ` · Kantin ${order.canteen.name}` : ''}
+                                            </div>
+                                        </div>
                                     </button>
-                                    <button
-                                        onClick={() => setPage(p => Math.min(totalPages, p + 1))}
-                                        disabled={page === totalPages}
-                                        className="p-2 rounded-lg hover:bg-slate-200 disabled:opacity-30 transition-colors"
-                                    >
-                                        <ChevronRight className="w-5 h-5 text-slate-600" />
-                                    </button>
+
+                                    <div className="flex items-center gap-2 sm:gap-3 ml-auto">
+                                        {order.status === 'NO_SHOW' && appeal && (
+                                            <Badge
+                                                variant={
+                                                    appeal.status === 'APPROVED'
+                                                        ? 'success'
+                                                        : appeal.status === 'REJECTED'
+                                                            ? 'danger'
+                                                            : 'warning'
+                                                }
+                                            >
+                                                {appeal.status === 'APPROVED'
+                                                    ? 'Sanggah diterima'
+                                                    : appeal.status === 'REJECTED'
+                                                        ? 'Sanggah ditolak'
+                                                        : 'Sanggah diproses'}
+                                            </Badge>
+                                        )}
+                                        <OrderStatusBadge status={order.status} />
+
+                                        <div className="w-auto sm:w-[140px] text-right">
+                                            {canCancel && (
+                                                <button
+                                                    type="button"
+                                                    onClick={() => {
+                                                        setOrderToCancel(order);
+                                                        setCancelReason('');
+                                                        setShowCancelModal(true);
+                                                    }}
+                                                    className="text-[13px] font-semibold text-[#b45309] hover:text-[#92400e] bg-transparent border-0 cursor-pointer p-1"
+                                                >
+                                                    Batalkan
+                                                </button>
+                                            )}
+                                            {canAppeal && (
+                                                <button
+                                                    type="button"
+                                                    onClick={() => {
+                                                        setOrderToAppeal(order);
+                                                        setAppealContent('');
+                                                        setAppealPhoto(null);
+                                                        setShowAppealModal(true);
+                                                    }}
+                                                    className="text-[13px] font-semibold text-[#b45309] hover:text-[#92400e] bg-transparent border-0 cursor-pointer p-1"
+                                                >
+                                                    Ajukan sanggahan
+                                                </button>
+                                            )}
+                                            {order.status === 'PICKED_UP' && (
+                                                <button
+                                                    type="button"
+                                                    onClick={() => {
+                                                        setOrderToComplain(order);
+                                                        setComplaintContent('');
+                                                        setShowComplaintModal(true);
+                                                    }}
+                                                    className="text-[13px] font-semibold text-[#78716c] hover:text-[#1c1917] bg-transparent border-0 cursor-pointer p-1"
+                                                >
+                                                    Kirim komplain
+                                                </button>
+                                            )}
+                                        </div>
+                                    </div>
                                 </div>
-                            </div>
-                        )}
-                    </>
+                            );
+                        })}
+                    </div>
                 )}
-            </div>
+
+                <Pagination
+                    variant="user"
+                    page={page}
+                    limit={limit}
+                    total={total}
+                    onPageChange={(nextPage) => {
+                        setPage(nextPage);
+                        syncPaginationUrl(nextPage, limit);
+                    }}
+                    onLimitChange={(nextLimit) => {
+                        setLimit(nextLimit);
+                        setPage(1);
+                        syncPaginationUrl(1, nextLimit);
+                    }}
+                />
+            </Card>
 
             {/* Detail Modal */}
-            {selectedOrder && (
-                <div
-                    className="modal-backdrop flex items-center justify-center p-4"
-                    onClick={() => setSelectedOrder(null)}
-                >
-                    <div
-                        className="bg-white rounded-2xl w-full max-w-md shadow-2xl"
-                        onClick={e => e.stopPropagation()}
-                    >
-                        {/* Header */}
-                        <div className="flex items-center justify-between p-6 border-b border-slate-100">
-                            <div>
-                                <h3 className="text-xl font-bold text-[#1a1f37]">Detail Pesanan</h3>
-                                <p className="text-sm text-slate-500 mt-1">
-                                    {format(new Date(selectedOrder.orderDate), 'EEEE, dd MMMM yyyy')}
-                                </p>
+            <Modal
+                open={!!selectedOrder}
+                onClose={() => setSelectedOrder(null)}
+                title="Detail pesanan"
+                description={selectedOrder ? getOrderDateMeta(selectedOrder.orderDate).full : undefined}
+                size="sm"
+            >
+                {selectedOrder && (
+                    <div className="space-y-4">
+                        {selectedOrder.status === 'ORDERED' && selectedOrder.qrCode && (
+                            <div className="bg-[#fff] border border-[#e7e5e4] rounded-[12px] p-3">
+                                <OrderBarcode value={selectedOrder.qrCode} />
                             </div>
-                            <button
-                                onClick={() => setSelectedOrder(null)}
-                                className="p-2 rounded-lg hover:bg-slate-100 transition-colors"
-                            >
-                                <X className="w-5 h-5 text-slate-500" />
-                            </button>
-                        </div>
+                        )}
 
-                        {/* Body */}
-                        <div className="p-6">
-                            {/* Barcode for active orders */}
-                            {selectedOrder.status === 'ORDERED' && selectedOrder.qrCode && (
-                                <div className="bg-white rounded-xl p-3 mx-auto mb-6 shadow-sm">
-                                    <OrderBarcode value={selectedOrder.qrCode} />
+                        <dl className="m-0 divide-y divide-[#f5f5f4] text-[13.5px]">
+                            <div className="flex justify-between py-2.5">
+                                <dt className="text-[#78716c]">Shift</dt>
+                                <dd className="m-0 font-semibold text-[#1c1917]">{selectedOrder.shift.name}</dd>
+                            </div>
+                            <div className="flex justify-between py-2.5">
+                                <dt className="text-[#78716c]">Waktu shift</dt>
+                                <dd className="m-0 font-semibold text-[#1c1917] tabular-nums">
+                                    {selectedOrder.shift.startTime}–{selectedOrder.shift.endTime}
+                                </dd>
+                            </div>
+                            {selectedOrder.canteen && (
+                                <div className="flex justify-between py-2.5">
+                                    <dt className="text-[#78716c]">Kantin</dt>
+                                    <dd className="m-0 font-semibold text-[#1c1917]">{selectedOrder.canteen.name}</dd>
                                 </div>
                             )}
-
-                            {/* Status icon for past orders */}
-                            {selectedOrder.status !== 'ORDERED' && (
-                                <div className="flex justify-center mb-6">
-                                    <div className={`w-24 h-24 rounded-full flex items-center justify-center ${getStatusConfig(selectedOrder.status).bgClass}`}>
-                                        <div className={`w-12 h-12 ${getStatusConfig(selectedOrder.status).iconClass}`}>
-                                            {getStatusConfig(selectedOrder.status).icon}
-                                        </div>
-                                    </div>
+                            <div className="flex justify-between py-2.5">
+                                <dt className="text-[#78716c]">Waktu pesan</dt>
+                                <dd className="m-0 font-semibold text-[#1c1917] tabular-nums">
+                                    {formatDateTimeShortWIB(selectedOrder.orderTime)}
+                                </dd>
+                            </div>
+                            <div className="flex justify-between items-center py-2.5">
+                                <dt className="text-[#78716c]">Status</dt>
+                                <dd className="m-0">
+                                    <OrderStatusBadge status={selectedOrder.status} />
+                                </dd>
+                            </div>
+                            {selectedOrder.checkInTime && (
+                                <div className="flex justify-between py-2.5">
+                                    <dt className="text-[#78716c]">Waktu ambil</dt>
+                                    <dd className="m-0 font-semibold text-[#1c1917] tabular-nums">
+                                        {formatDateTimeShortWIB(selectedOrder.checkInTime)}
+                                    </dd>
                                 </div>
                             )}
+                        </dl>
 
-                            {/* Details */}
-                            <div className="space-y-4">
-                                <div className="flex justify-between items-center py-3 border-b border-slate-100">
-                                    <span className="text-slate-500">Shift</span>
-                                    <span className="font-medium text-[#1a1f37]">{selectedOrder.shift.name}</span>
-                                </div>
-                                <div className="flex justify-between items-center py-3 border-b border-slate-100">
-                                    <span className="text-slate-500">Waktu Shift</span>
-                                    <span className="font-medium text-[#1a1f37]">
-                                        {selectedOrder.shift.startTime} - {selectedOrder.shift.endTime}
-                                    </span>
-                                </div>
-                                <div className="flex justify-between items-center py-3 border-b border-slate-100">
-                                    <span className="text-slate-500">Waktu Pesan</span>
-                                    <span className="font-medium text-[#1a1f37]">
-                                        {formatDateTimeShortWIB(selectedOrder.orderTime)}
-                                    </span>
-                                </div>
-                                <div className="flex justify-between items-center py-3 border-b border-slate-100">
-                                    <span className="text-slate-500">Status</span>
-                                    <span className={`px-3 py-1.5 rounded-full text-xs font-medium ${getStatusConfig(selectedOrder.status).class}`}>
-                                        {getStatusConfig(selectedOrder.status).label}
-                                    </span>
-                                </div>
-                                {selectedOrder.checkInTime && (
-                                    <div className="flex justify-between items-center py-3">
-                                        <span className="text-slate-500">Waktu Ambil</span>
-                                        <span className="font-medium text-[#1a1f37]">
-                                            {formatDateTimeShortWIB(selectedOrder.checkInTime)}
-                                        </span>
-                                    </div>
-                                )}
-                            </div>
-                        </div>
-
-                        {/* Footer */}
-                        <div className="p-6 border-t border-slate-100 space-y-3">
-                            {/* Appeal Status for NO_SHOW orders */}
-                            {selectedOrder.status === 'NO_SHOW' && (() => {
-                                const appeal = selectedOrder.messages?.[0];
-                                if (appeal?.status === 'APPROVED') {
-                                    return (
-                                        <div className="flex items-center gap-3 p-3 rounded-xl bg-emerald-50 border border-emerald-200">
-                                            <ShieldCheck className="w-5 h-5 text-emerald-600 flex-shrink-0" />
-                                            <div className="text-sm">
-                                                <p className="font-semibold text-emerald-700">Sanggahan Disetujui</p>
-                                                <p className="text-emerald-600">Disetujui oleh <span className="font-medium">{appeal.resolvedBy}</span></p>
-                                            </div>
-                                        </div>
-                                    );
-                                }
-                                if (appeal?.status === 'REJECTED') {
-                                    return (
-                                        <div className="flex items-center gap-3 p-3 rounded-xl bg-red-50 border border-red-200">
-                                            <ShieldX className="w-5 h-5 text-red-600 flex-shrink-0" />
-                                            <div className="text-sm">
-                                                <p className="font-semibold text-red-700">Sanggahan Ditolak</p>
-                                                <p className="text-red-600">Ditolak oleh <span className="font-medium">{appeal.resolvedBy}</span></p>
-                                            </div>
-                                        </div>
-                                    );
-                                }
-                                if (appeal?.status === 'PENDING') {
-                                    return (
-                                        <div className="flex items-center gap-3 p-3 rounded-xl bg-amber-50 border border-amber-200">
-                                            <ShieldAlert className="w-5 h-5 text-amber-600 flex-shrink-0" />
-                                            <div className="text-sm">
-                                                <p className="font-semibold text-amber-700">Sanggahan Sedang Diproses</p>
-                                                <p className="text-amber-600">Menunggu persetujuan admin</p>
-                                            </div>
-                                        </div>
-                                    );
-                                }
-                                
-                                // Check 7 day limit
-                                const orderDateObj = new Date(selectedOrder.orderDate);
-                                const diffTime = new Date().getTime() - orderDateObj.getTime();
-                                const diffDays = diffTime / (1000 * 60 * 60 * 24);
-                                
-                                if (diffDays > 7.5) {
-                                    return (
-                                        <div className="flex items-center gap-3 p-3 rounded-xl bg-slate-100 border border-slate-200">
-                                            <Clock className="w-5 h-5 text-slate-500 flex-shrink-0" />
-                                            <div className="text-sm">
-                                                <p className="font-semibold text-slate-700">Melewati Batas Pengajuan</p>
-                                                <p className="text-slate-500">Waktu sanggah 7 hari telah habis</p>
-                                            </div>
-                                        </div>
-                                    );
-                                }
-
-                                // No appeal yet — show button
+                        {selectedOrder.status === 'NO_SHOW' && (() => {
+                            const appeal = selectedOrder.messages?.[0];
+                            if (appeal?.status === 'APPROVED') {
                                 return (
-                                    <button
-                                        onClick={() => {
-                                            setOrderToAppeal(selectedOrder);
-                                            setAppealContent('');
-                                            setAppealPhoto(null);
-                                            setShowAppealModal(true);
-                                        }}
-                                        className="w-full flex items-center justify-center gap-2 px-4 py-3 rounded-xl bg-gradient-to-r from-blue-500 to-indigo-500 text-white font-medium hover:from-blue-600 hover:to-indigo-600 transition-all shadow-lg shadow-blue-500/20"
-                                    >
-                                        <ShieldAlert className="w-4 h-4" />
-                                        Ajukan Sanggahan
-                                    </button>
+                                    <div className="flex items-center gap-2.5 p-3 rounded-[10px] bg-[#dcfce7] text-[#166534] text-[13px]">
+                                        <ShieldCheck className="w-4 h-4 flex-shrink-0" aria-hidden="true" />
+                                        <span>Sanggahan disetujui oleh <b>{appeal.resolvedBy}</b>.</span>
+                                    </div>
                                 );
-                            })()}
-
-                            {/* Complaint Button - only for PICKED_UP orders */}
-                            {selectedOrder.status === 'PICKED_UP' && (
-                                <button
+                            }
+                            if (appeal?.status === 'REJECTED') {
+                                return (
+                                    <div className="flex items-center gap-2.5 p-3 rounded-[10px] bg-[#fee2e2] text-[#991b1b] text-[13px]">
+                                        <ShieldX className="w-4 h-4 flex-shrink-0" aria-hidden="true" />
+                                        <span>Sanggahan ditolak oleh <b>{appeal.resolvedBy}</b>.</span>
+                                    </div>
+                                );
+                            }
+                            if (appeal?.status === 'PENDING') {
+                                return (
+                                    <div className="flex items-center gap-2.5 p-3 rounded-[10px] bg-[#fef3c7] text-[#92400e] text-[13px]">
+                                        <ShieldAlert className="w-4 h-4 flex-shrink-0" aria-hidden="true" />
+                                        <span>Sanggahan sedang menunggu persetujuan admin.</span>
+                                    </div>
+                                );
+                            }
+                            if (isAppealExpired(selectedOrder.orderDate)) {
+                                return (
+                                    <div className="flex items-center gap-2.5 p-3 rounded-[10px] bg-[#f5f5f4] text-[#57534e] text-[13px]">
+                                        <Clock className="w-4 h-4 flex-shrink-0" aria-hidden="true" />
+                                        <span>Waktu pengajuan sanggahan (7 hari) telah habis.</span>
+                                    </div>
+                                );
+                            }
+                            return (
+                                <Button
+                                    variant="primary"
+                                    className="w-full"
                                     onClick={() => {
-                                        setOrderToComplain(selectedOrder);
-                                        setComplaintContent('');
-                                        setShowComplaintModal(true);
-                                    }}
-                                    className="btn-secondary w-full flex items-center justify-center gap-2"
-                                >
-                                    <MessageSquare className="w-4 h-4" />
-                                    Kirim Komplain
-                                </button>
-                            )}
-
-                            {/* Cancel Button - only for ORDERED status */}
-                            {selectedOrder.status === 'ORDERED' && (() => {
-                                const orderDateObj = new Date(selectedOrder.orderDate);
-                                orderDateObj.setHours(0, 0, 0, 0);
-                                const now = new Date();
-                                const todayNormalized = new Date(now);
-                                todayNormalized.setHours(0, 0, 0, 0);
-
-                                let isLocked = false;
-                                if (orderDateObj.getTime() === todayNormalized.getTime()) {
-                                    const [startHour, startMin] = selectedOrder.shift.startTime.split(':').map(Number);
-                                    const shiftStartObj = new Date(now);
-                                    shiftStartObj.setHours(startHour, startMin, 0, 0);
-                                    isLocked = now.getTime() >= shiftStartObj.getTime();
-                                }
-
-                                if (isLocked) {
-                                    return (
-                                        <div className="flex items-center justify-center gap-2 px-4 py-3 rounded-xl bg-slate-100 border border-slate-200 text-slate-500 font-medium text-sm w-full">
-                                            <Clock className="w-4 h-4" />
-                                            Tidak bisa dibatalkan (Shift berjalan)
-                                        </div>
-                                    );
-                                }
-
-                                return (
-                                    <button
-                                        onClick={() => {
-                                            setOrderToCancel(selectedOrder);
-                                            setCancelReason('');
-                                            setShowCancelModal(true);
-                                        }}
-                                        className="btn-danger w-full"
-                                    >
-                                        Batalkan Pesanan
-                                    </button>
-                                );
-                            })()}
-                        </div>
-                    </div>
-                </div>
-            )}
-
-            {/* Cancel Modal */}
-            {showCancelModal && orderToCancel && (
-                <div className="fixed inset-0 z-[60] flex items-center justify-center p-4">
-                    <div
-                        className="absolute inset-0 bg-black/40 backdrop-blur-sm"
-                        onClick={() => setShowCancelModal(false)}
-                    />
-                    <div className="relative bg-white rounded-2xl p-6 w-full max-w-md shadow-2xl animate-fade-in">
-                        <div className="flex items-center gap-3 mb-6">
-                            <div className="w-12 h-12 rounded-xl bg-red-50 flex items-center justify-center">
-                                <XCircle className="w-6 h-6 text-red-600" />
-                            </div>
-                            <div>
-                                <h3 className="text-xl font-bold text-[#1a1f37]">Batalkan Pesanan</h3>
-                                <p className="text-sm text-slate-500">Masukkan alasan pembatalan</p>
-                            </div>
-                        </div>
-
-                        <div className="mb-6">
-                            <label className="block text-sm font-medium text-slate-600 mb-2">
-                                Alasan Pembatalan <span className="text-red-600">*</span>
-                            </label>
-                            <textarea
-                                value={cancelReason}
-                                onChange={(e) => setCancelReason(e.target.value)}
-                                placeholder="Contoh: Ada rapat mendadak di luar kantor"
-                                className="input-field w-full min-h-[100px] resize-none"
-                                autoFocus
-                            />
-                            <p className="text-xs text-slate-400 mt-2">
-                                Alasan ini akan dicatat dan dapat dilihat oleh admin
-                            </p>
-                        </div>
-
-                        <div className="flex gap-3">
-                            <button
-                                onClick={() => setShowCancelModal(false)}
-                                className="btn-secondary flex-1"
-                                disabled={isCancelling}
-                            >
-                                Batal
-                            </button>
-                            <button
-                                onClick={async () => {
-                                    if (!cancelReason.trim()) {
-                                        toast.error('Alasan pembatalan harus diisi');
-                                        return;
-                                    }
-                                    setIsCancelling(true);
-                                    try {
-                                        await api.post(`/api/orders/${orderToCancel.id}/cancel`, { reason: cancelReason.trim() });
-                                        toast.success('Pesanan dibatalkan');
-                                        setShowCancelModal(false);
-                                        setSelectedOrder(null);
-                                        setOrderToCancel(null);
-                                        setCancelReason('');
-                                        loadOrders();
-                                    } catch (error: any) {
-                                        toast.error(error.response?.data?.error || 'Gagal membatalkan');
-                                    } finally {
-                                        setIsCancelling(false);
-                                    }
-                                }}
-                                disabled={!cancelReason.trim() || isCancelling}
-                                className="btn-danger flex-1 flex items-center justify-center gap-2"
-                            >
-                                {isCancelling ? (
-                                    <>
-                                        <Loader2 className="w-4 h-4 animate-spin" />
-                                        Membatalkan...
-                                    </>
-                                ) : (
-                                    <>
-                                        <XCircle className="w-4 h-4" />
-                                        Batalkan Pesanan
-                                    </>
-                                )}
-                            </button>
-                        </div>
-                    </div>
-                </div>
-            )}
-
-            {/* Complaint Modal */}
-            {showComplaintModal && orderToComplain && (
-                <div className="fixed inset-0 z-[60] flex items-center justify-center p-4">
-                    <div
-                        className="absolute inset-0 bg-black/40 backdrop-blur-sm"
-                        onClick={() => setShowComplaintModal(false)}
-                    />
-                    <div className="relative bg-white rounded-2xl p-6 w-full max-w-md shadow-2xl animate-fade-in">
-                        <div className="flex items-center gap-3 mb-6">
-                            <div className="w-12 h-12 rounded-xl bg-amber-50 flex items-center justify-center">
-                                <MessageSquare className="w-6 h-6 text-amber-600" />
-                            </div>
-                            <div>
-                                <h3 className="text-xl font-bold text-[#1a1f37]">Kirim Komplain</h3>
-                                <p className="text-sm text-slate-500">
-                                    {format(new Date(orderToComplain.orderDate), 'dd MMM yyyy')} • {orderToComplain.shift.name}
-                                </p>
-                            </div>
-                        </div>
-
-                        <div className="mb-6">
-                            <label className="block text-sm font-medium text-slate-600 mb-2">
-                                Isi Komplain <span className="text-red-600">*</span>
-                            </label>
-                            <textarea
-                                value={complaintContent}
-                                onChange={(e) => setComplaintContent(e.target.value)}
-                                placeholder="Tuliskan komplain Anda tentang makanan, pelayanan, dll..."
-                                className="input-field h-32 resize-none"
-                                rows={4}
-                            />
-                            <p className="text-xs text-slate-400 mt-2">
-                                Komplain akan diterima oleh admin dan diproses secepatnya.
-                            </p>
-                        </div>
-
-                        <div className="flex gap-3">
-                            <button
-                                onClick={() => setShowComplaintModal(false)}
-                                className="btn-secondary flex-1"
-                                disabled={isSubmittingComplaint}
-                            >
-                                Batal
-                            </button>
-                            <button
-                                onClick={async () => {
-                                    if (!complaintContent.trim()) {
-                                        toast.error('Isi komplain harus diisi');
-                                        return;
-                                    }
-                                    setIsSubmittingComplaint(true);
-                                    try {
-                                        // Need to get shiftId from order - use API that accepts orderId
-                                        await api.post('/api/messages', {
-                                            orderId: orderToComplain.id,
-                                            shiftId: orderToComplain.shift.id,
-                                            content: complaintContent.trim(),
-                                            orderDate: orderToComplain.orderDate,
-                                        });
-                                        toast.success('Komplain berhasil dikirim');
-                                        setShowComplaintModal(false);
-                                        setSelectedOrder(null);
-                                        setOrderToComplain(null);
-                                        setComplaintContent('');
-                                    } catch (error: any) {
-                                        toast.error(error.response?.data?.error || 'Gagal mengirim komplain');
-                                    } finally {
-                                        setIsSubmittingComplaint(false);
-                                    }
-                                }}
-                                disabled={!complaintContent.trim() || isSubmittingComplaint}
-                                className="btn-primary flex-1 flex items-center justify-center gap-2"
-                            >
-                                {isSubmittingComplaint ? (
-                                    <>
-                                        <Loader2 className="w-4 h-4 animate-spin" />
-                                        Mengirim...
-                                    </>
-                                ) : (
-                                    <>
-                                        <Send className="w-4 h-4" />
-                                        Kirim Komplain
-                                    </>
-                                )}
-                            </button>
-                        </div>
-                    </div>
-                </div>
-            )}
-
-            {/* Appeal Modal */}
-            {showAppealModal && orderToAppeal && (
-                <div className="fixed inset-0 z-[60] flex items-center justify-center p-4">
-                    <div
-                        className="absolute inset-0 bg-black/40 backdrop-blur-sm"
-                        onClick={() => setShowAppealModal(false)}
-                    />
-                    <div className="relative bg-white rounded-2xl p-6 w-full max-w-md shadow-2xl animate-fade-in">
-                        <div className="flex items-center gap-3 mb-6">
-                            <div className="w-12 h-12 rounded-xl bg-gradient-to-br from-blue-500 to-indigo-500 flex items-center justify-center">
-                                <ShieldAlert className="w-6 h-6 text-white" />
-                            </div>
-                            <div>
-                                <h3 className="text-xl font-bold text-[#1a1f37]">Ajukan Sanggahan</h3>
-                                <p className="text-sm text-slate-500">
-                                    {format(new Date(orderToAppeal.orderDate), 'dd MMM yyyy')} • {orderToAppeal.shift.name}
-                                </p>
-                            </div>
-                        </div>
-
-                        <div className="space-y-4 mb-6">
-                            <div>
-                                <label className="block text-sm font-medium text-slate-600 mb-2">
-                                    Alasan Sanggahan <span className="text-red-600">*</span>
-                                </label>
-                                <textarea
-                                    value={appealContent}
-                                    onChange={(e) => setAppealContent(e.target.value)}
-                                    placeholder="Jelaskan alasan Anda tidak dapat mengambil pesanan (contoh: keperluan darurat, dinas luar kota, sakit mendadak, dll)..."
-                                    className="input-field h-32 resize-none"
-                                    rows={4}
-                                />
-                            </div>
-
-                            <div>
-                                <label className="block text-sm font-medium text-slate-600 mb-2">
-                                    Bukti Foto (opsional)
-                                </label>
-                                <div className="relative">
-                                    <input
-                                        type="file"
-                                        accept="image/*"
-                                        onChange={(e) => setAppealPhoto(e.target.files?.[0] || null)}
-                                        className="hidden"
-                                        id="appeal-photo-input"
-                                    />
-                                    <label
-                                        htmlFor="appeal-photo-input"
-                                        className="flex items-center gap-3 p-4 border-2 border-dashed border-slate-200 rounded-xl cursor-pointer hover:border-blue-400 hover:bg-blue-50/50 transition-all"
-                                    >
-                                        <Upload className="w-5 h-5 text-slate-400" />
-                                        <span className="text-sm text-slate-500">
-                                            {appealPhoto ? appealPhoto.name : 'Pilih foto bukti...'}
-                                        </span>
-                                    </label>
-                                    {appealPhoto && (
-                                        <div className="mt-2 relative inline-block">
-                                            <img
-                                                src={URL.createObjectURL(appealPhoto)}
-                                                alt="Preview"
-                                                className="w-24 h-24 object-cover rounded-lg border border-slate-200"
-                                            />
-                                            <button
-                                                onClick={() => setAppealPhoto(null)}
-                                                className="absolute -top-2 -right-2 w-5 h-5 bg-red-500 text-white rounded-full flex items-center justify-center text-xs hover:bg-red-600"
-                                            >
-                                                <X className="w-3 h-3" />
-                                            </button>
-                                        </div>
-                                    )}
-                                </div>
-                                <p className="text-xs text-slate-400 mt-2">
-                                    Upload foto bukti pendukung (surat keterangan, tiket, dll) untuk memperkuat sanggahan Anda.
-                                </p>
-                            </div>
-                        </div>
-
-                        <div className="flex gap-3">
-                            <button
-                                onClick={() => setShowAppealModal(false)}
-                                className="btn-secondary flex-1"
-                                disabled={isSubmittingAppeal}
-                            >
-                                Batal
-                            </button>
-                            <button
-                                onClick={async () => {
-                                    if (!appealContent.trim()) {
-                                        toast.error('Alasan sanggahan harus diisi');
-                                        return;
-                                    }
-                                    setIsSubmittingAppeal(true);
-                                    try {
-                                        const formData = new FormData();
-                                        formData.append('orderId', orderToAppeal.id);
-                                        formData.append('shiftId', orderToAppeal.shift.id);
-                                        formData.append('content', appealContent.trim());
-                                        formData.append('orderDate', orderToAppeal.orderDate);
-                                        if (appealPhoto) {
-                                            formData.append('photo', appealPhoto);
-                                        }
-                                        await api.post('/api/messages/appeal', formData, {
-                                            headers: { 'Content-Type': 'multipart/form-data' },
-                                        });
-                                        toast.success('Sanggahan berhasil diajukan');
-                                        setShowAppealModal(false);
-                                        setSelectedOrder(null);
-                                        setOrderToAppeal(null);
+                                        setOrderToAppeal(selectedOrder);
                                         setAppealContent('');
                                         setAppealPhoto(null);
-                                        loadOrders();
-                                    } catch (error: any) {
-                                        toast.error(error.response?.data?.error || 'Gagal mengajukan sanggahan');
-                                    } finally {
-                                        setIsSubmittingAppeal(false);
-                                    }
+                                        setShowAppealModal(true);
+                                    }}
+                                >
+                                    Ajukan sanggahan
+                                </Button>
+                            );
+                        })()}
+
+                        {selectedOrder.status === 'PICKED_UP' && (
+                            <Button
+                                variant="secondary"
+                                className="w-full"
+                                onClick={() => {
+                                    setOrderToComplain(selectedOrder);
+                                    setComplaintContent('');
+                                    setShowComplaintModal(true);
                                 }}
-                                disabled={!appealContent.trim() || isSubmittingAppeal}
-                                className="flex-1 flex items-center justify-center gap-2 px-4 py-2.5 rounded-xl bg-gradient-to-r from-blue-500 to-indigo-500 text-white font-medium hover:from-blue-600 hover:to-indigo-600 transition-all disabled:opacity-50 disabled:cursor-not-allowed"
                             >
-                                {isSubmittingAppeal ? (
-                                    <>
-                                        <Loader2 className="w-4 h-4 animate-spin" />
-                                        Mengirim...
-                                    </>
-                                ) : (
-                                    <>
-                                        <Send className="w-4 h-4" />
-                                        Kirim Sanggahan
-                                    </>
-                                )}
-                            </button>
-                        </div>
+                                Kirim komplain
+                            </Button>
+                        )}
+
+                        {selectedOrder.status === 'ORDERED' && (
+                            isCancelLocked(selectedOrder) ? (
+                                <div className="flex items-center justify-center gap-2 p-3 rounded-[10px] bg-[#f5f5f4] text-[#57534e] text-[13px]">
+                                    <Clock className="w-4 h-4" aria-hidden="true" />
+                                    <span>Tidak bisa dibatalkan (shift berjalan)</span>
+                                </div>
+                            ) : (
+                                <Button
+                                    variant="danger"
+                                    className="w-full"
+                                    onClick={() => {
+                                        setOrderToCancel(selectedOrder);
+                                        setCancelReason('');
+                                        setShowCancelModal(true);
+                                    }}
+                                >
+                                    Batalkan pesanan
+                                </Button>
+                            )
+                        )}
+                    </div>
+                )}
+            </Modal>
+
+            {/* Cancel Modal */}
+            <Modal
+                open={showCancelModal && !!orderToCancel}
+                onClose={() => setShowCancelModal(false)}
+                title="Batalkan pesanan"
+                description="Masukkan alasan pembatalan"
+                size="sm"
+                footer={
+                    <>
+                        <Button variant="secondary" onClick={() => setShowCancelModal(false)} disabled={isCancelling}>
+                            Tutup
+                        </Button>
+                        <Button
+                            variant="danger"
+                            loading={isCancelling}
+                            loadingText="Membatalkan…"
+                            disabled={!cancelReason.trim()}
+                            onClick={async () => {
+                                if (!orderToCancel || !cancelReason.trim()) return;
+                                setIsCancelling(true);
+                                try {
+                                    await api.post(`/api/orders/${orderToCancel.id}/cancel`, {
+                                        reason: cancelReason.trim(),
+                                    });
+                                    toast.success('Pesanan dibatalkan');
+                                    setShowCancelModal(false);
+                                    setSelectedOrder(null);
+                                    setOrderToCancel(null);
+                                    setCancelReason('');
+                                    loadOrders();
+                                    loadCounts();
+                                } catch (error: unknown) {
+                                    const err = error as { response?: { data?: { error?: string } } };
+                                    toast.error(err.response?.data?.error || 'Gagal membatalkan');
+                                } finally {
+                                    setIsCancelling(false);
+                                }
+                            }}
+                        >
+                            Batalkan pesanan
+                        </Button>
+                    </>
+                }
+            >
+                <Textarea
+                    label="Alasan pembatalan"
+                    required
+                    value={cancelReason}
+                    onChange={(e) => setCancelReason(e.target.value)}
+                    placeholder="Contoh: Ada rapat mendadak di luar kantor"
+                    hint="Alasan ini akan dicatat dan dapat dilihat oleh admin."
+                />
+            </Modal>
+
+            {/* Complaint Modal */}
+            <Modal
+                open={showComplaintModal && !!orderToComplain}
+                onClose={() => setShowComplaintModal(false)}
+                title="Kirim komplain"
+                description={
+                    orderToComplain
+                        ? `${formatOrderDate(orderToComplain.orderDate)} · ${orderToComplain.shift.name}`
+                        : undefined
+                }
+                size="sm"
+                footer={
+                    <>
+                        <Button
+                            variant="secondary"
+                            onClick={() => setShowComplaintModal(false)}
+                            disabled={isSubmittingComplaint}
+                        >
+                            Batal
+                        </Button>
+                        <Button
+                            variant="primary"
+                            loading={isSubmittingComplaint}
+                            loadingText="Mengirim…"
+                            disabled={!complaintContent.trim()}
+                            onClick={async () => {
+                                if (!orderToComplain || !complaintContent.trim()) return;
+                                setIsSubmittingComplaint(true);
+                                try {
+                                    await api.post('/api/messages', {
+                                        orderId: orderToComplain.id,
+                                        shiftId: orderToComplain.shift.id,
+                                        content: complaintContent.trim(),
+                                        orderDate: orderToComplain.orderDate,
+                                    });
+                                    toast.success('Komplain berhasil dikirim');
+                                    setShowComplaintModal(false);
+                                    setSelectedOrder(null);
+                                    setOrderToComplain(null);
+                                    setComplaintContent('');
+                                } catch (error: unknown) {
+                                    const err = error as { response?: { data?: { error?: string } } };
+                                    toast.error(err.response?.data?.error || 'Gagal mengirim komplain');
+                                } finally {
+                                    setIsSubmittingComplaint(false);
+                                }
+                            }}
+                        >
+                            Kirim komplain
+                        </Button>
+                    </>
+                }
+            >
+                <Textarea
+                    label="Isi komplain"
+                    required
+                    value={complaintContent}
+                    onChange={(e) => setComplaintContent(e.target.value)}
+                    placeholder="Tuliskan keluhan Anda tentang makanan, pelayanan, atau lainnya…"
+                    hint="Komplain akan diterima oleh admin."
+                />
+            </Modal>
+
+            {/* Appeal Modal */}
+            <Modal
+                open={showAppealModal && !!orderToAppeal}
+                onClose={() => setShowAppealModal(false)}
+                title="Ajukan sanggahan"
+                description={
+                    orderToAppeal
+                        ? `${formatOrderDate(orderToAppeal.orderDate)} · ${orderToAppeal.shift.name}`
+                        : undefined
+                }
+                size="sm"
+                footer={
+                    <>
+                        <Button
+                            variant="secondary"
+                            onClick={() => setShowAppealModal(false)}
+                            disabled={isSubmittingAppeal}
+                        >
+                            Batal
+                        </Button>
+                        <Button
+                            variant="primary"
+                            loading={isSubmittingAppeal}
+                            loadingText="Mengirim…"
+                            disabled={!appealContent.trim()}
+                            onClick={async () => {
+                                if (!orderToAppeal || !appealContent.trim()) return;
+                                setIsSubmittingAppeal(true);
+                                try {
+                                    const formData = new FormData();
+                                    formData.append('orderId', orderToAppeal.id);
+                                    formData.append('shiftId', orderToAppeal.shift.id);
+                                    formData.append('content', appealContent.trim());
+                                    formData.append('orderDate', orderToAppeal.orderDate);
+                                    if (appealPhoto) formData.append('photo', appealPhoto);
+                                    await api.post('/api/messages/appeal', formData, {
+                                        headers: { 'Content-Type': 'multipart/form-data' },
+                                    });
+                                    toast.success('Sanggahan berhasil diajukan');
+                                    setShowAppealModal(false);
+                                    setSelectedOrder(null);
+                                    setOrderToAppeal(null);
+                                    setAppealContent('');
+                                    setAppealPhoto(null);
+                                    loadOrders();
+                                    loadCounts();
+                                } catch (error: unknown) {
+                                    const err = error as { response?: { data?: { error?: string } } };
+                                    toast.error(err.response?.data?.error || 'Gagal mengajukan sanggahan');
+                                } finally {
+                                    setIsSubmittingAppeal(false);
+                                }
+                            }}
+                        >
+                            Kirim sanggahan
+                        </Button>
+                    </>
+                }
+            >
+                <div className="space-y-4">
+                    <Textarea
+                        label="Alasan sanggahan"
+                        required
+                        value={appealContent}
+                        onChange={(e) => setAppealContent(e.target.value)}
+                        placeholder="Jelaskan alasan Anda tidak dapat mengambil pesanan…"
+                    />
+                    <div>
+                        <label
+                            htmlFor="appeal-photo-input"
+                            className="block text-[12px] font-semibold text-[#44403c] mb-1.5"
+                        >
+                            Bukti foto (opsional)
+                        </label>
+                        <input
+                            type="file"
+                            accept="image/*"
+                            onChange={(e) => setAppealPhoto(e.target.files?.[0] || null)}
+                            className="hidden"
+                            id="appeal-photo-input"
+                        />
+                        <label
+                            htmlFor="appeal-photo-input"
+                            className="flex items-center gap-3 p-3.5 border border-dashed border-[#d6d3d1] rounded-[10px] cursor-pointer hover:border-[#f59e0b] hover:bg-[#fffbeb] transition-colors text-[13px] text-[#57534e]"
+                        >
+                            <Upload className="w-4 h-4 text-[#78716c]" aria-hidden="true" />
+                            <span className="truncate">
+                                {appealPhoto ? appealPhoto.name : 'Pilih foto bukti…'}
+                            </span>
+                        </label>
+                        {appealPhoto && (
+                            <div className="mt-2 relative inline-block">
+                                <img
+                                    src={URL.createObjectURL(appealPhoto)}
+                                    alt="Preview bukti"
+                                    className="w-20 h-20 object-cover rounded-[8px] border border-[#e7e5e4]"
+                                />
+                                <button
+                                    type="button"
+                                    aria-label="Hapus foto bukti"
+                                    onClick={() => setAppealPhoto(null)}
+                                    className="absolute -top-2 -right-2 w-5 h-5 bg-[#b91c1c] text-[#fff] rounded-full flex items-center justify-center border-0 cursor-pointer"
+                                >
+                                    <X className="w-3 h-3" aria-hidden="true" />
+                                </button>
+                            </div>
+                        )}
                     </div>
                 </div>
-            )}
+            </Modal>
         </div>
     );
 }

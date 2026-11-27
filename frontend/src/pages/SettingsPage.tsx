@@ -1,11 +1,22 @@
 import { useState, useEffect, useCallback } from 'react';
 import { useSearchParams } from 'react-router-dom';
-import { Settings, Lock, Eye, EyeOff, Check, AlertCircle, Clock, Shield, Server, RefreshCw, User, CalendarDays, Ban, AlertOctagon, AlertTriangle } from 'lucide-react';
+import { Eye, EyeOff, Check, AlertCircle, Ban, AlertTriangle, RefreshCw } from 'lucide-react';
 import { format } from 'date-fns';
 import { formatDateTimeShortWIB } from '../utils/timezone';
 import toast from 'react-hot-toast';
 import { useAuth, api } from '../contexts/AuthContext';
 import { useSSERefresh, SETTINGS_EVENTS, USER_EVENTS } from '../contexts/SSEContext';
+import {
+    Button,
+    Card,
+    PageHeader,
+    Input,
+    Select,
+    Badge,
+    RoleBadge,
+    Modal,
+    SkeletonCard,
+} from '../components/ui';
 
 interface SystemSettings {
     id: string;
@@ -68,7 +79,6 @@ export default function SettingsPage() {
     const [cutoffHours, setCutoffHours] = useState(6);
     const [maxOrderDaysAhead, setMaxOrderDaysAhead] = useState(7);
 
-    // Weekly cutoff mode
     const [weeklyCutoffDay, setWeeklyCutoffDay] = useState(5);
     const [weeklyCutoffHour, setWeeklyCutoffHour] = useState(17);
     const [weeklyCutoffMinute, setWeeklyCutoffMinute] = useState(0);
@@ -83,11 +93,6 @@ export default function SettingsPage() {
     const [showPasswordModal, setShowPasswordModal] = useState(false);
     const [adminPasswordInput, setAdminPasswordInput] = useState('');
 
-    // FE-NOTIF-NAV: blacklist banner. Shown to the user when the
-    // `/api/auth/me` payload flags `isBlacklisted`. Also handles the
-    // `?id=<blacklistId>` deep-link from a blacklist notification — the
-    // user-facing destination is always /settings, and the banner
-    // explains why.
     const [searchParams, setSearchParams] = useSearchParams();
     const deepLinkId = searchParams.get('id');
     const isBlacklisted = user?.isBlacklisted === true;
@@ -99,6 +104,9 @@ export default function SettingsPage() {
         endDate: string | null;
     } | null>(null);
 
+    const [canteens, setCanteens] = useState<Array<{ id: string; name: string }>>([]);
+    const [preferredCanteenId, setPreferredCanteenId] = useState<string>('');
+
     const fetchActiveBlacklist = useCallback(async () => {
         if (!isBlacklisted) {
             setActiveBlacklist(null);
@@ -106,7 +114,9 @@ export default function SettingsPage() {
         }
         try {
             const res = await api.get('/api/blacklist?active=true&limit=1');
-            const me = res.data?.blacklists?.find((b: any) => b.user?.id === user?.id) ?? res.data?.blacklists?.[0];
+            const me =
+                res.data?.blacklists?.find((b: { user?: { id?: string } }) => b.user?.id === user?.id) ??
+                res.data?.blacklists?.[0];
             if (me) {
                 setActiveBlacklist({
                     id: me.id,
@@ -124,51 +134,31 @@ export default function SettingsPage() {
         fetchActiveBlacklist();
     }, [fetchActiveBlacklist]);
 
-    // FE-NOTIF-NAV: scroll to the banner + clear the query once consumed.
     useEffect(() => {
-        if (!deepLinkId) return;
-        if (!isBlacklisted) return;
+        if (!deepLinkId || !isBlacklisted) return;
         const el = document.getElementById('blacklist-banner');
-        if (el) {
-            el.scrollIntoView({ behavior: 'smooth', block: 'center' });
-        }
+        if (el) el.scrollIntoView({ behavior: 'smooth', block: 'center' });
         const next = new URLSearchParams(searchParams);
         next.delete('id');
         setSearchParams(next, { replace: true });
     }, [deepLinkId, isBlacklisted, searchParams, setSearchParams]);
 
-    // Auto-refresh on blacklist events so the banner disappears
-    // immediately after an admin unblocks the user.
     useSSERefresh(USER_EVENTS, fetchActiveBlacklist);
 
-    const getToken = () => localStorage.getItem('token');
-
-    const validatePassword = (password: string) => {
-        const checks = {
-            length: password.length >= 6,
-            hasNumber: /\d/.test(password),
-        };
-        return checks;
+    const passwordChecks = {
+        length: newPassword.length >= 6,
+        hasNumber: /\d/.test(newPassword),
     };
-
-    const passwordChecks = validatePassword(newPassword);
     const isPasswordValid = passwordChecks.length && passwordChecks.hasNumber;
     const passwordsMatch = newPassword === confirmPassword && confirmPassword.length > 0;
 
-    // Preferred Canteen
-    const [canteens, setCanteens] = useState<Array<{ id: string; name: string }>>([]);
-    const [preferredCanteenId, setPreferredCanteenId] = useState<string>('');
-    const [savingProfile, setSavingProfile] = useState(false);
-
     const fetchAdminData = useCallback(async () => {
-        // Fetch user preferences (for everyone)
         try {
-            // Fetch active canteens
-            const canteensRes = await api.get('/api/canteens?active=true');
+            const [canteensRes, meRes] = await Promise.all([
+                api.get('/api/canteens?active=true'),
+                api.get('/api/auth/me'),
+            ]);
             setCanteens(canteensRes.data.canteens || []);
-
-            // Fetch current user profile to get preference
-            const meRes = await api.get('/api/auth/me');
             setPreferredCanteenId(meRes.data.preferredCanteenId || '');
         } catch (error) {
             console.error('Error fetching preferences:', error);
@@ -189,7 +179,6 @@ export default function SettingsPage() {
             ]);
 
             let combinedSettings: SystemSettings | null = null;
-
             if (settingsRes.data) {
                 const data = settingsRes.data;
                 combinedSettings = data;
@@ -200,7 +189,11 @@ export default function SettingsPage() {
                 setWeeklyCutoffDay(data.weeklyCutoffDay ?? 5);
                 setWeeklyCutoffHour(data.weeklyCutoffHour ?? 17);
                 setWeeklyCutoffMinute(data.weeklyCutoffMinute ?? 0);
-                setOrderableDays(data.orderableDays ? data.orderableDays.split(',').map((d: string) => parseInt(d)) : [1, 2, 3, 4, 5, 6]);
+                setOrderableDays(
+                    data.orderableDays
+                        ? data.orderableDays.split(',').map((d: string) => parseInt(d, 10))
+                        : [1, 2, 3, 4, 5, 6]
+                );
                 setMaxWeeksAhead(data.maxWeeksAhead || 1);
                 setBlacklistStrikes(data.blacklistStrikes || 3);
                 setBlacklistDuration(data.blacklistDuration || 7);
@@ -209,34 +202,25 @@ export default function SettingsPage() {
                 setInitialAutoBlacklistEnabled(data.autoBlacklistEnabled ?? true);
             }
 
-            if (ntpRes.data) {
-                const ntpData = ntpRes.data;
-                if (combinedSettings) {
-                    combinedSettings = {
-                        ...combinedSettings,
-                        ntpEnabled: ntpData.ntpEnabled,
-                        ntpServer: ntpData.ntpServer,
-                        ntpTimezone: ntpData.ntpTimezone,
-                        ntpSyncInterval: ntpData.ntpSyncInterval,
-                        ntpLastSync: ntpData.ntpLastSync,
-                        ntpOffset: ntpData.ntpOffset,
-                    };
-                }
+            if (ntpRes.data && combinedSettings) {
+                combinedSettings = {
+                    ...combinedSettings,
+                    ntpEnabled: ntpRes.data.ntpEnabled,
+                    ntpServer: ntpRes.data.ntpServer,
+                    ntpTimezone: ntpRes.data.ntpTimezone,
+                    ntpSyncInterval: ntpRes.data.ntpSyncInterval,
+                    ntpLastSync: ntpRes.data.ntpLastSync,
+                    ntpOffset: ntpRes.data.ntpOffset,
+                };
             }
 
             setSettings(combinedSettings);
-
             if (timeRes.data) {
-                const info = timeRes.data;
-                setTimeInfo(info);
-                setCurrentTime(new Date(info.serverTime));
+                setTimeInfo(timeRes.data);
+                setCurrentTime(new Date(timeRes.data.serverTime));
             }
-            if (tzRes.data) {
-                setTimezones(tzRes.data);
-            }
-            if (serversRes.data) {
-                setNtpServers(serversRes.data);
-            }
+            if (tzRes.data) setTimezones(tzRes.data);
+            if (serversRes.data) setNtpServers(serversRes.data);
         } catch (error) {
             console.error('Error fetching admin data:', error);
             toast.error('Gagal memuat pengaturan');
@@ -259,38 +243,20 @@ export default function SettingsPage() {
         return () => clearInterval(interval);
     }, [isAdmin]);
 
-    const handleSaveProfile = async () => {
-        setSavingProfile(true);
-        try {
-            await api.put('/api/auth/me', {
-                preferredCanteenId: preferredCanteenId || null
-            });
-            toast.success('Preferensi berhasil disimpan');
-        } catch (error) {
-            toast.error('Gagal menyimpan preferensi');
-        } finally {
-            setSavingProfile(false);
-        }
-    };
-
     const handleChangePassword = async (e: React.FormEvent) => {
         e.preventDefault();
-
         if (!currentPassword || !newPassword || !confirmPassword) {
             toast.error('Semua field harus diisi');
             return;
         }
-
         if (!isPasswordValid) {
             toast.error('Password baru tidak memenuhi kriteria');
             return;
         }
-
         if (!passwordsMatch) {
             toast.error('Password baru tidak cocok');
             return;
         }
-
         setIsLoading(true);
         try {
             await api.post('/api/auth/change-password', { currentPassword, newPassword });
@@ -298,26 +264,18 @@ export default function SettingsPage() {
             setCurrentPassword('');
             setNewPassword('');
             setConfirmPassword('');
-        } catch (error: any) {
-            toast.error(error.response?.data?.error || 'Gagal mengubah password');
+        } catch (error: unknown) {
+            const err = error as { response?: { data?: { error?: string } } };
+            toast.error(err.response?.data?.error || 'Gagal mengubah password');
         } finally {
             setIsLoading(false);
         }
     };
 
-    const handleSaveSystemSettings = async () => {
-        if (autoBlacklistEnabled && !initialAutoBlacklistEnabled) {
-            setShowPasswordModal(true);
-            return;
-        }
-
-        await saveSystemSettings(false);
-    };
-
     const saveSystemSettings = async (withAdminPassword = false) => {
         setSavingSystem(true);
         try {
-            const payload: any = {
+            const payload: Record<string, unknown> = {
                 cutoffMode,
                 cutoffDays,
                 cutoffHours,
@@ -332,13 +290,9 @@ export default function SettingsPage() {
                 autoBlacklistEnabled,
                 checkinPhotoEnabled,
             };
-
-            if (withAdminPassword) {
-                payload.adminPassword = adminPasswordInput;
-            }
+            if (withAdminPassword) payload.adminPassword = adminPasswordInput;
 
             const response = await api.put('/api/settings', payload);
-
             setSettings(response.data);
             setCheckinPhotoEnabled(response.data.checkinPhotoEnabled === true);
             setAutoBlacklistEnabled(response.data.autoBlacklistEnabled ?? true);
@@ -350,11 +304,20 @@ export default function SettingsPage() {
                     ? 'Auto-Blacklist diaktifkan & strike seluruh user di-reset ke 0'
                     : 'Pengaturan sistem berhasil disimpan'
             );
-        } catch (error: any) {
-            toast.error(error.response?.data?.error || 'Gagal menyimpan pengaturan sistem');
+        } catch (error: unknown) {
+            const err = error as { response?: { data?: { error?: string } } };
+            toast.error(err.response?.data?.error || 'Gagal menyimpan pengaturan sistem');
         } finally {
             setSavingSystem(false);
         }
+    };
+
+    const handleSaveSystemSettings = async () => {
+        if (autoBlacklistEnabled && !initialAutoBlacklistEnabled) {
+            setShowPasswordModal(true);
+            return;
+        }
+        await saveSystemSettings(false);
     };
 
     const updateNTPSettings = async (updates: Partial<SystemSettings>) => {
@@ -363,8 +326,9 @@ export default function SettingsPage() {
             await api.put('/api/time/ntp', updates);
             toast.success('Pengaturan NTP berhasil disimpan');
             fetchAdminData();
-        } catch (error: any) {
-            toast.error(error.response?.data?.error || 'Gagal menyimpan pengaturan NTP');
+        } catch (error: unknown) {
+            const err = error as { response?: { data?: { error?: string } } };
+            toast.error(err.response?.data?.error || 'Gagal menyimpan pengaturan NTP');
         } finally {
             setSavingNTP(false);
         }
@@ -374,14 +338,13 @@ export default function SettingsPage() {
         setSyncing(true);
         try {
             const response = await api.post('/api/time/ntp/sync');
-            const result = response.data;
-            if (result.success) {
-                toast.success(`Sinkronisasi berhasil! Offset: ${result.offset}ms`);
+            if (response.data.success) {
+                toast.success(`Sinkronisasi berhasil! Offset: ${response.data.offset}ms`);
                 fetchAdminData();
             } else {
-                toast.error(result.error || 'Sinkronisasi gagal');
+                toast.error(response.data.error || 'Sinkronisasi gagal');
             }
-        } catch (error: any) {
+        } catch {
             toast.error('Gagal melakukan sinkronisasi');
         } finally {
             setSyncing(false);
@@ -389,555 +352,435 @@ export default function SettingsPage() {
     };
 
     return (
-        <div className="w-full max-w-7xl mx-auto space-y-6 animate-fade-in">
-            {/* Header */}
-            <div className="flex items-center gap-4">
-                <div className="w-14 h-14 rounded-apple-lg bg-dark-bg-tertiary flex items-center justify-center">
-                    <Settings className="w-7 h-7 text-dark-text-secondary" />
-                </div>
-                <div>
-                    <h1 className="text-title-1 text-white">Pengaturan</h1>
-                    <p className="text-body text-dark-text-secondary">
-                        {isAdmin ? 'Kelola sistem dan akun Anda' : 'Kelola akun Anda'}
-                    </p>
-                </div>
-            </div>
+        <div className="max-w-[960px] w-full space-y-[18px]">
+            <PageHeader
+                title="Pengaturan"
+                subtitle={isAdmin ? 'Kelola akun dan konfigurasi sistem' : 'Kelola informasi akun dan keamanan Anda'}
+            />
 
-            {/* FE-NOTIF-NAV: blacklist banner. Surfaces the user's
-                blacklist reason + duration so the deep-link from the
-                bell lands on something meaningful instead of a generic
-                "Settings" page. */}
+            {/* Blacklist Banner */}
             {isBlacklisted && (
                 <div
                     id="blacklist-banner"
-                    className="rounded-apple-lg border border-red-500/30 bg-red-500/10 p-5"
                     role="alert"
+                    className="bg-[#fee2e2] border border-[#fecaca] rounded-[14px] p-5 text-[#991b1b]"
                 >
                     <div className="flex items-start gap-3">
-                        <div className="p-2 rounded-lg bg-red-500/20 flex-shrink-0">
-                            <Ban className="w-5 h-5 text-red-400" />
-                        </div>
-                        <div className="flex-1 min-w-0">
-                            <h2 className="text-title-3 text-red-200">Akun Anda Sedang Diblokir</h2>
-                            <p className="text-callout text-red-200/80 mt-1">
-                                Anda tidak dapat memesan makanan sampai blacklist berakhir atau di-unblock oleh admin.
-                            </p>
-                            <div className="mt-4 grid grid-cols-1 md:grid-cols-3 gap-3 text-sm">
-                                <div className="rounded-lg bg-red-500/10 border border-red-500/20 p-3">
-                                    <p className="text-xs text-red-300/70 uppercase tracking-wide">Mulai</p>
-                                    <p className="text-red-100 font-medium mt-0.5">
-                                        {activeBlacklist?.startDate
-                                            ? formatDateTimeShortWIB(activeBlacklist.startDate)
-                                            : '—'}
-                                    </p>
+                        <Ban className="w-5 h-5 flex-shrink-0 mt-0.5" aria-hidden="true" />
+                        <div className="flex-1 min-w-0 space-y-3">
+                            <div>
+                                <h2 className="m-0 text-[15px] font-bold">Akun Anda sedang diblokir</h2>
+                                <p className="m-0 mt-1 text-[13px]">
+                                    Anda tidak dapat memesan makanan selama masa blokir kecuali untuk tanggal setelah masa blokir berakhir.
+                                </p>
+                            </div>
+                            <div className="grid grid-cols-1 md:grid-cols-3 gap-2.5 text-[13px]">
+                                <div className="rounded-[10px] bg-[#fff] border border-[#fecaca] p-3">
+                                    <div className="text-[11px] font-semibold text-[#78716c] uppercase">Mulai</div>
+                                    <div className="font-bold text-[#1c1917] mt-0.5 tabular-nums">
+                                        {activeBlacklist?.startDate ? formatDateTimeShortWIB(activeBlacklist.startDate) : '—'}
+                                    </div>
                                 </div>
-                                <div className="rounded-lg bg-red-500/10 border border-red-500/20 p-3">
-                                    <p className="text-xs text-red-300/70 uppercase tracking-wide">Berakhir</p>
-                                    <p className="text-red-100 font-medium mt-0.5">
-                                        {blacklistEndDate
-                                            ? formatDateTimeShortWIB(blacklistEndDate)
-                                            : <span className="text-amber-300">Permanen</span>}
-                                    </p>
+                                <div className="rounded-[10px] bg-[#fff] border border-[#fecaca] p-3">
+                                    <div className="text-[11px] font-semibold text-[#78716c] uppercase">Berakhir</div>
+                                    <div className="font-bold text-[#1c1917] mt-0.5 tabular-nums">
+                                        {blacklistEndDate ? formatDateTimeShortWIB(blacklistEndDate) : 'Permanen'}
+                                    </div>
                                 </div>
-                                <div className="rounded-lg bg-red-500/10 border border-red-500/20 p-3">
-                                    <p className="text-xs text-red-300/70 uppercase tracking-wide">Strike</p>
-                                    <p className="text-red-100 font-medium mt-0.5">
+                                <div className="rounded-[10px] bg-[#fff] border border-[#fecaca] p-3">
+                                    <div className="text-[11px] font-semibold text-[#78716c] uppercase">Strike</div>
+                                    <div className="font-bold text-[#1c1917] mt-0.5 tabular-nums">
                                         {user?.noShowCount ?? 0}
-                                    </p>
+                                    </div>
                                 </div>
                             </div>
                             {activeBlacklist?.reason && (
-                                <div className="mt-4 rounded-lg bg-red-500/10 border border-red-500/20 p-3">
-                                    <p className="text-xs text-red-300/70 uppercase tracking-wide">Alasan</p>
-                                    <p className="text-red-100 mt-1 whitespace-pre-wrap">{activeBlacklist.reason}</p>
+                                <div className="rounded-[10px] bg-[#fff] border border-[#fecaca] p-3 text-[13px]">
+                                    <div className="text-[11px] font-semibold text-[#78716c] uppercase">Alasan</div>
+                                    <div className="text-[#1c1917] mt-0.5 whitespace-pre-wrap">{activeBlacklist.reason}</div>
                                 </div>
                             )}
-                            <p className="text-caption text-red-200/70 mt-3 flex items-center gap-1">
-                                <AlertOctagon className="w-4 h-4" />
-                                Hubungi admin untuk membuka blacklist lebih awal.
-                            </p>
                         </div>
                     </div>
                 </div>
             )}
 
-            {/* User Info Card */}
-            <div className="card">
-                <div className="flex items-center gap-3 mb-6">
-                    <div className="stat-icon bg-apple-blue/15">
-                        <User className="w-6 h-6 text-apple-blue" />
+            {/* Account Info Card */}
+            <Card>
+                <div className="flex items-center justify-between mb-4">
+                    <div>
+                        <h2 className="m-0 text-[16px] font-bold text-[#1c1917]">Informasi akun</h2>
+                        <p className="m-0 mt-0.5 text-[12.5px] text-[#78716c]">Data identitas dan lokasi kerja Anda</p>
+                    </div>
+                    {user?.role && <RoleBadge role={user.role} />}
+                </div>
+
+                <dl className="m-0 grid grid-cols-1 md:grid-cols-2 gap-4 text-[13.5px]">
+                    <div>
+                        <dt className="text-[12px] font-semibold text-[#78716c]">ID Karyawan</dt>
+                        <dd className="m-0 mt-0.5 font-mono font-semibold text-[#1c1917]">{user?.externalId}</dd>
                     </div>
                     <div>
-                        <h2 className="text-title-3 text-white">Informasi Akun</h2>
-                        <p className="text-callout text-dark-text-secondary">Detail akun Anda</p>
+                        <dt className="text-[12px] font-semibold text-[#78716c]">Nama</dt>
+                        <dd className="m-0 mt-0.5 font-semibold text-[#1c1917]">{user?.name}</dd>
                     </div>
-                </div>
+                    <div>
+                        <dt className="text-[12px] font-semibold text-[#78716c]">Perusahaan</dt>
+                        <dd className="m-0 mt-0.5 font-medium text-[#1c1917]">{user?.company || '-'}</dd>
+                    </div>
+                    <div>
+                        <dt className="text-[12px] font-semibold text-[#78716c]">Divisi / Departemen</dt>
+                        <dd className="m-0 mt-0.5 font-medium text-[#1c1917]">
+                            {[user?.division, user?.department].filter(Boolean).join(' · ') || '-'}
+                        </dd>
+                    </div>
+                </dl>
 
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                    <div className="space-y-1">
-                        <label className="text-caption text-dark-text-secondary uppercase tracking-wide">ID Karyawan</label>
-                        <p className="text-body text-white font-medium">{user?.externalId}</p>
-                    </div>
-                    <div className="space-y-1">
-                        <label className="text-caption text-dark-text-secondary uppercase tracking-wide">Nama</label>
-                        <p className="text-body text-white font-medium">{user?.name}</p>
-                    </div>
-                    <div className="space-y-1">
-                        <label className="text-caption text-dark-text-secondary uppercase tracking-wide">Perusahaan</label>
-                        <p className="text-body text-white font-medium">{user?.company || '-'}</p>
-                    </div>
-                    <div className="space-y-1">
-                        <label className="text-caption text-dark-text-secondary uppercase tracking-wide">Divisi</label>
-                        <p className="text-body text-white font-medium">{user?.division || '-'}</p>
-                    </div>
-                    <div className="space-y-1">
-                        <label className="text-caption text-dark-text-secondary uppercase tracking-wide">Departemen</label>
-                        <p className="text-body text-white font-medium">{user?.department || '-'}</p>
-                    </div>
-                    <div className="space-y-1">
-                        <label className="text-caption text-dark-text-secondary uppercase tracking-wide">Role</label>
-                        <span className={`badge ${user?.role === 'ADMIN' ? 'badge-info' :
-                            user?.role === 'CANTEEN' ? 'badge-warning' : 'badge-neutral'
-                            }`}>
-                            {user?.role}
-                        </span>
-                    </div>
-
-                    {/* Preferred Canteen Display (Read Only) */}
-                    <div className="col-span-full pt-4 border-t border-white/5">
-                        <label className="block text-callout font-medium text-dark-text-secondary mb-2">
-                            Kantin Lokasi Anda Bekerja
-                        </label>
-                        <div className="flex items-center justify-between p-3 bg-dark-bg-tertiary rounded-lg border border-white/5">
-                            <span className="text-body text-white">
-                                {canteens.find(c => c.id === preferredCanteenId)?.name || 'Belum diatur'}
-                            </span>
-                            <span className="text-xs text-dark-text-secondary italic">
-                                Hubungi Admin untuk mengubah
-                            </span>
+                <div className="mt-4 pt-4 border-t border-[#f0efed] flex flex-wrap items-center justify-between gap-2">
+                    <div>
+                        <div className="text-[12px] font-semibold text-[#78716c]">Kantin lokasi bekerja</div>
+                        <div className="text-[14px] font-bold text-[#1c1917] mt-0.5">
+                            {canteens.find((c) => c.id === preferredCanteenId)?.name || 'Belum diatur'}
                         </div>
                     </div>
+                    <span className="text-[12px] text-[#78716c]">Hubungi admin untuk mengubah lokasi kantin</span>
                 </div>
-            </div>
+            </Card>
 
             {/* Change Password Card */}
-            <div className="card">
-                <div className="flex items-center gap-3 mb-6">
-                    <div className="stat-icon bg-apple-orange/15">
-                        <Lock className="w-6 h-6 text-apple-orange" />
-                    </div>
-                    <div>
-                        <h2 className="text-title-3 text-white">Ubah Password</h2>
-                        <p className="text-callout text-dark-text-secondary">Pastikan password baru Anda aman</p>
-                    </div>
-                </div>
+            <Card>
+                <h2 className="m-0 text-[16px] font-bold text-[#1c1917]">Ubah password</h2>
+                <p className="m-0 mt-0.5 mb-4 text-[12.5px] text-[#78716c]">
+                    Gunakan minimal 6 karakter dan mengandung angka
+                </p>
 
-                <form onSubmit={handleChangePassword} className="space-y-5">
-                    <div>
-                        <label className="block text-callout font-medium text-dark-text-secondary mb-2">
-                            Password Saat Ini
-                        </label>
-                        <div className="relative">
-                            <input
-                                type={showCurrentPassword ? 'text' : 'password'}
-                                value={currentPassword}
-                                onChange={(e) => setCurrentPassword(e.target.value)}
-                                className="input-field pr-12"
-                                placeholder="Masukkan password saat ini"
-                            />
-                            <button
-                                type="button"
-                                onClick={() => setShowCurrentPassword(!showCurrentPassword)}
-                                className="absolute right-3 top-1/2 -translate-y-1/2 btn-icon"
-                            >
-                                {showCurrentPassword ? <EyeOff className="w-5 h-5" /> : <Eye className="w-5 h-5" />}
-                            </button>
-                        </div>
+                <form onSubmit={handleChangePassword} className="space-y-4 max-w-md">
+                    <div className="relative">
+                        <Input
+                            label="Password saat ini"
+                            type={showCurrentPassword ? 'text' : 'password'}
+                            value={currentPassword}
+                            onChange={(e) => setCurrentPassword(e.target.value)}
+                            placeholder="Masukkan password saat ini"
+                            className="pr-10"
+                        />
+                        <button
+                            type="button"
+                            aria-label={showCurrentPassword ? 'Sembunyikan password saat ini' : 'Tampilkan password saat ini'}
+                            onClick={() => setShowCurrentPassword(!showCurrentPassword)}
+                            className="absolute right-2.5 top-[29px] w-7 h-7 flex items-center justify-center rounded-[6px] text-[#78716c] hover:bg-[#f5f5f4] border-0 bg-transparent cursor-pointer"
+                        >
+                            {showCurrentPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+                        </button>
                     </div>
 
-                    <div>
-                        <label className="block text-callout font-medium text-dark-text-secondary mb-2">
-                            Password Baru
-                        </label>
-                        <div className="relative">
-                            <input
-                                type={showNewPassword ? 'text' : 'password'}
-                                value={newPassword}
-                                onChange={(e) => setNewPassword(e.target.value)}
-                                className="input-field pr-12"
-                                placeholder="Masukkan password baru"
-                            />
-                            <button
-                                type="button"
-                                onClick={() => setShowNewPassword(!showNewPassword)}
-                                className="absolute right-3 top-1/2 -translate-y-1/2 btn-icon"
-                            >
-                                {showNewPassword ? <EyeOff className="w-5 h-5" /> : <Eye className="w-5 h-5" />}
-                            </button>
-                        </div>
-
+                    <div className="relative">
+                        <Input
+                            label="Password baru"
+                            type={showNewPassword ? 'text' : 'password'}
+                            value={newPassword}
+                            onChange={(e) => setNewPassword(e.target.value)}
+                            placeholder="Masukkan password baru"
+                            className="pr-10"
+                        />
+                        <button
+                            type="button"
+                            aria-label={showNewPassword ? 'Sembunyikan password baru' : 'Tampilkan password baru'}
+                            onClick={() => setShowNewPassword(!showNewPassword)}
+                            className="absolute right-2.5 top-[29px] w-7 h-7 flex items-center justify-center rounded-[6px] text-[#78716c] hover:bg-[#f5f5f4] border-0 bg-transparent cursor-pointer"
+                        >
+                            {showNewPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+                        </button>
                         {newPassword && (
-                            <div className="mt-3 space-y-2">
-                                <div className={`flex items-center gap-2 text-callout ${passwordChecks.length ? 'text-apple-green' : 'text-dark-text-secondary'}`}>
-                                    {passwordChecks.length ? <Check className="w-4 h-4" /> : <AlertCircle className="w-4 h-4" />}
+                            <div className="mt-2 space-y-1 text-[12px]">
+                                <div className={`flex items-center gap-1.5 ${passwordChecks.length ? 'text-[#15803d]' : 'text-[#78716c]'}`}>
+                                    {passwordChecks.length ? <Check className="w-3.5 h-3.5" /> : <AlertCircle className="w-3.5 h-3.5" />}
                                     Minimal 6 karakter
                                 </div>
-                                <div className={`flex items-center gap-2 text-callout ${passwordChecks.hasNumber ? 'text-apple-green' : 'text-dark-text-secondary'}`}>
-                                    {passwordChecks.hasNumber ? <Check className="w-4 h-4" /> : <AlertCircle className="w-4 h-4" />}
+                                <div className={`flex items-center gap-1.5 ${passwordChecks.hasNumber ? 'text-[#15803d]' : 'text-[#78716c]'}`}>
+                                    {passwordChecks.hasNumber ? <Check className="w-3.5 h-3.5" /> : <AlertCircle className="w-3.5 h-3.5" />}
                                     Mengandung angka
                                 </div>
                             </div>
                         )}
                     </div>
 
-                    <div>
-                        <label className="block text-callout font-medium text-dark-text-secondary mb-2">
-                            Konfirmasi Password Baru
-                        </label>
-                        <div className="relative">
-                            <input
-                                type={showConfirmPassword ? 'text' : 'password'}
-                                value={confirmPassword}
-                                onChange={(e) => setConfirmPassword(e.target.value)}
-                                className="input-field pr-12"
-                                placeholder="Konfirmasi password baru"
-                            />
-                            <button
-                                type="button"
-                                onClick={() => setShowConfirmPassword(!showConfirmPassword)}
-                                className="absolute right-3 top-1/2 -translate-y-1/2 btn-icon"
-                            >
-                                {showConfirmPassword ? <EyeOff className="w-5 h-5" /> : <Eye className="w-5 h-5" />}
-                            </button>
-                        </div>
-
-                        {confirmPassword && (
-                            <div className={`flex items-center gap-2 text-callout mt-2 ${passwordsMatch ? 'text-apple-green' : 'text-apple-red'}`}>
-                                {passwordsMatch ? <Check className="w-4 h-4" /> : <AlertCircle className="w-4 h-4" />}
-                                {passwordsMatch ? 'Password cocok' : 'Password tidak cocok'}
-                            </div>
-                        )}
-                    </div>
-
-                    <div className="pt-2">
-                        <button
-                            type="submit"
-                            disabled={isLoading || !isPasswordValid || !passwordsMatch || !currentPassword}
-                            className="btn-primary"
-                        >
-                            {isLoading ? 'Menyimpan...' : 'Ubah Password'}
-                        </button>
-                    </div>
-                </form>
-            </div>
-
-            {/* Admin Settings */}
-            {isAdmin && (
-                <>
-                    {loadingSettings ? (
-                        <div className="flex items-center justify-center py-12">
-                            <div className="animate-spin rounded-full h-8 w-8 border-t-2 border-b-2 border-apple-blue"></div>
-                        </div>
-                    ) : (
-                        <>
-                            {/* NTP Settings */}
-                            <div className="card">
-                                <div className="flex items-center gap-3 mb-6">
-                                    <div className="stat-icon bg-apple-teal/15">
-                                        <Server className="w-6 h-6 text-apple-teal" />
-                                    </div>
-                                    <div>
-                                        <h2 className="text-title-3 text-white">Pengaturan Waktu & NTP</h2>
-                                        <p className="text-callout text-dark-text-secondary">Sinkronisasi waktu server</p>
-                                    </div>
-                                </div>
-
-                                {/* Current Time Display */}
-                                <div className="bg-dark-bg-tertiary rounded-apple-lg p-5 mb-6 border border-white/5">
-                                    <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-4">
-                                        <div>
-                                            <p className="text-caption text-apple-teal mb-1">Waktu Server ({timeInfo?.timezone || 'Asia/Jakarta'})</p>
-                                            <p className="text-display text-white font-mono">
-                                                {timeInfo?.formattedTime || format(currentTime, 'HH:mm:ss')}
-                                            </p>
-                                            <p className="text-callout text-dark-text-secondary mt-1">
-                                                {timeInfo?.formattedDate || format(currentTime, 'yyyy-MM-dd')}
-                                            </p>
-                                        </div>
-                                        <div className="flex flex-col items-start md:items-end gap-2">
-                                            <span className={`badge ${timeInfo?.isSynced ? 'badge-success' : 'badge-warning'}`}>
-                                                {timeInfo?.isSynced ? 'Tersinkronisasi' : 'Belum Sync'}
-                                            </span>
-                                            {timeInfo?.lastSync && (
-                                                <p className="text-caption text-dark-text-secondary">
-                                                    Terakhir sync: {formatDateTimeShortWIB(timeInfo.lastSync)}
-                                                </p>
-                                            )}
-                                        </div>
-                                    </div>
-                                </div>
-
-                                <div className="space-y-5">
-                                    {/* Enable NTP Toggle */}
-                                    <div className="flex items-center justify-between p-4 bg-dark-bg-tertiary rounded-apple">
-                                        <div>
-                                            <label className="text-body font-medium text-white">Aktifkan NTP</label>
-                                            <p className="text-callout text-dark-text-secondary">Sinkronisasi waktu dengan server NTP</p>
-                                        </div>
-                                        <button
-                                            onClick={() => updateNTPSettings({ ntpEnabled: !settings?.ntpEnabled })}
-                                            disabled={savingNTP}
-                                            className={`toggle ${settings?.ntpEnabled ? 'toggle-enabled' : 'toggle-disabled'}`}
-                                        >
-                                            <span className={`toggle-knob ${settings?.ntpEnabled ? 'translate-x-5' : 'translate-x-1'}`} />
-                                        </button>
-                                    </div>
-
-                                    <div>
-                                        <label className="block text-callout font-medium text-dark-text-secondary mb-2">Server NTP</label>
-                                        <select
-                                            value={settings?.ntpServer || 'pool.ntp.org'}
-                                            onChange={(e) => updateNTPSettings({ ntpServer: e.target.value })}
-                                            disabled={savingNTP || !settings?.ntpEnabled}
-                                            className="input-field disabled:opacity-50"
-                                        >
-                                            {(ntpServers.length > 0 ? ntpServers : [
-                                                { name: 'Pool NTP (Global)', address: 'pool.ntp.org' },
-                                                { name: 'Google NTP', address: 'time.google.com' },
-                                                { name: 'Cloudflare NTP', address: 'time.cloudflare.com' },
-                                            ]).map((server) => (
-                                                <option key={server.address} value={server.address}>
-                                                    {server.name} ({server.address})
-                                                </option>
-                                            ))}
-                                        </select>
-                                    </div>
-
-                                    <div>
-                                        <label className="block text-callout font-medium text-dark-text-secondary mb-2">Zona Waktu</label>
-                                        <select
-                                            value={settings?.ntpTimezone || 'Asia/Jakarta'}
-                                            onChange={(e) => updateNTPSettings({ ntpTimezone: e.target.value })}
-                                            disabled={savingNTP}
-                                            className="input-field disabled:opacity-50"
-                                        >
-                                            {(timezones.length > 0 ? timezones : [
-                                                'Asia/Jakarta', 'Asia/Makassar', 'Asia/Jayapura', 'Asia/Singapore', 'UTC'
-                                            ]).map((tz) => (
-                                                <option key={tz} value={tz}>{tz}</option>
-                                            ))}
-                                        </select>
-                                    </div>
-
-                                    <div>
-                                        <label className="block text-callout font-medium text-dark-text-secondary mb-2">Interval Sinkronisasi</label>
-                                        <select
-                                            value={settings?.ntpSyncInterval || 3600}
-                                            onChange={(e) => updateNTPSettings({ ntpSyncInterval: parseInt(e.target.value) })}
-                                            disabled={savingNTP || !settings?.ntpEnabled}
-                                            className="input-field disabled:opacity-50"
-                                        >
-                                            <option value={60}>Setiap 1 menit</option>
-                                            <option value={300}>Setiap 5 menit</option>
-                                            <option value={900}>Setiap 15 menit</option>
-                                            <option value={1800}>Setiap 30 menit</option>
-                                            <option value={3600}>Setiap 1 jam</option>
-                                            <option value={7200}>Setiap 2 jam</option>
-                                            <option value={86400}>Setiap 24 jam</option>
-                                        </select>
-                                    </div>
-
-                                    <button
-                                        onClick={syncNow}
-                                        disabled={syncing || !settings?.ntpEnabled}
-                                        className="btn-secondary flex items-center gap-2"
-                                    >
-                                        <RefreshCw className={`w-4 h-4 ${syncing ? 'animate-spin' : ''}`} />
-                                        {syncing ? 'Menyinkronkan...' : 'Sinkronisasi Sekarang'}
-                                    </button>
-                                </div>
-                            </div>
-
-                            {/* System Settings */}
-                            <div className="card">
-                                <div className="flex items-center gap-3 mb-6">
-                                    <div className="stat-icon bg-apple-purple/15">
-                                        <Shield className="w-6 h-6 text-apple-purple" />
-                                    </div>
-                                    <div>
-                                        <h2 className="text-title-3 text-white">Pengaturan Sistem</h2>
-                                        <p className="text-callout text-dark-text-secondary">Konfigurasi order dan blacklist</p>
-                                    </div>
-                                </div>
-
-                                <div className="space-y-5">
-                                    {/* Note about Cutoff Settings */}
-                                    <div className="p-4 bg-dark-card-secondary rounded-xl">
-                                        <p className="text-callout text-dark-text-secondary">
-                                            <Clock className="w-4 h-4 inline-block mr-2" />
-                                            Pengaturan Mode Cutoff dapat diakses di halaman <span className="text-apple-blue font-medium">Konfigurasi Shift</span>
-                                        </p>
-                                    </div>
-
-
-
-                                    {/* Auto Blacklist Toggle Switch */}
-                                    <div className={`flex items-center justify-between p-4 rounded-xl border transition-all duration-300 ${
-                                        autoBlacklistEnabled 
-                                            ? 'bg-emerald-500/10 border-emerald-500/30 shadow-lg shadow-emerald-500/5' 
-                                            : 'bg-rose-500/10 border-rose-500/30 shadow-lg shadow-rose-500/5'
-                                    }`}>
-                                        <div className="flex-1 pr-4">
-                                            <div className="flex items-center gap-2 mb-1">
-                                                <h4 className="text-callout font-medium text-white">Status Fitur Auto-Blacklist (Strike)</h4>
-                                                {autoBlacklistEnabled ? (
-                                                    <span className="px-2.5 py-0.5 text-xs font-semibold rounded-full bg-emerald-500/20 text-emerald-400 border border-emerald-500/30 animate-pulse">
-                                                        ● AKTIF
-                                                    </span>
-                                                ) : (
-                                                    <span className="px-2.5 py-0.5 text-xs font-semibold rounded-full bg-rose-500/20 text-rose-400 border border-rose-500/30">
-                                                        ○ NONAKTIF
-                                                    </span>
-                                                )}
-                                            </div>
-                                            <p className="text-caption text-dark-text-secondary">
-                                                {autoBlacklistEnabled 
-                                                    ? 'Penilaian strike & pemblokiran otomatis berjalan untuk pesanan tidak diambil'
-                                                    : 'Penilaian strike mati, pengguna tidak akan mendapat strike saat tidak mengambil pesanan'}
-                                            </p>
-                                        </div>
-                                        <label className="relative inline-flex items-center cursor-pointer select-none">
-                                            <input
-                                                type="checkbox"
-                                                checked={autoBlacklistEnabled}
-                                                onChange={(e) => setAutoBlacklistEnabled(e.target.checked)}
-                                                className="sr-only peer"
-                                            />
-                                            <div className="w-12 h-6 bg-rose-500/40 border border-rose-500/30 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full rtl:peer-checked:after:-translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:start-[2px] after:bg-white after:border-slate-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-emerald-500 peer-checked:border-emerald-400 shadow-inner"></div>
-                                        </label>
-                                    </div>
-
-                                    <div>
-                                        <label className="block text-callout font-medium text-dark-text-secondary mb-2">
-                                            Batas Tidak Diambil (Strike)
-                                        </label>
-                                        <p className="text-caption text-dark-text-secondary mb-2">
-                                            Jumlah tidak diambil sebelum user di-blacklist
-                                        </p>
-                                        <input
-                                            type="number"
-                                            min={1}
-                                            max={10}
-                                            value={blacklistStrikes}
-                                            onChange={(e) => setBlacklistStrikes(parseInt(e.target.value) || 1)}
-                                            className="input-field"
-                                        />
-                                    </div>
-
-                                    <div>
-                                        <label className="flex items-center gap-2 text-callout font-medium text-dark-text-secondary mb-2">
-                                            <CalendarDays className="w-4 h-4" />
-                                            Maksimal Hari Pemesanan di Muka
-                                        </label>
-                                        <p className="text-caption text-dark-text-secondary mb-2">
-                                            Berapa hari ke depan user dapat memesan makanan
-                                        </p>
-                                        <input
-                                            type="number"
-                                            min={1}
-                                            max={30}
-                                            value={maxOrderDaysAhead}
-                                            onChange={(e) => setMaxOrderDaysAhead(parseInt(e.target.value) || 7)}
-                                            className="input-field"
-                                        />
-                                    </div>
-
-                                    <div>
-                                        <label className="block text-callout font-medium text-dark-text-secondary mb-2">
-                                            Durasi Blacklist (Hari)
-                                        </label>
-                                        <p className="text-caption text-dark-text-secondary mb-2">
-                                            Lama user di-blacklist setelah melebihi batas tidak diambil
-                                        </p>
-                                        <input
-                                            type="number"
-                                            min={1}
-                                            max={365}
-                                            value={blacklistDuration}
-                                            onChange={(e) => setBlacklistDuration(parseInt(e.target.value) || 1)}
-                                            className="input-field"
-                                        />
-                                    </div>
-
-                                    <div className="pt-2">
-                                        <label className="flex items-center gap-2">
-                                            <input type="checkbox" checked={checkinPhotoEnabled} onChange={event => setCheckinPhotoEnabled(event.target.checked)} />
-                                            Tawarkan foto bukti saat check-in
-                                        </label>
-                                        <button
-                                            onClick={handleSaveSystemSettings}
-                                            disabled={savingSystem}
-                                            className="btn-primary"
-                                        >
-                                            {savingSystem ? 'Menyimpan...' : 'Simpan Pengaturan Sistem'}
-                                        </button>
-                                    </div>
-                                </div>
-                            </div>
-                        </>
-                    )}
-        {showPasswordModal && (
-            <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm p-4">
-                <div className="bg-dark-card border border-white/10 rounded-2xl p-6 max-w-md w-full shadow-2xl">
-                    <h3 className="text-title-3 font-semibold text-white mb-2 flex items-center gap-2">
-                        <AlertTriangle className="w-5 h-5 text-amber-400" />
-                        Konfirmasi Mengaktifkan Auto-Blacklist
-                    </h3>
-                    <p className="text-callout text-dark-text-secondary mb-4">
-                        Menyalakan fitur Auto-Blacklist akan <strong className="text-amber-400 font-semibold">mereset strike (no-show) seluruh pengguna menjadi 0</strong>. Masukkan password admin Anda untuk melanjutkan.
-                    </p>
-                    <div className="mb-6">
-                        <label className="block text-caption font-medium text-dark-text-secondary mb-1.5">
-                            Password Admin
-                        </label>
-                        <input
-                            type="password"
-                            value={adminPasswordInput}
-                            onChange={(e) => setAdminPasswordInput(e.target.value)}
-                            placeholder="Masukkan password admin"
-                            className="input-field"
-                            autoFocus
-                            onKeyDown={(e) => {
-                                if (e.key === 'Enter' && adminPasswordInput) {
-                                    saveSystemSettings(true);
-                                }
-                            }}
+                    <div className="relative">
+                        <Input
+                            label="Konfirmasi password baru"
+                            type={showConfirmPassword ? 'text' : 'password'}
+                            value={confirmPassword}
+                            onChange={(e) => setConfirmPassword(e.target.value)}
+                            placeholder="Ulangi password baru"
+                            error={confirmPassword && !passwordsMatch ? 'Password tidak cocok' : undefined}
+                            className="pr-10"
                         />
-                    </div>
-                    <div className="flex justify-end gap-3">
                         <button
                             type="button"
-                            onClick={() => {
+                            aria-label={showConfirmPassword ? 'Sembunyikan konfirmasi password' : 'Tampilkan konfirmasi password'}
+                            onClick={() => setShowConfirmPassword(!showConfirmPassword)}
+                            className="absolute right-2.5 top-[29px] w-7 h-7 flex items-center justify-center rounded-[6px] text-[#78716c] hover:bg-[#f5f5f4] border-0 bg-transparent cursor-pointer"
+                        >
+                            {showConfirmPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+                        </button>
+                    </div>
+
+                    <Button
+                        type="submit"
+                        variant="primary"
+                        loading={isLoading}
+                        loadingText="Menyimpan…"
+                        disabled={!isPasswordValid || !passwordsMatch || !currentPassword}
+                    >
+                        Ubah password
+                    </Button>
+                </form>
+            </Card>
+
+            {/* Admin-only quick settings */}
+            {isAdmin && (
+                loadingSettings ? (
+                    <SkeletonCard lines={4} />
+                ) : (
+                    <>
+                        <Card className="space-y-4">
+                            <div className="flex flex-wrap items-center justify-between gap-2">
+                                <div>
+                                    <h2 className="m-0 text-[16px] font-bold text-[#1c1917]">Waktu server &amp; NTP</h2>
+                                    <p className="m-0 mt-0.5 text-[12.5px] text-[#78716c]">
+                                        Zona waktu: {timeInfo?.timezone || 'Asia/Jakarta'}
+                                    </p>
+                                </div>
+                                <Badge variant={timeInfo?.isSynced ? 'success' : 'warning'}>
+                                    {timeInfo?.isSynced ? 'Tersinkronisasi' : 'Belum sync'}
+                                </Badge>
+                            </div>
+
+                            <div className="rounded-[12px] bg-[#fafaf9] border border-[#f0efed] p-4 flex flex-wrap items-center justify-between gap-4">
+                                <div>
+                                    <div className="text-[26px] font-extrabold font-mono tabular-nums text-[#1c1917]">
+                                        {timeInfo?.formattedTime || format(currentTime, 'HH:mm:ss')}
+                                    </div>
+                                    <div className="text-[12.5px] text-[#78716c]">
+                                        {timeInfo?.formattedDate || format(currentTime, 'yyyy-MM-dd')}
+                                    </div>
+                                </div>
+                                {timeInfo?.lastSync && (
+                                    <div className="text-[12px] text-[#78716c]">
+                                        Terakhir sync: {formatDateTimeShortWIB(timeInfo.lastSync)}
+                                    </div>
+                                )}
+                            </div>
+
+                            <div className="flex items-center justify-between p-3.5 rounded-[10px] border border-[#e7e5e4]">
+                                <div>
+                                    <div className="text-[13.5px] font-semibold text-[#1c1917]">Aktifkan NTP</div>
+                                    <div className="text-[12px] text-[#78716c]">Sinkronisasi waktu otomatis</div>
+                                </div>
+                                <input
+                                    type="checkbox"
+                                    aria-label="Aktifkan NTP"
+                                    checked={!!settings?.ntpEnabled}
+                                    disabled={savingNTP}
+                                    onChange={() => updateNTPSettings({ ntpEnabled: !settings?.ntpEnabled })}
+                                    className="w-4 h-4 accent-[#f59e0b] cursor-pointer"
+                                />
+                            </div>
+
+                            <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
+                                <Select
+                                    label="Server NTP"
+                                    value={settings?.ntpServer || 'pool.ntp.org'}
+                                    disabled={savingNTP || !settings?.ntpEnabled}
+                                    onChange={(e) => updateNTPSettings({ ntpServer: e.target.value })}
+                                >
+                                    {(ntpServers.length > 0
+                                        ? ntpServers
+                                        : [
+                                              { name: 'Pool NTP (Global)', address: 'pool.ntp.org' },
+                                              { name: 'Google NTP', address: 'time.google.com' },
+                                              { name: 'Cloudflare NTP', address: 'time.cloudflare.com' },
+                                          ]
+                                    ).map((s) => (
+                                        <option key={s.address} value={s.address}>
+                                            {s.name} ({s.address})
+                                        </option>
+                                    ))}
+                                </Select>
+                                <Select
+                                    label="Zona waktu"
+                                    value={settings?.ntpTimezone || 'Asia/Jakarta'}
+                                    disabled={savingNTP}
+                                    onChange={(e) => updateNTPSettings({ ntpTimezone: e.target.value })}
+                                >
+                                    {(timezones.length > 0
+                                        ? timezones
+                                        : ['Asia/Jakarta', 'Asia/Makassar', 'Asia/Jayapura', 'Asia/Singapore', 'UTC']
+                                    ).map((tz) => (
+                                        <option key={tz} value={tz}>
+                                            {tz}
+                                        </option>
+                                    ))}
+                                </Select>
+                                <Select
+                                    label="Interval sinkronisasi"
+                                    value={settings?.ntpSyncInterval || 3600}
+                                    disabled={savingNTP || !settings?.ntpEnabled}
+                                    onChange={(e) =>
+                                        updateNTPSettings({ ntpSyncInterval: parseInt(e.target.value, 10) })
+                                    }
+                                >
+                                    <option value={60}>Setiap 1 menit</option>
+                                    <option value={300}>Setiap 5 menit</option>
+                                    <option value={900}>Setiap 15 menit</option>
+                                    <option value={1800}>Setiap 30 menit</option>
+                                    <option value={3600}>Setiap 1 jam</option>
+                                    <option value={7200}>Setiap 2 jam</option>
+                                    <option value={86400}>Setiap 24 jam</option>
+                                </Select>
+                            </div>
+
+                            <Button
+                                variant="secondary"
+                                loading={syncing}
+                                loadingText="Menyinkronkan…"
+                                disabled={!settings?.ntpEnabled}
+                                onClick={syncNow}
+                                leftIcon={<RefreshCw className="w-4 h-4" aria-hidden="true" />}
+                            >
+                                Sinkronisasi sekarang
+                            </Button>
+                        </Card>
+
+                        <Card className="space-y-4">
+                            <div>
+                                <h2 className="m-0 text-[16px] font-bold text-[#1c1917]">Pengaturan sistem</h2>
+                                <p className="m-0 mt-0.5 text-[12.5px] text-[#78716c]">
+                                    Konfigurasi batas pemesanan dan aturan blacklist
+                                </p>
+                            </div>
+
+                            <div className="flex items-center justify-between p-3.5 rounded-[10px] border border-[#e7e5e4]">
+                                <div>
+                                    <div className="flex items-center gap-2">
+                                        <span className="text-[13.5px] font-semibold text-[#1c1917]">
+                                            Auto-blacklist (strike)
+                                        </span>
+                                        <Badge variant={autoBlacklistEnabled ? 'success' : 'danger'}>
+                                            {autoBlacklistEnabled ? 'Aktif' : 'Nonaktif'}
+                                        </Badge>
+                                    </div>
+                                    <div className="text-[12px] text-[#78716c] mt-0.5">
+                                        {autoBlacklistEnabled
+                                            ? 'Strike & blokir otomatis aktif untuk pesanan tidak diambil'
+                                            : 'Penilaian strike dimatikan sementara'}
+                                    </div>
+                                </div>
+                                <input
+                                    type="checkbox"
+                                    aria-label="Aktifkan auto-blacklist"
+                                    checked={autoBlacklistEnabled}
+                                    onChange={(e) => setAutoBlacklistEnabled(e.target.checked)}
+                                    className="w-4 h-4 accent-[#f59e0b] cursor-pointer"
+                                />
+                            </div>
+
+                            <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
+                                <Input
+                                    label="Batas strike blacklist"
+                                    type="number"
+                                    min={1}
+                                    max={10}
+                                    value={blacklistStrikes}
+                                    onChange={(e) => setBlacklistStrikes(parseInt(e.target.value, 10) || 1)}
+                                />
+                                <Input
+                                    label="Maks. hari pemesanan di muka"
+                                    type="number"
+                                    min={1}
+                                    max={30}
+                                    value={maxOrderDaysAhead}
+                                    onChange={(e) => setMaxOrderDaysAhead(parseInt(e.target.value, 10) || 7)}
+                                />
+                                <Input
+                                    label="Durasi blacklist (hari)"
+                                    type="number"
+                                    min={1}
+                                    max={365}
+                                    value={blacklistDuration}
+                                    onChange={(e) => setBlacklistDuration(parseInt(e.target.value, 10) || 1)}
+                                />
+                            </div>
+
+                            <label className="flex items-center gap-2 text-[13.5px] text-[#1c1917] cursor-pointer">
+                                <input
+                                    type="checkbox"
+                                    checked={checkinPhotoEnabled}
+                                    onChange={(e) => setCheckinPhotoEnabled(e.target.checked)}
+                                    className="w-4 h-4 accent-[#f59e0b]"
+                                />
+                                <span>Tawarkan foto bukti saat check-in</span>
+                            </label>
+
+                            <Button
+                                variant="primary"
+                                loading={savingSystem}
+                                loadingText="Menyimpan…"
+                                onClick={handleSaveSystemSettings}
+                            >
+                                Simpan pengaturan sistem
+                            </Button>
+                        </Card>
+
+                        <Modal
+                            open={showPasswordModal}
+                            onClose={() => {
                                 setShowPasswordModal(false);
                                 setAdminPasswordInput('');
                             }}
-                            className="btn-secondary px-4 py-2"
+                            title="Aktifkan auto-blacklist"
+                            size="sm"
+                            footer={
+                                <>
+                                    <Button
+                                        variant="secondary"
+                                        onClick={() => {
+                                            setShowPasswordModal(false);
+                                            setAdminPasswordInput('');
+                                        }}
+                                    >
+                                        Batal
+                                    </Button>
+                                    <Button
+                                        variant="primary"
+                                        loading={savingSystem}
+                                        disabled={!adminPasswordInput}
+                                        onClick={() => saveSystemSettings(true)}
+                                    >
+                                        Aktifkan &amp; reset strike
+                                    </Button>
+                                </>
+                            }
                         >
-                            Batal
-                        </button>
-                        <button
-                            type="button"
-                            disabled={!adminPasswordInput || savingSystem}
-                            onClick={() => saveSystemSettings(true)}
-                            className="btn-primary bg-amber-500 hover:bg-amber-600 border-amber-500 text-slate-950 font-medium px-4 py-2"
-                        >
-                            {savingSystem ? 'Memproses...' : 'OK, Aktifkan & Reset Strike'}
-                        </button>
-                    </div>
-                </div>
-            </div>
-        )}
-                </>
+                            <div className="space-y-3">
+                                <div className="flex items-start gap-2.5 p-3 rounded-[10px] bg-[#fef3c7] text-[#92400e] text-[13px]">
+                                    <AlertTriangle className="w-4 h-4 flex-shrink-0 mt-0.5" aria-hidden="true" />
+                                    <span>
+                                        Mengaktifkan Auto-Blacklist akan mereset strike seluruh pengguna menjadi 0.
+                                    </span>
+                                </div>
+                                <Input
+                                    label="Password admin"
+                                    type="password"
+                                    value={adminPasswordInput}
+                                    onChange={(e) => setAdminPasswordInput(e.target.value)}
+                                    placeholder="Masukkan password admin"
+                                    autoFocus
+                                />
+                            </div>
+                        </Modal>
+                    </>
+                )
             )}
         </div>
     );
