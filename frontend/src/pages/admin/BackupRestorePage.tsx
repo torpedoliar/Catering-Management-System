@@ -1,7 +1,28 @@
-import { useState, useEffect } from 'react';
-import { DatabaseBackup, Download, Trash2, RotateCcw, Plus, AlertTriangle, Clock, FileText, Upload, Save } from 'lucide-react';
+import { useState, useEffect, useCallback } from 'react';
+import {
+    DatabaseBackup,
+    Download,
+    Trash2,
+    RotateCcw,
+    Plus,
+    AlertTriangle,
+    Upload,
+    Save,
+} from 'lucide-react';
 import toast from 'react-hot-toast';
 import { api } from '../../contexts/AuthContext';
+import {
+    PageHeader,
+    Button,
+    Card,
+    Badge,
+    Modal,
+    Field,
+    Input,
+    Textarea,
+    EmptyState,
+    Skeleton,
+} from '../../components/ui';
 
 interface BackupInfo {
     id: string;
@@ -18,7 +39,7 @@ function formatBytes(bytes: number): string {
     const k = 1024;
     const sizes = ['B', 'KB', 'MB', 'GB'];
     const i = Math.floor(Math.log(bytes) / Math.log(k));
-    return parseFloat((bytes / Math.pow(k, i)).toFixed(2)) + ' ' + sizes[i];
+    return `${parseFloat((bytes / Math.pow(k, i)).toFixed(2))} ${sizes[i]}`;
 }
 
 function formatDate(dateString: string): string {
@@ -27,7 +48,7 @@ function formatDate(dateString: string): string {
         month: 'short',
         day: 'numeric',
         hour: '2-digit',
-        minute: '2-digit'
+        minute: '2-digit',
     });
 }
 
@@ -36,77 +57,75 @@ export default function BackupRestorePage() {
     const [loading, setLoading] = useState(true);
     const [creating, setCreating] = useState(false);
     const [uploading, setUploading] = useState(false);
-    const [restoreModal, setRestoreModal] = useState<{ open: boolean; backup: BackupInfo | null }>({ open: false, backup: null });
-    const [deleteModal, setDeleteModal] = useState<{ open: boolean; backup: BackupInfo | null }>({ open: false, backup: null });
+
+    const [restoreTarget, setRestoreTarget] = useState<BackupInfo | null>(null);
+    const [deleteTarget, setDeleteTarget] = useState<BackupInfo | null>(null);
     const [createModal, setCreateModal] = useState(false);
+
     const [notes, setNotes] = useState('');
     const [adminPassword, setAdminPassword] = useState('');
     const [confirmationText, setConfirmationText] = useState('');
     const [retentionDays, setRetentionDays] = useState(30);
 
-    // Auto Backup State
     const [autoBackupEnabled, setAutoBackupEnabled] = useState(false);
     const [autoBackupInterval, setAutoBackupInterval] = useState(7);
     const [fileToUpload, setFileToUpload] = useState<File | null>(null);
 
-    const fetchBackups = async () => {
+    const fetchBackups = useCallback(async () => {
         try {
             const response = await api.get('/api/server/backup');
             const data = response.data;
-            setBackups(data.backups);
-            setRetentionDays(data.retentionDays);
+            setBackups(data.backups || []);
+            setRetentionDays(data.retentionDays || 30);
             if (data.settings) {
-                setAutoBackupEnabled(data.settings.autoBackupEnabled);
-                setAutoBackupInterval(data.settings.autoBackupInterval);
+                setAutoBackupEnabled(Boolean(data.settings.autoBackupEnabled));
+                setAutoBackupInterval(data.settings.autoBackupInterval || 7);
             }
-        } catch (error) {
-            console.error('Error fetching backups:', error);
+        } catch {
             toast.error('Gagal mengambil daftar backup');
         } finally {
             setLoading(false);
         }
-    };
+    }, []);
+
+    useEffect(() => {
+        fetchBackups();
+    }, [fetchBackups]);
 
     const handleSaveSettings = async () => {
         try {
             await api.put('/api/server/backup/settings', {
                 autoBackupEnabled,
-                autoBackupInterval: parseInt(autoBackupInterval.toString())
+                autoBackupInterval: parseInt(String(autoBackupInterval), 10) || 1,
             });
-            toast.success('Pengaturan backup disimpan');
+            toast.success('Pengaturan auto backup disimpan');
             fetchBackups();
-        } catch (error) {
+        } catch {
             toast.error('Gagal menyimpan pengaturan');
         }
-    }
+    };
 
     const handleUploadBackup = async (e: React.FormEvent) => {
         e.preventDefault();
         if (!fileToUpload) return;
-
         setUploading(true);
         const formData = new FormData();
         formData.append('backup', fileToUpload);
-
         try {
             await api.post('/api/server/restore/upload', formData, {
-                headers: { 'Content-Type': 'multipart/form-data' }
+                headers: { 'Content-Type': 'multipart/form-data' },
             });
-            toast.success('Backup berhasil diunggah');
+            toast.success('File backup diunggah');
             setFileToUpload(null);
-            const fileInput = document.getElementById('backup-upload') as HTMLInputElement;
+            const fileInput = document.getElementById('backup-upload') as HTMLInputElement | null;
             if (fileInput) fileInput.value = '';
             fetchBackups();
-        } catch (error: any) {
-            toast.error(error.response?.data?.error || 'Gagal mengunggah backup');
+        } catch (error) {
+            toast.error((error as { response?: { data?: { error?: string } } })?.response?.data?.error || 'Gagal mengunggah backup');
         } finally {
             setUploading(false);
         }
-    }
-
-    useEffect(() => {
-        fetchBackups();
-    }, []);
+    };
 
     const handleCreateBackup = async () => {
         setCreating(true);
@@ -116,8 +135,8 @@ export default function BackupRestorePage() {
             setCreateModal(false);
             setNotes('');
             fetchBackups();
-        } catch (error: any) {
-            toast.error(error.response?.data?.error || 'Gagal membuat backup');
+        } catch (error) {
+            toast.error((error as { response?: { data?: { error?: string } } })?.response?.data?.error || 'Gagal membuat backup');
         } finally {
             setCreating(false);
         }
@@ -126,277 +145,257 @@ export default function BackupRestorePage() {
     const handleDownload = async (backup: BackupInfo) => {
         try {
             const response = await api.get(`/api/server/backup/${backup.id}/download`, {
-                responseType: 'blob'
+                responseType: 'blob',
             });
-            const blob = response.data;
-            const url = window.URL.createObjectURL(blob);
+            const url = window.URL.createObjectURL(response.data);
             const a = document.createElement('a');
             a.href = url;
-            a.download = backup.filename; // Force filename from backup object
+            a.download = backup.filename;
             document.body.appendChild(a);
             a.click();
             window.URL.revokeObjectURL(url);
             document.body.removeChild(a);
-        } catch (error) {
-            console.error('Download error:', error);
+        } catch {
             toast.error('Gagal mengunduh backup');
         }
     };
 
     const handleDelete = async () => {
-        if (!deleteModal.backup) return;
-
+        if (!deleteTarget) return;
         try {
-            await api.delete(`/api/server/backup/${deleteModal.backup.id}`, {
-                data: { adminPassword }
+            await api.delete(`/api/server/backup/${deleteTarget.id}`, {
+                data: { adminPassword },
             });
-            toast.success('Backup berhasil dihapus');
-            setDeleteModal({ open: false, backup: null });
+            toast.success('Backup dihapus');
+            setDeleteTarget(null);
             setAdminPassword('');
             fetchBackups();
-        } catch (error: any) {
-            toast.error(error.response?.data?.error || 'Gagal menghapus backup');
+        } catch (error) {
+            toast.error((error as { response?: { data?: { error?: string } } })?.response?.data?.error || 'Gagal menghapus backup');
         }
     };
 
     const handleRestore = async () => {
-        if (!restoreModal.backup) return;
-
+        if (!restoreTarget) return;
         if (confirmationText !== 'RESTORE DATABASE') {
             toast.error('Ketik "RESTORE DATABASE" untuk konfirmasi');
             return;
         }
-
         try {
-            await api.post(`/api/server/restore/${restoreModal.backup.id}`, {
+            await api.post(`/api/server/restore/${restoreTarget.id}`, {
                 adminPassword,
-                confirmationText
+                confirmationText,
             });
-            toast.success('Database berhasil direstore');
-            setRestoreModal({ open: false, backup: null });
+            toast.success('Database direstore');
+            setRestoreTarget(null);
             setAdminPassword('');
             setConfirmationText('');
-        } catch (error: any) {
-            toast.error(error.response?.data?.error || 'Gagal restore database');
+        } catch (error) {
+            toast.error((error as { response?: { data?: { error?: string } } })?.response?.data?.error || 'Gagal restore database');
         }
     };
 
     if (loading) {
         return (
-            <div className="flex items-center justify-center min-h-[400px]">
-                <div className="animate-spin rounded-full h-12 w-12 border-t-2 border-b-2 border-cyan-500"></div>
+            <div className="space-y-4">
+                <Skeleton className="h-9 w-56" />
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                    <Skeleton className="h-44" />
+                    <Skeleton className="h-44" />
+                </div>
+                <Skeleton className="h-48 w-full" />
             </div>
         );
     }
 
     return (
-        <div className="space-y-6">
-            {/* Header */}
-            <div className="flex items-center justify-between">
-                <div className="flex items-center gap-3">
-                    <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-emerald-500 to-teal-600 flex items-center justify-center">
-                        <DatabaseBackup className="w-5 h-5 text-white" />
-                    </div>
-                    <div>
-                        <h1 className="text-2xl font-bold text-slate-100">Backup & Restore</h1>
-                        <p className="text-sm text-slate-400">Kelola backup database PostgreSQL</p>
-                    </div>
-                </div>
-                <button
-                    onClick={() => setCreateModal(true)}
-                    className="flex items-center gap-2 px-4 py-2 bg-emerald-600 hover:bg-emerald-700 text-white rounded-lg transition-colors"
-                >
-                    <Plus className="w-4 h-4" />
-                    Buat Backup
-                </button>
-            </div>
+        <div className="space-y-4">
+            <PageHeader
+                title="Backup & restore"
+                subtitle="Kelola cadangan database PostgreSQL otomatis maupun manual"
+                actions={
+                    <Button
+                        variant="primary"
+                        size="sm"
+                        onClick={() => setCreateModal(true)}
+                        leftIcon={<Plus className="w-3.5 h-3.5" aria-hidden="true" />}
+                    >
+                        Buat backup sekarang
+                    </Button>
+                }
+            />
 
-            {/* Configuration & Upload Grid */}
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                {/* Auto Backup Settings */}
-                <div className="bg-slate-800/50 rounded-xl border border-slate-700 p-6">
-                    <div className="flex items-center gap-3 mb-4">
-                        <div className="w-10 h-10 rounded-lg bg-blue-500/20 flex items-center justify-center">
-                            <Clock className="w-5 h-5 text-blue-400" />
-                        </div>
-                        <div>
-                            <h3 className="font-semibold text-slate-100">Auto Backup</h3>
-                            <p className="text-sm text-slate-400">Jadwalkan backup otomatis</p>
-                        </div>
-                    </div>
-
-                    <div className="space-y-4">
-                        <div className="flex items-center justify-between">
-                            <label className="text-sm font-medium text-slate-300">Aktifkan Auto Backup</label>
-                            <label className="relative inline-flex items-center cursor-pointer">
-                                <input
-                                    type="checkbox"
-                                    className="sr-only peer"
-                                    checked={autoBackupEnabled}
-                                    onChange={(e) => setAutoBackupEnabled(e.target.checked)}
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                <Card>
+                    <h2 className="text-[15px] font-bold text-[#1c1917] mb-3">Auto backup</h2>
+                    <div className="space-y-3">
+                        <div className="flex items-center justify-between p-3 rounded-[10px] bg-[#fafaf9] border border-[#e7e5e4]">
+                            <span className="text-[13px] font-semibold text-[#1c1917]">
+                                Aktifkan auto backup
+                            </span>
+                            <button
+                                type="button"
+                                role="switch"
+                                aria-checked={autoBackupEnabled}
+                                onClick={() => setAutoBackupEnabled(!autoBackupEnabled)}
+                                className={`relative inline-flex h-6 w-11 items-center rounded-full border-0 cursor-pointer transition-colors ${
+                                    autoBackupEnabled ? 'bg-[#16a34a]' : 'bg-[#d6d3d1]'
+                                }`}
+                            >
+                                <span
+                                    className={`inline-block h-4 w-4 rounded-full bg-[#fff] transition-transform ${
+                                        autoBackupEnabled ? 'translate-x-6' : 'translate-x-1'
+                                    }`}
                                 />
-                                <div className="w-11 h-6 bg-slate-700 peer-focus:outline-none peer-focus:ring-4 peer-focus:ring-blue-800 rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-blue-600"></div>
-                            </label>
+                            </button>
                         </div>
 
-                        <div className="space-y-2">
-                            <label className="block text-sm font-medium text-slate-300">Interval (Hari)</label>
-                            <input
+                        <Field label="Interval (hari)">
+                            <Input
                                 type="number"
-                                min="1"
-                                max="365"
+                                min={1}
+                                max={365}
                                 value={autoBackupInterval}
-                                onChange={(e) => setAutoBackupInterval(parseInt(e.target.value) || 1)}
-                                className="w-full px-4 py-2 bg-slate-900 border border-slate-600 rounded-lg text-slate-100 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                                onChange={(e) =>
+                                    setAutoBackupInterval(parseInt(e.target.value, 10) || 1)
+                                }
                             />
-                        </div>
+                        </Field>
 
-                        <button
+                        <Button
+                            variant="secondary"
+                            size="sm"
                             onClick={handleSaveSettings}
-                            className="w-full flex items-center justify-center gap-2 px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-lg transition-colors mt-2"
+                            leftIcon={<Save className="w-3.5 h-3.5" aria-hidden="true" />}
                         >
-                            <Save className="w-4 h-4" />
-                            Simpan Pengaturan
-                        </button>
+                            Simpan pengaturan
+                        </Button>
                     </div>
-                </div>
+                </Card>
 
-                {/* Restore from File */}
-                <div className="bg-slate-800/50 rounded-xl border border-slate-700 p-6">
-                    <div className="flex items-center gap-3 mb-4">
-                        <div className="w-10 h-10 rounded-lg bg-amber-500/20 flex items-center justify-center">
-                            <Upload className="w-5 h-5 text-amber-400" />
-                        </div>
-                        <div>
-                            <h3 className="font-semibold text-slate-100">Restore dari File</h3>
-                            <p className="text-sm text-slate-400">Upload file backup (.sql)</p>
-                        </div>
-                    </div>
-
-                    <form onSubmit={handleUploadBackup} className="space-y-4">
-                        <div className="space-y-2">
-                            <label className="block text-sm font-medium text-slate-300">Pilih File Backup</label>
+                <Card>
+                    <h2 className="text-[15px] font-bold text-[#1c1917] mb-3">Unggah file backup (.sql)</h2>
+                    <form onSubmit={handleUploadBackup} className="space-y-3">
+                        <Field label="Pilih file SQL">
                             <input
                                 id="backup-upload"
                                 type="file"
                                 accept=".sql"
-                                onChange={(e) => setFileToUpload(e.target.files ? e.target.files[0] : null)}
-                                className="w-full px-4 py-2 bg-slate-900 border border-slate-600 rounded-lg text-slate-100 focus:outline-none focus:ring-2 focus:ring-amber-500 file:mr-4 file:py-1 file:px-3 file:rounded-full file:border-0 file:text-xs file:font-semibold file:bg-amber-500/10 file:text-amber-400 hover:file:bg-amber-500/20"
+                                onChange={(e) => setFileToUpload(e.target.files?.[0] || null)}
+                                className="w-full text-[13px] text-[#57534e] file:mr-3 file:py-1.5 file:px-3 file:rounded-[8px] file:border file:border-[#e7e5e4] file:bg-[#fafaf9] file:text-[#1c1917] file:text-[12.5px] file:font-semibold file:cursor-pointer"
                             />
-                        </div>
-
-                        <button
+                        </Field>
+                        <Button
                             type="submit"
-                            disabled={!fileToUpload || uploading}
-                            className="w-full flex items-center justify-center gap-2 px-4 py-2 bg-amber-600 hover:bg-amber-700 disabled:bg-slate-700 disabled:text-slate-500 text-white rounded-lg transition-colors mt-2"
+                            variant="primary"
+                            size="sm"
+                            loading={uploading}
+                            disabled={!fileToUpload}
+                            leftIcon={<Upload className="w-3.5 h-3.5" aria-hidden="true" />}
                         >
-                            {uploading ? (
-                                <div className="animate-spin rounded-full h-4 w-4 border-2 border-white/30 border-t-white" />
-                            ) : (
-                                <Upload className="w-4 h-4" />
-                            )}
-                            {uploading ? 'Mengupload...' : 'Upload & Tambahkan ke List'}
-                        </button>
+                            Unggah ke daftar backup
+                        </Button>
                     </form>
-                </div>
+                </Card>
             </div>
-            {/* Warning */}
-            <div className="bg-amber-900/20 border border-amber-500/30 rounded-xl p-4">
-                <div className="flex gap-3">
-                    <AlertTriangle className="w-6 h-6 text-amber-400 flex-shrink-0" />
-                    <div>
-                        <h3 className="font-medium text-amber-400">Perhatian</h3>
-                        <p className="text-sm text-slate-300 mt-1">
-                            Restore database akan <strong>mengganti semua data saat ini</strong>. Pastikan Anda memiliki backup terbaru sebelum melakukan restore.
-                            Backup otomatis dihapus setelah {retentionDays} hari.
-                        </p>
-                    </div>
+
+            <div className="p-3.5 rounded-[12px] bg-[#fffbeb] border border-[#fde68a] flex items-start gap-3 text-[13px] text-[#92400e]">
+                <AlertTriangle className="w-4 h-4 text-[#b45309] flex-shrink-0 mt-0.5" aria-hidden="true" />
+                <div>
+                    <b>Perhatian:</b> Restore akan menimpa seluruh isi database saat ini. Backup otomatis dihapus setelah {retentionDays} hari.
                 </div>
             </div>
 
-            {/* Backup List */}
-            <div className="bg-slate-800/50 rounded-xl border border-slate-700 overflow-hidden">
-                <div className="px-6 py-4 border-b border-slate-700">
-                    <h2 className="text-lg font-semibold text-slate-100">Daftar Backup</h2>
-                    <p className="text-sm text-slate-400">{backups.length} backup tersedia</p>
+            <Card padding="none">
+                <div className="px-4 py-3.5 border-b border-[#f5f5f4] flex items-center justify-between">
+                    <h2 className="text-[15px] font-bold text-[#1c1917]">Daftar backup</h2>
+                    <span className="text-[12px] text-[#78716c] tabular-nums">
+                        {backups.length} file tersedia
+                    </span>
                 </div>
 
                 {backups.length === 0 ? (
-                    <div className="p-12 text-center">
-                        <DatabaseBackup className="w-12 h-12 text-slate-600 mx-auto mb-4" />
-                        <p className="text-slate-400">Belum ada backup</p>
-                        <p className="text-sm text-slate-500 mt-1">Klik "Buat Backup" untuk membuat backup pertama</p>
-                    </div>
+                    <EmptyState
+                        icon={<DatabaseBackup className="w-6 h-6" />}
+                        title="Belum ada backup"
+                        description='Klik "Buat backup sekarang" untuk membuat cadangan database.'
+                    />
                 ) : (
                     <div className="overflow-x-auto">
-                        <table className="w-full">
+                        <table className="w-full text-[13px]">
                             <thead>
-                                <tr className="border-b border-slate-700">
-                                    <th className="px-6 py-3 text-left text-xs font-semibold text-slate-400 uppercase">Filename</th>
-                                    <th className="px-6 py-3 text-left text-xs font-semibold text-slate-400 uppercase">Dibuat</th>
-                                    <th className="px-6 py-3 text-left text-xs font-semibold text-slate-400 uppercase">Size</th>
-                                    <th className="px-6 py-3 text-left text-xs font-semibold text-slate-400 uppercase">Status</th>
-                                    <th className="px-6 py-3 text-left text-xs font-semibold text-slate-400 uppercase">Notes</th>
-                                    <th className="px-6 py-3 text-right text-xs font-semibold text-slate-400 uppercase">Actions</th>
+                                <tr className="bg-[#fafaf9] border-b border-[#f5f5f4]">
+                                    <th className="text-left px-4 py-2.5 text-[11.5px] font-semibold uppercase tracking-wider text-[#78716c]">
+                                        Nama file
+                                    </th>
+                                    <th className="text-left px-3 py-2.5 text-[11.5px] font-semibold uppercase tracking-wider text-[#78716c]">
+                                        Dibuat
+                                    </th>
+                                    <th className="text-right px-3 py-2.5 text-[11.5px] font-semibold uppercase tracking-wider text-[#78716c]">
+                                        Ukuran
+                                    </th>
+                                    <th className="text-left px-3 py-2.5 text-[11.5px] font-semibold uppercase tracking-wider text-[#78716c]">
+                                        Status
+                                    </th>
+                                    <th className="text-left px-3 py-2.5 text-[11.5px] font-semibold uppercase tracking-wider text-[#78716c]">
+                                        Catatan
+                                    </th>
+                                    <th className="text-right px-4 py-2.5 text-[11.5px] font-semibold uppercase tracking-wider text-[#78716c]">
+                                        Aksi
+                                    </th>
                                 </tr>
                             </thead>
-                            <tbody className="divide-y divide-slate-700">
-                                {backups.map((backup) => (
-                                    <tr key={backup.id} className="hover:bg-slate-700/30 transition-colors">
-                                        <td className="px-6 py-4">
-                                            <div className="flex items-center gap-3">
-                                                <FileText className="w-5 h-5 text-slate-500" />
-                                                <span className="text-sm font-mono text-slate-200">{backup.filename}</span>
-                                            </div>
+                            <tbody className="divide-y divide-[#f5f5f4]">
+                                {backups.map((b) => (
+                                    <tr key={b.id} className="hover:bg-[#fafaf9]">
+                                        <td className="px-4 py-2.5 font-mono text-[12px] font-semibold text-[#1c1917]">
+                                            {b.filename}
                                         </td>
-                                        <td className="px-6 py-4">
-                                            <div className="flex items-center gap-2 text-sm text-slate-300">
-                                                <Clock className="w-4 h-4 text-slate-500" />
-                                                {formatDate(backup.createdAt)}
-                                            </div>
-                                            {backup.createdByName && (
-                                                <p className="text-xs text-slate-500 mt-1">by {backup.createdByName}</p>
+                                        <td className="px-3 py-2.5 text-[#57534e] whitespace-nowrap">
+                                            <div>{formatDate(b.createdAt)}</div>
+                                            {b.createdByName && (
+                                                <div className="text-[11px] text-[#78716c]">
+                                                    oleh {b.createdByName}
+                                                </div>
                                             )}
                                         </td>
-                                        <td className="px-6 py-4 text-sm text-slate-300">{formatBytes(backup.size)}</td>
-                                        <td className="px-6 py-4">
-                                            <span className={`inline-flex items-center px-2 py-1 rounded-full text-xs font-medium ${backup.status === 'COMPLETED'
-                                                ? 'bg-green-500/20 text-green-400 border border-green-500/30'
-                                                : backup.status === 'IN_PROGRESS'
-                                                    ? 'bg-yellow-500/20 text-yellow-400 border border-yellow-500/30'
-                                                    : 'bg-red-500/20 text-red-400 border border-red-500/30'
-                                                }`}>
-                                                {backup.status}
-                                            </span>
+                                        <td className="px-3 py-2.5 text-right tabular-nums text-[#57534e]">
+                                            {formatBytes(b.size)}
                                         </td>
-                                        <td className="px-6 py-4 text-sm text-slate-400 max-w-[200px] truncate">
-                                            {backup.notes || '-'}
+                                        <td className="px-3 py-2.5">
+                                            <Badge variant={b.status === 'COMPLETED' ? 'success' : 'neutral'}>
+                                                {b.status}
+                                            </Badge>
                                         </td>
-                                        <td className="px-6 py-4">
-                                            <div className="flex items-center justify-end gap-2">
-                                                <button
-                                                    onClick={() => handleDownload(backup)}
-                                                    disabled={backup.status !== 'COMPLETED'}
-                                                    className="p-2 text-blue-400 hover:bg-blue-500/20 rounded-lg transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
-                                                    title="Download"
+                                        <td className="px-3 py-2.5 text-[#57534e] max-w-xs truncate">
+                                            {b.notes || '-'}
+                                        </td>
+                                        <td className="px-4 py-2.5 text-right whitespace-nowrap">
+                                            <div className="inline-flex items-center gap-1">
+                                                <Button
+                                                    variant="ghost"
+                                                    size="sm"
+                                                    aria-label={`Unduh ${b.filename}`}
+                                                    onClick={() => handleDownload(b)}
                                                 >
-                                                    <Download className="w-4 h-4" />
-                                                </button>
-                                                <button
-                                                    onClick={() => setRestoreModal({ open: true, backup })}
-                                                    disabled={backup.status !== 'COMPLETED'}
-                                                    className="p-2 text-amber-400 hover:bg-amber-500/20 rounded-lg transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
-                                                    title="Restore"
+                                                    <Download className="w-3.5 h-3.5" />
+                                                </Button>
+                                                <Button
+                                                    variant="secondary"
+                                                    size="sm"
+                                                    onClick={() => setRestoreTarget(b)}
+                                                    leftIcon={<RotateCcw className="w-3.5 h-3.5" />}
                                                 >
-                                                    <RotateCcw className="w-4 h-4" />
-                                                </button>
-                                                <button
-                                                    onClick={() => setDeleteModal({ open: true, backup })}
-                                                    className="p-2 text-red-400 hover:bg-red-500/20 rounded-lg transition-colors"
-                                                    title="Delete"
+                                                    Restore
+                                                </Button>
+                                                <Button
+                                                    variant="ghost"
+                                                    size="sm"
+                                                    aria-label={`Hapus ${b.filename}`}
+                                                    onClick={() => setDeleteTarget(b)}
                                                 >
-                                                    <Trash2 className="w-4 h-4" />
-                                                </button>
+                                                    <Trash2 className="w-3.5 h-3.5 text-[#b91c1c]" />
+                                                </Button>
                                             </div>
                                         </td>
                                     </tr>
@@ -405,165 +404,139 @@ export default function BackupRestorePage() {
                         </table>
                     </div>
                 )}
-            </div>
+            </Card>
 
             {/* Create Backup Modal */}
-            {
-                createModal && (
-                    <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
-                        <div className="bg-slate-800 rounded-xl p-6 w-full max-w-md border border-slate-700">
-                            <h3 className="text-lg font-semibold text-slate-100 mb-4">Buat Backup Baru</h3>
-                            <div className="space-y-4">
-                                <div>
-                                    <label className="block text-sm font-medium text-slate-300 mb-2">Catatan (opsional)</label>
-                                    <textarea
-                                        value={notes}
-                                        onChange={(e) => setNotes(e.target.value)}
-                                        placeholder="Contoh: Backup sebelum update sistem..."
-                                        className="w-full px-4 py-2 bg-slate-700 border border-slate-600 rounded-lg text-slate-100 focus:outline-none focus:ring-2 focus:ring-emerald-500"
-                                        rows={3}
-                                    />
-                                </div>
-                            </div>
-                            <div className="flex justify-end gap-3 mt-6">
-                                <button
-                                    onClick={() => { setCreateModal(false); setNotes(''); }}
-                                    className="px-4 py-2 text-slate-300 hover:bg-slate-700 rounded-lg transition-colors"
-                                >
-                                    Batal
-                                </button>
-                                <button
-                                    onClick={handleCreateBackup}
-                                    disabled={creating}
-                                    className="px-4 py-2 bg-emerald-600 hover:bg-emerald-700 disabled:bg-slate-600 text-white rounded-lg transition-colors flex items-center gap-2"
-                                >
-                                    {creating ? (
-                                        <>
-                                            <div className="animate-spin rounded-full h-4 w-4 border-2 border-white/30 border-t-white" />
-                                            Membuat...
-                                        </>
-                                    ) : (
-                                        <>
-                                            <Plus className="w-4 h-4" />
-                                            Buat Backup
-                                        </>
-                                    )}
-                                </button>
-                            </div>
-                        </div>
-                    </div>
-                )
-            }
+            <Modal
+                open={createModal}
+                onClose={() => {
+                    setCreateModal(false);
+                    setNotes('');
+                }}
+                title="Buat backup database"
+                size="md"
+                footer={
+                    <>
+                        <Button
+                            variant="secondary"
+                            onClick={() => {
+                                setCreateModal(false);
+                                setNotes('');
+                            }}
+                        >
+                            Batal
+                        </Button>
+                        <Button variant="primary" loading={creating} onClick={handleCreateBackup}>
+                            Buat backup
+                        </Button>
+                    </>
+                }
+            >
+                <Field label="Catatan" hint="Opsional">
+                    <Textarea
+                        rows={3}
+                        value={notes}
+                        onChange={(e) => setNotes(e.target.value)}
+                        placeholder="Contoh: Sebelum migrasi shift baru..."
+                    />
+                </Field>
+            </Modal>
 
             {/* Delete Modal */}
-            {
-                deleteModal.open && deleteModal.backup && (
-                    <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
-                        <div className="bg-slate-800 rounded-xl p-6 w-full max-w-md border border-slate-700">
-                            <h3 className="text-lg font-semibold text-slate-100 mb-2">Hapus Backup</h3>
-                            <p className="text-sm text-slate-400 mb-4">
-                                Hapus backup <strong className="text-slate-200">{deleteModal.backup.filename}</strong>?
-                            </p>
-                            <div className="space-y-4">
-                                <div>
-                                    <label className="block text-sm font-medium text-slate-300 mb-2">Password Admin</label>
-                                    <input
-                                        type="password"
-                                        value={adminPassword}
-                                        onChange={(e) => setAdminPassword(e.target.value)}
-                                        placeholder="Masukkan password Anda"
-                                        className="w-full px-4 py-2 bg-slate-700 border border-slate-600 rounded-lg text-slate-100 focus:outline-none focus:ring-2 focus:ring-red-500"
-                                    />
-                                </div>
-                            </div>
-                            <div className="flex justify-end gap-3 mt-6">
-                                <button
-                                    onClick={() => { setDeleteModal({ open: false, backup: null }); setAdminPassword(''); }}
-                                    className="px-4 py-2 text-slate-300 hover:bg-slate-700 rounded-lg transition-colors"
-                                >
-                                    Batal
-                                </button>
-                                <button
-                                    onClick={handleDelete}
-                                    disabled={!adminPassword}
-                                    className="px-4 py-2 bg-red-600 hover:bg-red-700 disabled:bg-slate-600 text-white rounded-lg transition-colors"
-                                >
-                                    Hapus
-                                </button>
-                            </div>
-                        </div>
-                    </div>
-                )
-            }
+            <Modal
+                open={Boolean(deleteTarget)}
+                onClose={() => {
+                    setDeleteTarget(null);
+                    setAdminPassword('');
+                }}
+                title="Hapus file backup?"
+                size="md"
+                footer={
+                    <>
+                        <Button
+                            variant="secondary"
+                            onClick={() => {
+                                setDeleteTarget(null);
+                                setAdminPassword('');
+                            }}
+                        >
+                            Batal
+                        </Button>
+                        <Button variant="danger" disabled={!adminPassword} onClick={handleDelete}>
+                            Hapus permanen
+                        </Button>
+                    </>
+                }
+            >
+                <div className="space-y-3">
+                    <p className="text-[13.5px] text-[#57534e]">
+                        Hapus file backup <b className="font-mono">{deleteTarget?.filename}</b>?
+                    </p>
+                    <Field label="Password admin" required>
+                        <Input
+                            type="password"
+                            value={adminPassword}
+                            onChange={(e) => setAdminPassword(e.target.value)}
+                            placeholder="Masukkan password Anda"
+                        />
+                    </Field>
+                </div>
+            </Modal>
 
             {/* Restore Modal */}
-            {
-                restoreModal.open && restoreModal.backup && (
-                    <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
-                        <div className="bg-slate-800 rounded-xl p-6 w-full max-w-md border border-red-500/50">
-                            <div className="flex items-center gap-3 mb-4">
-                                <div className="w-10 h-10 rounded-full bg-red-500/20 flex items-center justify-center">
-                                    <AlertTriangle className="w-5 h-5 text-red-400" />
-                                </div>
-                                <div>
-                                    <h3 className="text-lg font-semibold text-red-400">Restore Database</h3>
-                                    <p className="text-sm text-slate-400">Aksi ini tidak dapat dibatalkan!</p>
-                                </div>
-                            </div>
-
-                            <div className="bg-red-900/20 border border-red-500/30 rounded-lg p-4 mb-4">
-                                <p className="text-sm text-red-300">
-                                    <strong>PERINGATAN:</strong> Restore akan mengganti SEMUA data database saat ini dengan data dari backup <strong>{restoreModal.backup.filename}</strong>.
-                                </p>
-                            </div>
-
-                            <div className="space-y-4">
-                                <div>
-                                    <label className="block text-sm font-medium text-slate-300 mb-2">Password Admin</label>
-                                    <input
-                                        type="password"
-                                        value={adminPassword}
-                                        onChange={(e) => setAdminPassword(e.target.value)}
-                                        placeholder="Masukkan password Anda"
-                                        className="w-full px-4 py-2 bg-slate-700 border border-slate-600 rounded-lg text-slate-100 focus:outline-none focus:ring-2 focus:ring-red-500"
-                                    />
-                                </div>
-                                <div>
-                                    <label className="block text-sm font-medium text-slate-300 mb-2">
-                                        Ketik <span className="font-mono text-red-400">RESTORE DATABASE</span> untuk konfirmasi
-                                    </label>
-                                    <input
-                                        type="text"
-                                        value={confirmationText}
-                                        onChange={(e) => setConfirmationText(e.target.value)}
-                                        placeholder="RESTORE DATABASE"
-                                        className="w-full px-4 py-2 bg-slate-700 border border-slate-600 rounded-lg text-slate-100 font-mono focus:outline-none focus:ring-2 focus:ring-red-500"
-                                    />
-                                </div>
-                            </div>
-                            <div className="flex justify-end gap-3 mt-6">
-                                <button
-                                    onClick={() => {
-                                        setRestoreModal({ open: false, backup: null });
-                                        setAdminPassword('');
-                                        setConfirmationText('');
-                                    }}
-                                    className="px-4 py-2 text-slate-300 hover:bg-slate-700 rounded-lg transition-colors"
-                                >
-                                    Batal
-                                </button>
-                                <button
-                                    onClick={handleRestore}
-                                    disabled={!adminPassword || confirmationText !== 'RESTORE DATABASE'}
-                                    className="px-4 py-2 bg-red-600 hover:bg-red-700 disabled:bg-slate-600 text-white rounded-lg transition-colors"
-                                >
-                                    Restore Database
-                                </button>
-                            </div>
-                        </div>
+            <Modal
+                open={Boolean(restoreTarget)}
+                onClose={() => {
+                    setRestoreTarget(null);
+                    setAdminPassword('');
+                    setConfirmationText('');
+                }}
+                title="Restore database"
+                size="md"
+                footer={
+                    <>
+                        <Button
+                            variant="secondary"
+                            onClick={() => {
+                                setRestoreTarget(null);
+                                setAdminPassword('');
+                                setConfirmationText('');
+                            }}
+                        >
+                            Batal
+                        </Button>
+                        <Button
+                            variant="danger"
+                            disabled={!adminPassword || confirmationText !== 'RESTORE DATABASE'}
+                            onClick={handleRestore}
+                        >
+                            Restore sekarang
+                        </Button>
+                    </>
+                }
+            >
+                <div className="space-y-3">
+                    <div className="p-3 rounded-[10px] bg-[#fef2f2] border border-[#fecaca] text-[13px] text-[#991b1b]">
+                        <b>Peringatan:</b> Restore akan menimpa semua data saat ini dengan{' '}
+                        <b className="font-mono">{restoreTarget?.filename}</b>.
                     </div>
-                )
-            }
-        </div >
+                    <Field label="Password admin" required>
+                        <Input
+                            type="password"
+                            value={adminPassword}
+                            onChange={(e) => setAdminPassword(e.target.value)}
+                        />
+                    </Field>
+                    <Field label="Ketik RESTORE DATABASE untuk konfirmasi" required>
+                        <Input
+                            value={confirmationText}
+                            onChange={(e) => setConfirmationText(e.target.value)}
+                            placeholder="RESTORE DATABASE"
+                            className="font-mono"
+                        />
+                    </Field>
+                </div>
+            </Modal>
+        </div>
     );
 }

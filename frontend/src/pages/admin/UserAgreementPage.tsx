@@ -1,22 +1,23 @@
 import { useState, useEffect, useCallback } from 'react';
-import { format } from 'date-fns';
+import { FileText, Plus, Trash2, Edit2, Send, RefreshCw, Clock, Calendar } from 'lucide-react';
+import toast from 'react-hot-toast';
 import { api } from '../../contexts/AuthContext';
 import { formatDateTimeShortWIB } from '../../utils/timezone';
-import toast from 'react-hot-toast';
 import {
-    FileText,
-    Plus,
-    Trash2,
-    Edit2,
-    Send,
-    Loader2,
-    RefreshCw,
-    X,
-    Clock,
-    CheckCircle
-} from 'lucide-react';
+    PageHeader,
+    Button,
+    Card,
+    Badge,
+    Modal,
+    Field,
+    Input,
+    Select,
+    Textarea,
+    EmptyState,
+    Skeleton,
+} from '../../components/ui';
 
-interface Announcement {
+interface Agreement {
     id: string;
     title: string;
     content: string;
@@ -32,26 +33,24 @@ interface Announcement {
 }
 
 export default function UserAgreementPage() {
-    const [agreements, setAgreements] = useState<Announcement[]>([]);
+    const [agreements, setAgreements] = useState<Agreement[]>([]);
     const [isLoading, setIsLoading] = useState(true);
     const [isSending, setIsSending] = useState(false);
     const [showForm, setShowForm] = useState(false);
     const [editingId, setEditingId] = useState<string | null>(null);
+    const [deleteTarget, setDeleteTarget] = useState<Agreement | null>(null);
 
-    // Form state
-    const [title, setTitle] = useState('');
+    const [title, setTitle] = useState('Kebijakan Penggunaan Sistem');
     const [content, setContent] = useState('');
-    const [priority, setPriority] = useState('high'); // Default high for agreements
+    const [priority, setPriority] = useState('high');
     const [expiresAt, setExpiresAt] = useState('');
 
     const loadAgreements = useCallback(async () => {
         try {
             const res = await api.get('/api/announcements');
-            // Filter strictly for AGREEMENT type
-            const allItems: Announcement[] = res.data.announcements || [];
-            const userAgreements = allItems.filter(item => item.type === 'AGREEMENT');
-            setAgreements(userAgreements);
-        } catch (error) {
+            const allItems: Agreement[] = res.data.announcements || [];
+            setAgreements(allItems.filter((item) => item.type === 'AGREEMENT'));
+        } catch {
             toast.error('Gagal memuat User Agreement');
         } finally {
             setIsLoading(false);
@@ -63,7 +62,7 @@ export default function UserAgreementPage() {
     }, [loadAgreements]);
 
     const resetForm = () => {
-        setTitle('Kebijakan Penggunaan Sistem'); // Default title
+        setTitle('Kebijakan Penggunaan Sistem');
         setContent('');
         setPriority('high');
         setExpiresAt('');
@@ -73,286 +72,257 @@ export default function UserAgreementPage() {
 
     const handleSubmit = async (e: React.FormEvent) => {
         e.preventDefault();
-
         if (!title.trim() || !content.trim()) {
-            toast.error('Judul dan isi agreement wajib diisi');
+            toast.error('Judul dan isi kebijakan wajib diisi');
             return;
         }
-
         setIsSending(true);
         try {
             const payload = {
                 title,
                 content,
                 priority,
-                type: 'AGREEMENT', // Force type
-                expiresAt: expiresAt || null
+                type: 'AGREEMENT',
+                expiresAt: expiresAt || null,
             };
-
             if (editingId) {
                 await api.put(`/api/announcements/${editingId}`, payload);
-                toast.success('Agreement berhasil diperbarui');
+                toast.success('Kebijakan diperbarui');
             } else {
                 await api.post('/api/announcements', payload);
-                toast.success('Agreement berhasil dibuat');
+                toast.success('Kebijakan dibuat');
             }
             resetForm();
             loadAgreements();
-        } catch (error) {
-            toast.error('Gagal menyimpan agreement');
+        } catch {
+            toast.error('Gagal menyimpan kebijakan');
         } finally {
             setIsSending(false);
         }
     };
 
-    const handleEdit = (agreement: Announcement) => {
-        setTitle(agreement.title);
-        setContent(agreement.content);
-        setPriority(agreement.priority);
-        setExpiresAt(agreement.expiresAt ? format(new Date(agreement.expiresAt), 'yyyy-MM-dd\'T\'HH:mm') : '');
-        setEditingId(agreement.id);
+    const handleEdit = (a: Agreement) => {
+        setTitle(a.title);
+        setContent(a.content);
+        setPriority(a.priority);
+        setExpiresAt(a.expiresAt ? a.expiresAt.slice(0, 16) : '');
+        setEditingId(a.id);
         setShowForm(true);
     };
 
-    const handleDelete = async (id: string) => {
-        if (!confirm('Yakin ingin menghapus agreement ini?')) return;
-
+    const confirmDelete = async () => {
+        if (!deleteTarget) return;
         try {
-            await api.delete(`/api/announcements/${id}`);
-            toast.success('Agreement berhasil dihapus');
+            await api.delete(`/api/announcements/${deleteTarget.id}`);
+            toast.success('Kebijakan dihapus');
+            setDeleteTarget(null);
             loadAgreements();
-        } catch (error) {
-            toast.error('Gagal menghapus agreement');
+        } catch {
+            toast.error('Gagal menghapus kebijakan');
         }
     };
 
     const handleToggleActive = async (id: string, currentActive: boolean) => {
         try {
             await api.put(`/api/announcements/${id}`, { isActive: !currentActive });
-            toast.success(currentActive ? 'Agreement dinonaktifkan' : 'Agreement diaktifkan');
+            toast.success(currentActive ? 'Kebijakan dinonaktifkan' : 'Kebijakan diaktifkan');
             loadAgreements();
-        } catch (error) {
-            toast.error('Gagal mengubah status agreement');
+        } catch {
+            toast.error('Gagal mengubah status kebijakan');
         }
     };
 
     if (isLoading) {
         return (
-            <div className="flex items-center justify-center h-[60vh]">
-                <div className="text-center">
-                    <Loader2 className="w-12 h-12 animate-spin text-primary-500 mx-auto" />
-                    <p className="text-white/50 mt-4">Memuat data...</p>
-                </div>
+            <div className="space-y-4">
+                <Skeleton className="h-9 w-56" />
+                <Skeleton className="h-32 w-full" />
             </div>
         );
     }
 
     return (
-        <div className="space-y-6 animate-fade-in">
-            {/* Header */}
-            <div className="flex flex-col lg:flex-row lg:items-center lg:justify-between gap-4">
-                <div className="flex items-center gap-4">
-                    <div className="w-16 h-16 rounded-2xl bg-gradient-to-br from-indigo-500 to-purple-600 flex items-center justify-center shadow-glow">
-                        <FileText className="w-8 h-8 text-white" />
-                    </div>
-                    <div>
-                        <h1 className="text-title-1 text-white">User Agreement</h1>
-                        <p className="text-white/50">Kelola kebijakan dan persetujuan pengguna</p>
-                    </div>
-                </div>
-                <div className="flex items-center gap-3">
-                    <button onClick={loadAgreements} className="btn-secondary flex items-center gap-2">
-                        <RefreshCw className="w-4 h-4" />
-                        Refresh
-                    </button>
-                    <button
-                        onClick={() => { resetForm(); setShowForm(true); }}
-                        className="btn-primary flex items-center gap-2"
-                    >
-                        <Plus className="w-4 h-4" />
-                        Buat Agreement
-                    </button>
-                </div>
-            </div>
+        <div className="space-y-4">
+            <PageHeader
+                title="Ketentuan layanan (User Agreement)"
+                subtitle="Kelola dokumen kebijakan penggunaan sistem yang tampil di halaman Syarat & Ketentuan"
+                actions={
+                    <>
+                        <Button
+                            variant="secondary"
+                            size="sm"
+                            onClick={loadAgreements}
+                            leftIcon={<RefreshCw className="w-3.5 h-3.5" aria-hidden="true" />}
+                        >
+                            Muat ulang
+                        </Button>
+                        <Button
+                            variant="primary"
+                            size="sm"
+                            onClick={() => {
+                                resetForm();
+                                setShowForm(true);
+                            }}
+                            leftIcon={<Plus className="w-3.5 h-3.5" aria-hidden="true" />}
+                        >
+                            Buat ketentuan
+                        </Button>
+                    </>
+                }
+            />
 
-            {/* Create/Edit Form Modal */}
-            {showForm && (
-                <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm">
-                    <div className="w-full max-w-lg mx-4 bg-slate-800 rounded-2xl shadow-2xl border border-white/10 overflow-hidden">
-                        <div className="flex items-center justify-between p-4 border-b border-white/10">
-                            <h3 className="text-lg font-bold text-white">
-                                {editingId ? 'Edit Agreement' : 'Buat Agreement Baru'}
-                            </h3>
-                            <button
-                                onClick={resetForm}
-                                className="p-2 rounded-lg hover:bg-white/10 transition-colors"
+            {agreements.length === 0 ? (
+                <Card>
+                    <EmptyState
+                        icon={<FileText className="w-6 h-6" />}
+                        title="Belum ada ketentuan layanan"
+                        description="Buat kebijakan penggunaan agar tampil di aplikasi karyawan."
+                        action={
+                            <Button
+                                variant="primary"
+                                onClick={() => {
+                                    resetForm();
+                                    setShowForm(true);
+                                }}
                             >
-                                <X className="w-5 h-5 text-white/60" />
-                            </button>
-                        </div>
-                        <form onSubmit={handleSubmit} className="p-6 space-y-4">
-                            <div>
-                                <label className="block text-sm font-medium text-white/70 mb-2">Judul Kebijakan</label>
-                                <input
-                                    type="text"
-                                    value={title}
-                                    onChange={(e) => setTitle(e.target.value)}
-                                    placeholder="Contoh: Kebijakan Penggunaan Sistem"
-                                    className="input-field"
-                                    required
-                                />
-                            </div>
-
-                            <div>
-                                <label className="block text-sm font-medium text-white/70 mb-2">Isi Kebijakan</label>
-                                <textarea
-                                    value={content}
-                                    onChange={(e) => setContent(e.target.value)}
-                                    placeholder="Tuliskan detail kebijakan di sini..."
-                                    rows={6}
-                                    className="input-field resize-none"
-                                    required
-                                />
-                            </div>
-
-                            <div className="grid grid-cols-2 gap-4">
-                                <div>
-                                    <label className="block text-sm font-medium text-white/70 mb-2">Prioritas</label>
-                                    <select
-                                        value={priority}
-                                        onChange={(e) => setPriority(e.target.value)}
-                                        className="input-field"
-                                    >
-                                        <option value="normal">Normal</option>
-                                        <option value="high">Tinggi</option>
-                                        <option value="urgent">Penting!</option>
-                                    </select>
-                                </div>
-                                <div>
-                                    <label className="block text-sm font-medium text-white/70 mb-2">
-                                        Kadaluarsa (Opsional)
-                                    </label>
-                                    <input
-                                        type="datetime-local"
-                                        value={expiresAt}
-                                        onChange={(e) => setExpiresAt(e.target.value)}
-                                        className="input-field"
-                                    />
-                                </div>
-                            </div>
-
-                            <div className="bg-blue-500/10 border border-blue-500/20 rounded-lg p-3">
-                                <p className="text-xs text-blue-200">
-                                    <CheckCircle className="w-3 h-3 inline mr-1" />
-                                    User akan diminta menyetujui agreement ini saat login berikutnya atau saat mengganti password.
-                                </p>
-                            </div>
-
-                            <div className="flex items-center gap-3 pt-4">
-                                <button
-                                    type="button"
-                                    onClick={resetForm}
-                                    className="flex-1 btn-secondary"
-                                >
-                                    Batal
-                                </button>
-                                <button
-                                    type="submit"
-                                    disabled={isSending}
-                                    className="flex-1 btn-primary flex items-center justify-center gap-2"
-                                >
-                                    {isSending ? (
-                                        <Loader2 className="w-4 h-4 animate-spin" />
-                                    ) : (
-                                        <Send className="w-4 h-4" />
-                                    )}
-                                    {editingId ? 'Simpan' : 'Terbitkan'}
-                                </button>
-                            </div>
-                        </form>
-                    </div>
-                </div>
-            )}
-
-            {/* Agreement List */}
-            <div className="space-y-4">
-                {agreements.length === 0 ? (
-                    <div className="glass-card rounded-2xl p-12 text-center">
-                        <FileText className="w-16 h-16 text-white/20 mx-auto mb-4" />
-                        <h3 className="text-lg font-medium text-white mb-2">Belum Ada Agreement</h3>
-                        <p className="text-white/50 mb-6">Buat kebijakan pertama untuk ditampilkan kepada user</p>
-                        <button
-                            onClick={() => setShowForm(true)}
-                            className="btn-primary inline-flex items-center gap-2"
-                        >
-                            <Plus className="w-4 h-4" />
-                            Buat Agreement
-                        </button>
-                    </div>
-                ) : (
-                    agreements.map((agreement) => (
-                        <div
-                            key={agreement.id}
-                            className={`glass-card rounded-2xl p-5 border transition-all ${agreement.isActive
-                                ? 'border-purple-500/30 hover:border-purple-500/50'
-                                : 'border-white/5 opacity-60'
-                                }`}
-                        >
-                            <div className="flex items-start justify-between gap-4">
-                                <div className="flex-1">
-                                    <div className="flex items-center gap-2 mb-2">
-                                        <span className="px-2 py-0.5 rounded text-xs font-medium bg-purple-500/20 text-purple-400 border border-purple-500/30">
-                                            AGREEMENT
+                                Buat ketentuan
+                            </Button>
+                        }
+                    />
+                </Card>
+            ) : (
+                <div className="space-y-3">
+                    {agreements.map((a) => (
+                        <Card key={a.id} className={!a.isActive ? 'opacity-65' : ''}>
+                            <div className="flex flex-col sm:flex-row sm:items-start justify-between gap-4">
+                                <div className="flex-1 space-y-2">
+                                    <div className="flex flex-wrap items-center gap-2">
+                                        <Badge variant="info">Kebijakan</Badge>
+                                        <Badge variant={a.isActive ? 'success' : 'neutral'} dot={a.isActive}>
+                                            {a.isActive ? 'Aktif' : 'Nonaktif'}
+                                        </Badge>
+                                    </div>
+                                    <h3 className="text-[15px] font-bold text-[#1c1917]">{a.title}</h3>
+                                    <p className="text-[13.5px] text-[#57534e] whitespace-pre-wrap leading-relaxed">
+                                        {a.content}
+                                    </p>
+                                    <div className="flex flex-wrap items-center gap-4 text-[12px] text-[#78716c] pt-1">
+                                        <span className="inline-flex items-center gap-1">
+                                            <Clock className="w-3.5 h-3.5" aria-hidden="true" />
+                                            {formatDateTimeShortWIB(a.createdAt)}
                                         </span>
-                                        {!agreement.isActive && (
-                                            <span className="px-2 py-0.5 rounded text-xs font-medium bg-gray-500/20 text-gray-400 border border-gray-500/30">
-                                                Nonaktif
+                                        <span>oleh {a.createdBy.name}</span>
+                                        {a.expiresAt && (
+                                            <span className="inline-flex items-center gap-1 text-[#b45309]">
+                                                <Calendar className="w-3.5 h-3.5" aria-hidden="true" />
+                                                Berakhir: {formatDateTimeShortWIB(a.expiresAt)}
                                             </span>
                                         )}
                                     </div>
-                                    <h4 className="text-lg font-semibold text-white mb-2">{agreement.title}</h4>
-                                    <p className="text-white/70 text-sm whitespace-pre-wrap mb-3 line-clamp-2">{agreement.content}</p>
-
-                                    <div className="flex items-center gap-4 text-xs text-white/50">
-                                        <div className="flex items-center gap-1">
-                                            <Clock className="w-3 h-3" />
-                                            <span>{formatDateTimeShortWIB(agreement.createdAt)}</span>
-                                        </div>
-                                        <span>oleh {agreement.createdBy.name}</span>
-                                    </div>
                                 </div>
-
-                                <div className="flex items-center gap-2">
-                                    <button
-                                        onClick={() => handleToggleActive(agreement.id, agreement.isActive)}
-                                        className={`p-2 rounded-lg transition-colors ${agreement.isActive
-                                            ? 'bg-emerald-500/20 text-emerald-400 hover:bg-emerald-500/30'
-                                            : 'bg-gray-500/20 text-gray-400 hover:bg-gray-500/30'
-                                            }`}
-                                        title={agreement.isActive ? 'Nonaktifkan' : 'Aktifkan'}
+                                <div className="flex items-center gap-1.5 flex-shrink-0">
+                                    <Button
+                                        variant="secondary"
+                                        size="sm"
+                                        onClick={() => handleToggleActive(a.id, a.isActive)}
                                     >
-                                        <CheckCircle className="w-4 h-4" />
-                                    </button>
-                                    <button
-                                        onClick={() => handleEdit(agreement)}
-                                        className="p-2 rounded-lg bg-blue-500/20 text-blue-400 hover:bg-blue-500/30 transition-colors"
-                                        title="Edit"
+                                        {a.isActive ? 'Nonaktifkan' : 'Aktifkan'}
+                                    </Button>
+                                    <Button
+                                        variant="ghost"
+                                        size="sm"
+                                        onClick={() => handleEdit(a)}
+                                        aria-label={`Edit ${a.title}`}
                                     >
-                                        <Edit2 className="w-4 h-4" />
-                                    </button>
-                                    <button
-                                        onClick={() => handleDelete(agreement.id)}
-                                        className="p-2 rounded-lg bg-red-500/20 text-red-400 hover:bg-red-500/30 transition-colors"
-                                        title="Hapus"
+                                        <Edit2 className="w-3.5 h-3.5" />
+                                    </Button>
+                                    <Button
+                                        variant="ghost"
+                                        size="sm"
+                                        onClick={() => setDeleteTarget(a)}
+                                        aria-label={`Hapus ${a.title}`}
                                     >
-                                        <Trash2 className="w-4 h-4" />
-                                    </button>
+                                        <Trash2 className="w-3.5 h-3.5 text-[#b91c1c]" />
+                                    </Button>
                                 </div>
                             </div>
-                        </div>
-                    ))
-                )}
-            </div>
+                        </Card>
+                    ))}
+                </div>
+            )}
+
+            <Modal
+                open={showForm}
+                onClose={resetForm}
+                title={editingId ? 'Edit ketentuan layanan' : 'Buat ketentuan layanan'}
+                size="md"
+                footer={
+                    <>
+                        <Button variant="secondary" onClick={resetForm}>
+                            Batal
+                        </Button>
+                        <Button
+                            variant="primary"
+                            loading={isSending}
+                            onClick={handleSubmit}
+                            leftIcon={<Send className="w-3.5 h-3.5" aria-hidden="true" />}
+                        >
+                            Simpan
+                        </Button>
+                    </>
+                }
+            >
+                <form onSubmit={handleSubmit} className="space-y-3">
+                    <Field label="Judul kebijakan" required>
+                        <Input value={title} onChange={(e) => setTitle(e.target.value)} />
+                    </Field>
+                    <Field label="Isi kebijakan" required>
+                        <Textarea
+                            rows={6}
+                            value={content}
+                            onChange={(e) => setContent(e.target.value)}
+                            placeholder="Tuliskan isi ketentuan layanan..."
+                        />
+                    </Field>
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                        <Field label="Prioritas">
+                            <Select value={priority} onChange={(e) => setPriority(e.target.value)}>
+                                <option value="normal">Normal</option>
+                                <option value="high">Tinggi</option>
+                                <option value="urgent">Penting</option>
+                            </Select>
+                        </Field>
+                        <Field label="Kadaluarsa" hint="Opsional">
+                            <Input
+                                type="datetime-local"
+                                value={expiresAt}
+                                onChange={(e) => setExpiresAt(e.target.value)}
+                            />
+                        </Field>
+                    </div>
+                </form>
+            </Modal>
+
+            <Modal
+                open={Boolean(deleteTarget)}
+                onClose={() => setDeleteTarget(null)}
+                title="Hapus ketentuan layanan?"
+                size="sm"
+                footer={
+                    <>
+                        <Button variant="secondary" onClick={() => setDeleteTarget(null)}>
+                            Batal
+                        </Button>
+                        <Button variant="danger" onClick={confirmDelete}>
+                            Hapus
+                        </Button>
+                    </>
+                }
+            >
+                <p className="text-[13.5px] text-[#57534e]">
+                    Hapus <b>{deleteTarget?.title}</b>?
+                </p>
+            </Modal>
         </div>
     );
 }

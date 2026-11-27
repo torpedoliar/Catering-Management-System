@@ -1,7 +1,14 @@
 import { useState, useEffect, useCallback } from 'react';
-import { RefreshCw, Download, CheckCircle, ArrowUpCircle, GitBranch } from 'lucide-react';
+import { RefreshCw, Download, CheckCircle, GitBranch } from 'lucide-react';
 import toast from 'react-hot-toast';
 import { api } from '../../contexts/AuthContext';
+import {
+    PageHeader,
+    Button,
+    Card,
+    Badge,
+    Skeleton,
+} from '../../components/ui';
 
 interface VersionInfo {
     version: string;
@@ -40,15 +47,14 @@ export default function UpdatePage() {
             setUpdateAvailable(data.updateAvailable);
 
             if (data.updateAvailable) {
-                toast.success(`Update tersedia: v${data.latest.version}`);
+                toast.success(`Pembaruan tersedia: v${data.latest.version}`);
             } else if (data.isNewer) {
-                toast.success('Anda menggunakan versi development terbaru');
+                toast.success('Anda menggunakan versi pengembangan terbaru');
             } else {
                 toast.success('Aplikasi sudah versi terbaru');
             }
-        } catch (error) {
-            console.error('Check update error:', error);
-            toast.error('Gagal memeriksa update');
+        } catch {
+            toast.error('Gagal memeriksa pembaruan');
         } finally {
             setIsChecking(false);
         }
@@ -60,158 +66,118 @@ export default function UpdatePage() {
 
     if (isLoading) {
         return (
-            <div className="flex items-center justify-center h-[60vh]">
-                <div className="text-center">
-                    <div className="w-12 h-12 border-4 border-orange-500 border-t-transparent rounded-full animate-spin mx-auto" />
-                    <p className="text-slate-500 mt-4">Memuat informasi versi...</p>
-                </div>
+            <div className="space-y-4 max-w-4xl">
+                <Skeleton className="h-9 w-56" />
+                <Skeleton className="h-36 w-full" />
+                <Skeleton className="h-36 w-full" />
             </div>
         );
     }
 
     return (
-        <div className="space-y-6 animate-fade-in">
-            {/* Header */}
-            <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
-                <div className="flex items-center gap-4">
-                    <div className="w-14 h-14 rounded-2xl bg-gradient-to-br from-purple-500 to-indigo-600 flex items-center justify-center shadow-lg shadow-purple-500/20">
-                        <ArrowUpCircle className="w-7 h-7 text-white" />
-                    </div>
-                    <div>
-                        <h1 className="text-2xl font-bold text-[#1a1f37]">System Update</h1>
-                        <p className="text-slate-500">Kelola update aplikasi</p>
-                    </div>
+        <div className="space-y-4 max-w-4xl">
+            <PageHeader
+                title="Pembaruan sistem"
+                subtitle="Informasi versi aplikasi saat ini dan panduan update"
+                actions={
+                    <Button
+                        variant="primary"
+                        size="sm"
+                        loading={isChecking}
+                        onClick={checkForUpdates}
+                        leftIcon={<RefreshCw className="w-3.5 h-3.5" aria-hidden="true" />}
+                    >
+                        Periksa pembaruan
+                    </Button>
+                }
+            />
+
+            <Card>
+                <div className="flex items-center gap-2 mb-4">
+                    <GitBranch className="w-4 h-4 text-[#b45309]" aria-hidden="true" />
+                    <h2 className="text-[15px] font-bold text-[#1c1917]">Versi terpasang</h2>
                 </div>
-
-                <button
-                    onClick={checkForUpdates}
-                    disabled={isChecking}
-                    className="btn-secondary flex items-center gap-2"
-                >
-                    <RefreshCw className={`w-4 h-4 ${isChecking ? 'animate-spin' : ''}`} />
-                    Check for Updates
-                </button>
-            </div>
-
-            {/* Current Version Card */}
-            <div className="card p-6">
-                <h2 className="text-lg font-semibold text-[#1a1f37] mb-4 flex items-center gap-2">
-                    <GitBranch className="w-5 h-5 text-purple-500" />
-                    Versi Saat Ini
-                </h2>
 
                 {currentVersion ? (
                     <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-                        <div>
-                            <p className="text-sm text-slate-500">Versi</p>
-                            <p className="text-2xl font-bold text-purple-600">v{currentVersion.version}</p>
+                        <div className="p-3 rounded-[10px] bg-[#fafaf9] border border-[#e7e5e4]">
+                            <div className="text-[11.5px] font-semibold uppercase text-[#78716c]">Versi</div>
+                            <div className="text-[24px] font-extrabold text-[#b45309] tabular-nums mt-0.5">
+                                v{currentVersion.version}
+                            </div>
                         </div>
-                        <div>
-                            <p className="text-sm text-slate-500">Tanggal Rilis</p>
-                            <p className="font-medium text-[#1a1f37]">{currentVersion.releaseDate}</p>
+                        <div className="p-3 rounded-[10px] bg-[#fafaf9] border border-[#e7e5e4]">
+                            <div className="text-[11.5px] font-semibold uppercase text-[#78716c]">Tanggal rilis</div>
+                            <div className="text-[14px] font-semibold text-[#1c1917] mt-1">
+                                {currentVersion.releaseDate}
+                            </div>
                         </div>
-                        <div>
-                            <p className="text-sm text-slate-500">Branch</p>
-                            <p className="font-medium text-[#1a1f37]">{currentVersion.branch || 'main'}</p>
+                        <div className="p-3 rounded-[10px] bg-[#fafaf9] border border-[#e7e5e4]">
+                            <div className="text-[11.5px] font-semibold uppercase text-[#78716c]">Branch</div>
+                            <div className="mt-1">
+                                <Badge variant="neutral">{currentVersion.branch || 'main'}</Badge>
+                            </div>
                         </div>
                     </div>
                 ) : (
-                    <p className="text-slate-500">Tidak dapat membaca informasi versi</p>
+                    <p className="text-[13px] text-[#78716c]">Tidak dapat membaca informasi versi</p>
                 )}
 
                 {currentVersion?.changelog && currentVersion.changelog.length > 0 && (
-                    <div className="mt-4 pt-4 border-t border-slate-100">
-                        <p className="text-sm text-slate-500 mb-2">Changelog:</p>
-                        <ul className="list-disc list-inside text-sm text-slate-600 space-y-1">
+                    <div className="mt-4 pt-3 border-t border-[#f5f5f4]">
+                        <div className="text-[12px] font-semibold text-[#57534e] mb-1.5">Catatan perubahan:</div>
+                        <ul className="list-disc list-inside text-[13px] text-[#57534e] space-y-1">
                             {currentVersion.changelog.map((item, i) => (
                                 <li key={i}>{item}</li>
                             ))}
                         </ul>
                     </div>
                 )}
-            </div>
+            </Card>
 
-            {/* Update Available Card */}
             {updateAvailable && latestVersion && (
-                <div className="card p-6 border-2 border-green-200 bg-green-50">
-                    <div className="flex items-start gap-4">
-                        <div className="w-12 h-12 rounded-xl bg-green-500 flex items-center justify-center flex-shrink-0">
-                            <Download className="w-6 h-6 text-white" />
-                        </div>
-                        <div className="flex-1">
-                            <h3 className="text-lg font-semibold text-green-800">Update Tersedia!</h3>
-                            <p className="text-green-700 mt-1">
-                                Versi baru <strong>v{latestVersion.version}</strong> tersedia (rilis: {latestVersion.releaseDate})
-                            </p>
-
-                            {latestVersion.changelog && latestVersion.changelog.length > 0 && (
-                                <div className="mt-3">
-                                    <p className="text-sm text-green-600 font-medium">Perubahan:</p>
-                                    <ul className="list-disc list-inside text-sm text-green-700 mt-1">
-                                        {latestVersion.changelog.map((item, i) => (
-                                            <li key={i}>{item}</li>
-                                        ))}
-                                    </ul>
-                                </div>
-                            )}
-
-                            <div className="mt-4 p-4 bg-white border border-green-300 rounded-xl">
-                                <p className="text-sm font-medium text-green-800 mb-2">
-                                    Untuk update, jalankan script berikut di server:
-                                </p>
-                                <div className="bg-slate-900 rounded-lg p-3 font-mono text-sm text-green-400">
-                                    <div>cd /path/to/project</div>
-                                    <div className="text-amber-400">.\update.ps1</div>
-                                    <div className="text-slate-500"># atau di Linux: ./update.sh</div>
-                                </div>
+                <div className="p-4 rounded-[14px] bg-[#f0fdf4] border border-[#86efac]">
+                    <div className="flex items-start gap-3">
+                        <Download className="w-5 h-5 text-[#15803d] flex-shrink-0 mt-0.5" aria-hidden="true" />
+                        <div className="flex-1 space-y-2">
+                            <div className="text-[14.5px] font-bold text-[#166534]">
+                                Pembaruan tersedia: v{latestVersion.version}
                             </div>
-                        </div>
-                    </div>
-                </div>
-            )}
-
-            {/* No Update Card */}
-            {!updateAvailable && latestVersion && (
-                <div className="card p-6 border-2 border-emerald-200 bg-emerald-50">
-                    <div className="flex items-center gap-4">
-                        <div className="w-12 h-12 rounded-xl bg-emerald-500 flex items-center justify-center">
-                            <CheckCircle className="w-6 h-6 text-white" />
-                        </div>
-                        <div>
-                            <h3 className="text-lg font-semibold text-emerald-800">Aplikasi Sudah Terbaru</h3>
-                            <p className="text-emerald-700">
-                                Anda sudah menggunakan versi terbaru (v{currentVersion?.version})
+                            <p className="text-[13px] text-[#15803d]">
+                                Dirilis: {latestVersion.releaseDate}
                             </p>
+                            {latestVersion.changelog && latestVersion.changelog.length > 0 && (
+                                <ul className="list-disc list-inside text-[12.5px] text-[#166534] space-y-0.5">
+                                    {latestVersion.changelog.map((item, i) => (
+                                        <li key={i}>{item}</li>
+                                    ))}
+                                </ul>
+                            )}
                         </div>
                     </div>
                 </div>
             )}
 
-            {/* Instructions */}
-            <div className="card p-6">
-                <h2 className="text-lg font-semibold text-[#1a1f37] mb-4">Cara Update Aplikasi</h2>
-                <div className="space-y-3 text-sm text-slate-600">
-                    <p>Untuk update aplikasi, jalankan script berikut di server/host machine:</p>
-
-                    <div className="bg-slate-900 rounded-xl p-4 font-mono text-sm">
-                        <div className="text-slate-400"># Masuk ke direktori project</div>
-                        <div className="text-green-400">cd /path/to/Catering-Management</div>
-                        <div className="mt-2 text-slate-400"># Jalankan script update</div>
-                        <div className="text-amber-400">.\update.ps1</div>
-                        <div className="text-slate-500"># atau di Linux: ./update.sh</div>
+            {!updateAvailable && latestVersion && (
+                <div className="p-4 rounded-[14px] bg-[#f0fdf4] border border-[#bbf7d0] flex items-center gap-3">
+                    <CheckCircle className="w-5 h-5 text-[#15803d]" aria-hidden="true" />
+                    <div className="text-[13px] text-[#166534]">
+                        <b>Aplikasi sudah versi terbaru</b> (v{currentVersion?.version})
                     </div>
-
-                    <p className="mt-4">Script akan otomatis:</p>
-                    <ul className="list-disc list-inside space-y-1 pl-2 text-slate-500">
-                        <li>Backup database</li>
-                        <li>Pull kode terbaru dari GitHub</li>
-                        <li>Rebuild containers</li>
-                        <li>Sync database schema dengan <code className="bg-slate-100 px-1">prisma db push</code></li>
-                        <li>Cleanup backup lama</li>
-                    </ul>
                 </div>
-            </div>
+            )}
+
+            <Card>
+                <h2 className="text-[15px] font-bold text-[#1c1917] mb-3">Panduan pembaruan server</h2>
+                <p className="text-[13px] text-[#57534e] mb-3">
+                    Untuk memperbarui aplikasi di server produksi, jalankan skrip pembaruan pada direktori proyek:
+                </p>
+                <pre className="p-3.5 rounded-[10px] bg-[#1c1917] text-[#fafaf9] font-mono text-[12.5px] overflow-x-auto leading-relaxed">
+{`cd /path/to/Catering-Management
+.\\update.ps1   # Windows
+./update.sh   # Linux`}
+                </pre>
+            </Card>
         </div>
     );
 }
-

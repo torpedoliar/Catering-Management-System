@@ -21,6 +21,7 @@ export interface UserWhereFilter {
     division?: string | { contains: string; mode: 'insensitive' };
     department?: string | { contains: string; mode: 'insensitive' };
     departmentId?: string | null;
+    blacklists?: Record<string, unknown>;
     OR?: Array<Record<string, unknown>>;
 }
 

@@ -32,11 +32,14 @@ if (!fs.existsSync(appealUploadDir)) {
 // Get all messages with filters (Admin only)
 router.get('/', authMiddleware, adminMiddleware, async (req: AuthRequest, res: Response) => {
     try {
-        const { type, shiftId, startDate, endDate, userId, page = '1', limit = '50' } = req.query;
+        const { type, status, shiftId, startDate, endDate, userId, page = '1', limit = '50' } = req.query;
 
         const where: any = {};
 
         if (type) where.type = type;
+        if (status && ['PENDING', 'APPROVED', 'REJECTED'].includes(status as string)) {
+            where.status = status;
+        }
         if (shiftId) where.shiftId = shiftId;
         if (userId) where.userId = userId;
 

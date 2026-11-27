@@ -1,7 +1,15 @@
 import { useState, useEffect, useRef, useCallback } from 'react';
-import { api } from '../../contexts/AuthContext';
-import { Palette, Upload, Trash2, Loader2, Save, Image, FileImage, RotateCcw } from 'lucide-react';
+import { Palette, Upload, Trash2, Save, Image as ImageIcon } from 'lucide-react';
 import toast from 'react-hot-toast';
+import { api } from '../../contexts/AuthContext';
+import {
+    PageHeader,
+    Button,
+    Card,
+    Field,
+    Input,
+    Skeleton,
+} from '../../components/ui';
 
 interface BrandingSettings {
     appName: string;
@@ -38,8 +46,7 @@ export default function BrandingSettingsPage() {
             const res = await api.get('/api/settings/branding');
             setSettings(res.data);
             setOriginalSettings(res.data);
-        } catch (error) {
-            console.error('Failed to load branding:', error);
+        } catch {
             toast.error('Gagal memuat pengaturan branding');
         } finally {
             setIsLoading(false);
@@ -50,141 +57,35 @@ export default function BrandingSettingsPage() {
         loadSettings();
     }, [loadSettings]);
 
-    const handleLogoSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
-        const file = e.target.files?.[0];
+    const readPreview = (
+        file: File | undefined,
+        maxKb: number,
+        onOk: (f: File, dataUrl: string) => void
+    ) => {
         if (!file) return;
-
-        if (file.size > 500 * 1024) {
-            toast.error('Ukuran file maksimal 500KB');
+        if (file.size > maxKb * 1024) {
+            toast.error(`Ukuran file maksimal ${maxKb >= 1000 ? `${maxKb / 1000}MB` : `${maxKb}KB`}`);
             return;
         }
-
-        setLogoFile(file);
         const reader = new FileReader();
-        reader.onload = () => setLogoPreview(reader.result as string);
+        reader.onload = () => onOk(file, reader.result as string);
         reader.readAsDataURL(file);
     };
 
-    const handleFaviconSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
-        const file = e.target.files?.[0];
+    const uploadAsset = async (
+        field: 'logo' | 'favicon' | 'background',
+        file: File | null,
+        url: string,
+        onSuccess: (data: Record<string, string>) => void
+    ) => {
         if (!file) return;
-
-        if (file.size > 500 * 1024) {
-            toast.error('Ukuran file maksimal 500KB');
-            return;
-        }
-
-        setFaviconFile(file);
-        const reader = new FileReader();
-        reader.onload = () => setFaviconPreview(reader.result as string);
-        reader.readAsDataURL(file);
-    };
-
-    const handleBgSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
-        const file = e.target.files?.[0];
-        if (!file) return;
-
-        if (file.size > 2000 * 1024) {
-            toast.error('Ukuran file maksimal 2MB');
-            return;
-        }
-
-        setBgFile(file);
-        const reader = new FileReader();
-        reader.onload = () => setBgPreview(reader.result as string);
-        reader.readAsDataURL(file);
-    };
-
-    const uploadLogo = async () => {
-        if (!logoFile) return;
-
-        const formData = new FormData();
-        formData.append('logo', logoFile);
-
+        const fd = new FormData();
+        fd.append(field, file);
         try {
-            const res = await api.post('/api/settings/branding/logo', formData);
-            setSettings(s => ({ ...s, logoUrl: res.data.logoUrl }));
-            setLogoFile(null);
-            setLogoPreview(null);
-            toast.success('Logo berhasil diupload');
-        } catch (error: any) {
-            toast.error(error.response?.data?.error || 'Gagal upload logo');
-        }
-    };
-
-    const uploadFavicon = async () => {
-        if (!faviconFile) return;
-
-        const formData = new FormData();
-        formData.append('favicon', faviconFile);
-
-        try {
-            const res = await api.post('/api/settings/branding/favicon', formData);
-            setSettings(s => ({ ...s, faviconUrl: res.data.faviconUrl }));
-            setFaviconFile(null);
-            setFaviconPreview(null);
-            toast.success('Favicon berhasil diupload');
-
-            // Update browser favicon immediately
-            const favicon = document.getElementById('dynamic-favicon') as HTMLLinkElement;
-            if (favicon) {
-                favicon.href = res.data.faviconUrl + '?t=' + Date.now();
-            }
-        } catch (error: any) {
-            toast.error(error.response?.data?.error || 'Gagal upload favicon');
-        }
-    };
-
-    const uploadBackground = async () => {
-        if (!bgFile) return;
-
-        const formData = new FormData();
-        formData.append('background', bgFile);
-
-        try {
-            const res = await api.post('/api/settings/branding/background', formData);
-            setSettings(s => ({ ...s, loginBackgroundUrl: res.data.loginBackgroundUrl }));
-            setBgFile(null);
-            setBgPreview(null);
-            toast.success('Background berhasil diupload');
-        } catch (error: any) {
-            toast.error(error.response?.data?.error || 'Gagal upload background');
-        }
-    };
-
-    const deleteLogo = async () => {
-        try {
-            await api.delete('/api/settings/branding/logo');
-            setSettings(s => ({ ...s, logoUrl: null }));
-            toast.success('Logo dihapus');
-        } catch (error: any) {
-            toast.error(error.response?.data?.error || 'Gagal menghapus logo');
-        }
-    };
-
-    const deleteFavicon = async () => {
-        try {
-            await api.delete('/api/settings/branding/favicon');
-            setSettings(s => ({ ...s, faviconUrl: null }));
-            toast.success('Favicon dihapus');
-
-            // Reset browser favicon to default
-            const favicon = document.getElementById('dynamic-favicon') as HTMLLinkElement;
-            if (favicon) {
-                favicon.href = '/vite.svg';
-            }
-        } catch (error: any) {
-            toast.error(error.response?.data?.error || 'Gagal menghapus favicon');
-        }
-    };
-
-    const deleteBackground = async () => {
-        try {
-            await api.delete('/api/settings/branding/background');
-            setSettings(s => ({ ...s, loginBackgroundUrl: null }));
-            toast.success('Background dihapus');
-        } catch (error: any) {
-            toast.error(error.response?.data?.error || 'Gagal menghapus background');
+            const res = await api.post(url, fd);
+            onSuccess(res.data);
+        } catch (error) {
+            toast.error((error as { response?: { data?: { error?: string } } })?.response?.data?.error || `Gagal mengunggah ${field}`);
         }
     };
 
@@ -195,346 +96,287 @@ export default function BrandingSettingsPage() {
                 appName: settings.appName,
                 appShortName: settings.appShortName,
             });
-            setOriginalSettings(s => s ? { ...s, appName: settings.appName, appShortName: settings.appShortName } : null);
-            toast.success('Pengaturan disimpan');
-
-            // Update browser title
+            setOriginalSettings((s) =>
+                s ? { ...s, appName: settings.appName, appShortName: settings.appShortName } : null
+            );
             document.title = settings.appName;
-        } catch (error: any) {
-            toast.error(error.response?.data?.error || 'Gagal menyimpan');
+            toast.success('Nama aplikasi disimpan');
+        } catch (error) {
+            toast.error((error as { response?: { data?: { error?: string } } })?.response?.data?.error || 'Gagal menyimpan');
         } finally {
             setIsSaving(false);
         }
     };
 
-    const hasTextChanges = originalSettings && (
-        settings.appName !== originalSettings.appName ||
-        settings.appShortName !== originalSettings.appShortName
+    const hasTextChanges = Boolean(
+        originalSettings &&
+            (settings.appName !== originalSettings.appName ||
+                settings.appShortName !== originalSettings.appShortName)
     );
 
     if (isLoading) {
         return (
-            <div className="flex items-center justify-center h-[60vh]">
-                <Loader2 className="w-8 h-8 animate-spin text-orange-500" />
+            <div className="space-y-4 max-w-4xl">
+                <Skeleton className="h-9 w-56" />
+                <Skeleton className="h-36 w-full" />
+                <Skeleton className="h-44 w-full" />
             </div>
         );
     }
 
     return (
-        <div className="w-full max-w-7xl mx-auto space-y-6 animate-fade-in">
-            {/* Header */}
-            <div className="flex items-center justify-between">
-                <div>
-                    <h1 className="text-2xl font-bold text-[#1a1f37]">Branding</h1>
-                    <p className="text-slate-500">Kustomisasi logo dan nama aplikasi</p>
-                </div>
-            </div>
+        <div className="space-y-4 max-w-4xl">
+            <PageHeader
+                title="Branding aplikasi"
+                subtitle="Atur nama aplikasi, logo sidebar, favicon browser, dan latar halaman login"
+            />
 
-            {/* App Name Settings */}
-            <div className="card p-6">
-                <div className="flex items-center gap-3 mb-6">
-                    <div className="w-10 h-10 rounded-xl bg-orange-50 flex items-center justify-center">
-                        <Palette className="w-5 h-5 text-orange-500" />
-                    </div>
-                    <h2 className="text-lg font-semibold text-[#1a1f37]">Nama Aplikasi</h2>
+            <Card>
+                <div className="flex items-center gap-2 mb-4">
+                    <Palette className="w-4 h-4 text-[#b45309]" aria-hidden="true" />
+                    <h2 className="text-[15px] font-bold text-[#1c1917]">Nama aplikasi</h2>
                 </div>
-
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-4">
-                    <div>
-                        <label className="block text-sm font-medium text-slate-700 mb-2">
-                            Nama Lengkap
-                        </label>
-                        <input
-                            type="text"
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                    <Field label="Nama lengkap" hint="Tampil di judul tab browser dan halaman login">
+                        <Input
                             value={settings.appName}
-                            onChange={(e) => setSettings(s => ({ ...s, appName: e.target.value }))}
-                            className="input-field"
-                            placeholder="Catering Management System"
+                            onChange={(e) => setSettings((s) => ({ ...s, appName: e.target.value }))}
                         />
-                        <p className="text-xs text-slate-500 mt-1">Tampil di browser tab dan halaman login</p>
-                    </div>
-                    <div>
-                        <label className="block text-sm font-medium text-slate-700 mb-2">
-                            Nama Singkat
-                        </label>
-                        <input
-                            type="text"
+                    </Field>
+                    <Field label="Nama singkat" hint="Tampil di sidebar dan header">
+                        <Input
                             value={settings.appShortName}
-                            onChange={(e) => setSettings(s => ({ ...s, appShortName: e.target.value }))}
-                            className="input-field"
-                            placeholder="Catering"
+                            onChange={(e) => setSettings((s) => ({ ...s, appShortName: e.target.value }))}
                         />
-                        <p className="text-xs text-slate-500 mt-1">Tampil di sidebar</p>
-                    </div>
+                    </Field>
                 </div>
-
                 {hasTextChanges && (
-                    <div className="flex justify-end">
-                        <button
+                    <div className="flex justify-end mt-4 pt-3 border-t border-[#f5f5f4]">
+                        <Button
+                            variant="primary"
+                            size="sm"
+                            loading={isSaving}
                             onClick={saveTextSettings}
-                            disabled={isSaving}
-                            className="btn-primary flex items-center gap-2"
+                            leftIcon={<Save className="w-3.5 h-3.5" aria-hidden="true" />}
                         >
-                            {isSaving ? <Loader2 className="w-4 h-4 animate-spin" /> : <Save className="w-4 h-4" />}
-                            Simpan Nama
-                        </button>
+                            Simpan nama
+                        </Button>
                     </div>
                 )}
-            </div>
+            </Card>
 
-            {/* Logo Upload */}
-            <div className="card p-6">
-                <div className="flex items-center gap-3 mb-6">
-                    <div className="w-10 h-10 rounded-xl bg-blue-50 flex items-center justify-center">
-                        <Image className="w-5 h-5 text-blue-500" />
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                {/* Logo */}
+                <Card>
+                    <h3 className="text-[14px] font-bold text-[#1c1917] mb-1">Logo aplikasi</h3>
+                    <p className="text-[12px] text-[#78716c] mb-3">PNG/SVG maks. 500KB</p>
+                    <div className="h-28 rounded-[10px] bg-[#fafaf9] border border-[#e7e5e4] flex items-center justify-center mb-3 overflow-hidden p-2">
+                        {logoPreview || settings.logoUrl ? (
+                            <img
+                                src={logoPreview || settings.logoUrl || ''}
+                                alt="Logo"
+                                className="max-h-full max-w-full object-contain"
+                            />
+                        ) : (
+                            <ImageIcon className="w-8 h-8 text-[#a8a29e]" aria-hidden="true" />
+                        )}
                     </div>
-                    <div>
-                        <h2 className="text-lg font-semibold text-[#1a1f37]">Logo Aplikasi</h2>
-                        <p className="text-sm text-slate-500">Tampil di sidebar dan halaman login</p>
-                    </div>
-                </div>
-
-                <div className="flex flex-col md:flex-row gap-6">
-                    {/* Current/Preview Logo */}
-                    <div className="flex-shrink-0">
-                        <p className="text-sm font-medium text-slate-700 mb-2">
-                            {logoPreview ? 'Preview' : 'Logo Saat Ini'}
-                        </p>
-                        <div className="w-32 h-32 rounded-xl border-2 border-dashed border-slate-300 flex items-center justify-center bg-slate-50 overflow-hidden">
-                            {logoPreview ? (
-                                <img src={logoPreview} alt="Preview" className="w-full h-full object-contain p-2" />
-                            ) : settings.logoUrl ? (
-                                <img src={settings.logoUrl} alt="Logo" className="w-full h-full object-contain p-2" />
-                            ) : (
-                                <div className="text-center text-slate-400">
-                                    <Image className="w-8 h-8 mx-auto mb-1" />
-                                    <span className="text-xs">Default</span>
-                                </div>
-                            )}
-                        </div>
-                    </div>
-
-                    {/* Upload Controls */}
-                    <div className="flex-1 space-y-3">
-                        <input
-                            ref={logoInputRef}
-                            type="file"
-                            accept="image/png,image/svg+xml,image/jpeg,image/webp"
-                            onChange={handleLogoSelect}
-                            className="hidden"
-                        />
-
-                        <button
+                    <input
+                        ref={logoInputRef}
+                        type="file"
+                        accept="image/*"
+                        className="hidden"
+                        onChange={(e) =>
+                            readPreview(e.target.files?.[0], 500, (f, d) => {
+                                setLogoFile(f);
+                                setLogoPreview(d);
+                            })
+                        }
+                    />
+                    <div className="flex flex-wrap gap-2">
+                        <Button
+                            variant="secondary"
+                            size="sm"
                             onClick={() => logoInputRef.current?.click()}
-                            className="btn-secondary flex items-center gap-2"
+                            leftIcon={<Upload className="w-3.5 h-3.5" />}
                         >
-                            <Upload className="w-4 h-4" />
-                            Pilih File Logo
-                        </button>
-
+                            Pilih
+                        </Button>
                         {logoFile && (
-                            <div className="flex items-center gap-2">
-                                <span className="text-sm text-slate-600">{logoFile.name}</span>
-                                <button
-                                    onClick={uploadLogo}
-                                    className="btn-primary text-sm py-1 px-3"
-                                >
-                                    Upload
-                                </button>
-                                <button
-                                    onClick={() => { setLogoFile(null); setLogoPreview(null); }}
-                                    className="text-slate-400 hover:text-slate-600"
-                                >
-                                    <RotateCcw className="w-4 h-4" />
-                                </button>
-                            </div>
-                        )}
-
-                        {settings.logoUrl && !logoFile && (
-                            <button
-                                onClick={deleteLogo}
-                                className="text-red-500 hover:text-red-600 text-sm flex items-center gap-1"
+                            <Button
+                                variant="primary"
+                                size="sm"
+                                onClick={() =>
+                                    uploadAsset('logo', logoFile, '/api/settings/branding/logo', (d) => {
+                                        setSettings((s) => ({ ...s, logoUrl: d.logoUrl }));
+                                        setLogoFile(null);
+                                        setLogoPreview(null);
+                                        toast.success('Logo diperbarui');
+                                    })
+                                }
                             >
-                                <Trash2 className="w-4 h-4" />
-                                Hapus Logo
-                            </button>
+                                Unggah
+                            </Button>
                         )}
-
-                        <p className="text-xs text-slate-500">
-                            Format: PNG, SVG, JPG, WebP. Maksimal 500KB. Rekomendasi: 200x200px
-                        </p>
+                        {settings.logoUrl && (
+                            <Button
+                                variant="danger"
+                                size="sm"
+                                aria-label="Hapus logo"
+                                onClick={async () => {
+                                    await api.delete('/api/settings/branding/logo');
+                                    setSettings((s) => ({ ...s, logoUrl: null }));
+                                    toast.success('Logo dihapus');
+                                }}
+                            >
+                                <Trash2 className="w-3.5 h-3.5" />
+                            </Button>
+                        )}
                     </div>
-                </div>
-            </div>
+                </Card>
 
-            {/* Favicon Upload */}
-            <div className="card p-6">
-                <div className="flex items-center gap-3 mb-6">
-                    <div className="w-10 h-10 rounded-xl bg-purple-50 flex items-center justify-center">
-                        <FileImage className="w-5 h-5 text-purple-500" />
+                {/* Favicon */}
+                <Card>
+                    <h3 className="text-[14px] font-bold text-[#1c1917] mb-1">Favicon browser</h3>
+                    <p className="text-[12px] text-[#78716c] mb-3">PNG/ICO maks. 500KB</p>
+                    <div className="h-28 rounded-[10px] bg-[#fafaf9] border border-[#e7e5e4] flex items-center justify-center mb-3 overflow-hidden p-2">
+                        {faviconPreview || settings.faviconUrl ? (
+                            <img
+                                src={faviconPreview || settings.faviconUrl || ''}
+                                alt="Favicon"
+                                className="w-12 h-12 object-contain"
+                            />
+                        ) : (
+                            <ImageIcon className="w-8 h-8 text-[#a8a29e]" aria-hidden="true" />
+                        )}
                     </div>
-                    <div>
-                        <h2 className="text-lg font-semibold text-[#1a1f37]">Favicon</h2>
-                        <p className="text-sm text-slate-500">Ikon kecil di browser tab</p>
-                    </div>
-                </div>
-
-                <div className="flex flex-col md:flex-row gap-6">
-                    {/* Current/Preview Favicon */}
-                    <div className="flex-shrink-0">
-                        <p className="text-sm font-medium text-slate-700 mb-2">
-                            {faviconPreview ? 'Preview' : 'Favicon Saat Ini'}
-                        </p>
-                        <div className="w-20 h-20 rounded-xl border-2 border-dashed border-slate-300 flex items-center justify-center bg-slate-50 overflow-hidden">
-                            {faviconPreview ? (
-                                <img src={faviconPreview} alt="Preview" className="w-12 h-12 object-contain" />
-                            ) : settings.faviconUrl ? (
-                                <img src={settings.faviconUrl} alt="Favicon" className="w-12 h-12 object-contain" />
-                            ) : (
-                                <div className="text-center text-slate-400">
-                                    <FileImage className="w-6 h-6 mx-auto" />
-                                    <span className="text-xs">Default</span>
-                                </div>
-                            )}
-                        </div>
-                    </div>
-
-                    {/* Upload Controls */}
-                    <div className="flex-1 space-y-3">
-                        <input
-                            ref={faviconInputRef}
-                            type="file"
-                            accept="image/png,image/svg+xml,image/x-icon,image/jpeg"
-                            onChange={handleFaviconSelect}
-                            className="hidden"
-                        />
-
-                        <button
+                    <input
+                        ref={faviconInputRef}
+                        type="file"
+                        accept="image/*"
+                        className="hidden"
+                        onChange={(e) =>
+                            readPreview(e.target.files?.[0], 500, (f, d) => {
+                                setFaviconFile(f);
+                                setFaviconPreview(d);
+                            })
+                        }
+                    />
+                    <div className="flex flex-wrap gap-2">
+                        <Button
+                            variant="secondary"
+                            size="sm"
                             onClick={() => faviconInputRef.current?.click()}
-                            className="btn-secondary flex items-center gap-2"
+                            leftIcon={<Upload className="w-3.5 h-3.5" />}
                         >
-                            <Upload className="w-4 h-4" />
-                            Pilih File Favicon
-                        </button>
-
+                            Pilih
+                        </Button>
                         {faviconFile && (
-                            <div className="flex items-center gap-2">
-                                <span className="text-sm text-slate-600">{faviconFile.name}</span>
-                                <button
-                                    onClick={uploadFavicon}
-                                    className="btn-primary text-sm py-1 px-3"
-                                >
-                                    Upload
-                                </button>
-                                <button
-                                    onClick={() => { setFaviconFile(null); setFaviconPreview(null); }}
-                                    className="text-slate-400 hover:text-slate-600"
-                                >
-                                    <RotateCcw className="w-4 h-4" />
-                                </button>
-                            </div>
-                        )}
-
-                        {settings.faviconUrl && !faviconFile && (
-                            <button
-                                onClick={deleteFavicon}
-                                className="text-red-500 hover:text-red-600 text-sm flex items-center gap-1"
+                            <Button
+                                variant="primary"
+                                size="sm"
+                                onClick={() =>
+                                    uploadAsset('favicon', faviconFile, '/api/settings/branding/favicon', (d) => {
+                                        setSettings((s) => ({ ...s, faviconUrl: d.faviconUrl }));
+                                        setFaviconFile(null);
+                                        setFaviconPreview(null);
+                                        const fav = document.getElementById('dynamic-favicon') as HTMLLinkElement | null;
+                                        if (fav) fav.href = `${d.faviconUrl}?t=${Date.now()}`;
+                                        toast.success('Favicon diperbarui');
+                                    })
+                                }
                             >
-                                <Trash2 className="w-4 h-4" />
-                                Hapus Favicon
-                            </button>
+                                Unggah
+                            </Button>
                         )}
-
-                        <p className="text-xs text-slate-500">
-                            Format: PNG, SVG, ICO. Maksimal 500KB. Rekomendasi: 64x64px
-                        </p>
+                        {settings.faviconUrl && (
+                            <Button
+                                variant="danger"
+                                size="sm"
+                                aria-label="Hapus favicon"
+                                onClick={async () => {
+                                    await api.delete('/api/settings/branding/favicon');
+                                    setSettings((s) => ({ ...s, faviconUrl: null }));
+                                    toast.success('Favicon dihapus');
+                                }}
+                            >
+                                <Trash2 className="w-3.5 h-3.5" />
+                            </Button>
+                        )}
                     </div>
-                </div>
-            </div>
+                </Card>
 
-            {/* Background Upload */}
-            <div className="card p-6">
-                <div className="flex items-center gap-3 mb-6">
-                    <div className="w-10 h-10 rounded-xl bg-slate-100 flex items-center justify-center">
-                        <Image className="w-5 h-5 text-slate-600" />
+                {/* Login Background */}
+                <Card>
+                    <h3 className="text-[14px] font-bold text-[#1c1917] mb-1">Latar halaman login</h3>
+                    <p className="text-[12px] text-[#78716c] mb-3">JPG/PNG maks. 2MB</p>
+                    <div className="h-28 rounded-[10px] bg-[#fafaf9] border border-[#e7e5e4] flex items-center justify-center mb-3 overflow-hidden">
+                        {bgPreview || settings.loginBackgroundUrl ? (
+                            <img
+                                src={bgPreview || settings.loginBackgroundUrl || ''}
+                                alt="Background"
+                                className="w-full h-full object-cover"
+                            />
+                        ) : (
+                            <ImageIcon className="w-8 h-8 text-[#a8a29e]" aria-hidden="true" />
+                        )}
                     </div>
-                    <div>
-                        <h2 className="text-lg font-semibold text-[#1a1f37]">Login Background</h2>
-                        <p className="text-sm text-slate-500">Foto kustom untuk latar panel kiri halaman Login</p>
-                    </div>
-                </div>
-
-                <div className="flex flex-col md:flex-row gap-6">
-                    {/* Current/Preview Background */}
-                    <div className="flex-shrink-0">
-                        <p className="text-sm font-medium text-slate-700 mb-2">
-                            {bgPreview ? 'Preview' : 'Background Saat Ini'}
-                        </p>
-                        <div className="w-48 h-32 rounded-xl border-2 border-dashed border-slate-300 flex items-center justify-center bg-slate-50 overflow-hidden relative">
-                            {bgPreview ? (
-                                <img src={bgPreview} alt="Preview" className="absolute inset-0 w-full h-full object-cover" />
-                            ) : settings.loginBackgroundUrl ? (
-                                <img src={settings.loginBackgroundUrl} alt="Background" className="absolute inset-0 w-full h-full object-cover" />
-                            ) : (
-                                <div className="text-center text-slate-400 z-10">
-                                    <Image className="w-6 h-6 mx-auto mb-1" />
-                                    <span className="text-xs">Default Theme</span>
-                                </div>
-                            )}
-                        </div>
-                    </div>
-
-                    {/* Upload Controls */}
-                    <div className="flex-1 space-y-3">
-                        <input
-                            ref={bgInputRef}
-                            type="file"
-                            accept="image/png,image/jpeg,image/webp"
-                            onChange={handleBgSelect}
-                            className="hidden"
-                        />
-
-                        <button
+                    <input
+                        ref={bgInputRef}
+                        type="file"
+                        accept="image/*"
+                        className="hidden"
+                        onChange={(e) =>
+                            readPreview(e.target.files?.[0], 2000, (f, d) => {
+                                setBgFile(f);
+                                setBgPreview(d);
+                            })
+                        }
+                    />
+                    <div className="flex flex-wrap gap-2">
+                        <Button
+                            variant="secondary"
+                            size="sm"
                             onClick={() => bgInputRef.current?.click()}
-                            className="btn-secondary flex items-center gap-2"
+                            leftIcon={<Upload className="w-3.5 h-3.5" />}
                         >
-                            <Upload className="w-4 h-4" />
-                            Pilih Foto Background
-                        </button>
-
+                            Pilih
+                        </Button>
                         {bgFile && (
-                            <div className="flex items-center gap-2">
-                                <span className="text-sm text-slate-600 truncate max-w-[150px]">{bgFile.name}</span>
-                                <button
-                                    onClick={uploadBackground}
-                                    className="btn-primary text-sm py-1 px-3"
-                                >
-                                    Upload
-                                </button>
-                                <button
-                                    onClick={() => { setBgFile(null); setBgPreview(null); }}
-                                    className="text-slate-400 hover:text-slate-600"
-                                >
-                                    <RotateCcw className="w-4 h-4" />
-                                </button>
-                            </div>
-                        )}
-
-                        {settings.loginBackgroundUrl && !bgFile && (
-                            <button
-                                onClick={deleteBackground}
-                                className="text-red-500 hover:text-red-600 text-sm flex items-center gap-1"
+                            <Button
+                                variant="primary"
+                                size="sm"
+                                onClick={() =>
+                                    uploadAsset('background', bgFile, '/api/settings/branding/background', (d) => {
+                                        setSettings((s) => ({
+                                            ...s,
+                                            loginBackgroundUrl: d.loginBackgroundUrl,
+                                        }));
+                                        setBgFile(null);
+                                        setBgPreview(null);
+                                        toast.success('Background diperbarui');
+                                    })
+                                }
                             >
-                                <Trash2 className="w-4 h-4" />
-                                Kembalikan ke Tema Default
-                            </button>
+                                Unggah
+                            </Button>
                         )}
-
-                        <p className="text-xs text-slate-500">
-                            Format: PNG, JPG, WebP. Maksimal 2MB. Rekomendasi: 1920x1080px (Lanskap)
-                        </p>
+                        {settings.loginBackgroundUrl && (
+                            <Button
+                                variant="danger"
+                                size="sm"
+                                aria-label="Hapus latar login"
+                                onClick={async () => {
+                                    await api.delete('/api/settings/branding/background');
+                                    setSettings((s) => ({ ...s, loginBackgroundUrl: null }));
+                                    toast.success('Background dihapus');
+                                }}
+                            >
+                                <Trash2 className="w-3.5 h-3.5" />
+                            </Button>
+                        )}
                     </div>
-                </div>
+                </Card>
             </div>
         </div>
     );

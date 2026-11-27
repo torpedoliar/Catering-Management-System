@@ -1,7 +1,15 @@
 import { useState, useEffect } from 'react';
-import { api } from '../../contexts/AuthContext';
-import { Mail, Server, Lock, Send, Loader2, CheckCircle, XCircle, Eye, EyeOff, TestTube } from 'lucide-react';
+import { Server, Send, CheckCircle, Eye, EyeOff, Info } from 'lucide-react';
 import toast from 'react-hot-toast';
+import { api } from '../../contexts/AuthContext';
+import {
+    PageHeader,
+    Button,
+    Card,
+    Field,
+    Input,
+    Skeleton,
+} from '../../components/ui';
 
 interface EmailSettings {
     emailEnabled: boolean;
@@ -32,29 +40,22 @@ export default function EmailSettingsPage() {
     const [testEmail, setTestEmail] = useState('');
 
     useEffect(() => {
-        loadSettings();
+        api.get('/api/email/settings')
+            .then((res) => {
+                setSettings(res.data);
+                setTestEmail(res.data.adminEmail || '');
+            })
+            .catch(() => toast.error('Gagal memuat pengaturan email'))
+            .finally(() => setIsLoading(false));
     }, []);
-
-    const loadSettings = async () => {
-        try {
-            const res = await api.get('/api/email/settings');
-            setSettings(res.data);
-            setTestEmail(res.data.adminEmail || '');
-        } catch (error) {
-            console.error('Failed to load email settings:', error);
-            toast.error('Gagal memuat pengaturan email');
-        } finally {
-            setIsLoading(false);
-        }
-    };
 
     const handleSave = async () => {
         setIsSaving(true);
         try {
             await api.put('/api/email/settings', settings);
-            toast.success('Pengaturan email berhasil disimpan');
-        } catch (error: any) {
-            toast.error(error.response?.data?.error || 'Gagal menyimpan pengaturan');
+            toast.success('Pengaturan email disimpan');
+        } catch (error) {
+            toast.error((error as { response?: { data?: { error?: string } } })?.response?.data?.error || 'Gagal menyimpan pengaturan');
         } finally {
             setIsSaving(false);
         }
@@ -65,8 +66,8 @@ export default function EmailSettingsPage() {
         try {
             await api.post('/api/email/test-connection');
             toast.success('Koneksi SMTP berhasil');
-        } catch (error: any) {
-            toast.error(error.response?.data?.error || 'Gagal terhubung ke SMTP');
+        } catch (error) {
+            toast.error((error as { response?: { data?: { error?: string } } })?.response?.data?.error || 'Gagal terhubung ke SMTP');
         } finally {
             setIsTesting(false);
         }
@@ -80,9 +81,9 @@ export default function EmailSettingsPage() {
         setIsTesting(true);
         try {
             await api.post('/api/email/send-test', { to: testEmail });
-            toast.success(`Email test berhasil dikirim ke ${testEmail}`);
-        } catch (error: any) {
-            toast.error(error.response?.data?.error || 'Gagal mengirim email test');
+            toast.success(`Email uji dikirim ke ${testEmail}`);
+        } catch (error) {
+            toast.error((error as { response?: { data?: { error?: string } } })?.response?.data?.error || 'Gagal mengirim email uji');
         } finally {
             setIsTesting(false);
         }
@@ -90,241 +91,179 @@ export default function EmailSettingsPage() {
 
     if (isLoading) {
         return (
-            <div className="flex items-center justify-center min-h-[400px]">
-                <Loader2 className="w-8 h-8 animate-spin text-primary-500" />
+            <div className="space-y-4 max-w-4xl">
+                <Skeleton className="h-9 w-56" />
+                <Skeleton className="h-24 w-full" />
+                <Skeleton className="h-64 w-full" />
             </div>
         );
     }
 
     return (
-        <div className="w-full max-w-7xl mx-auto space-y-6 animate-fade-in">
-            {/* Header */}
-            <div className="flex items-center gap-4">
-                <div className="w-14 h-14 rounded-2xl bg-gradient-to-br from-primary-500 to-accent-purple flex items-center justify-center shadow-glow">
-                    <Mail className="w-7 h-7 text-white" />
-                </div>
-                <div>
-                    <h1 className="text-2xl font-bold text-slate-800">Pengaturan Email</h1>
-                    <p className="text-slate-500">Konfigurasi SMTP untuk notifikasi email</p>
-                </div>
-            </div>
+        <div className="space-y-4 max-w-4xl">
+            <PageHeader
+                title="Pengaturan email"
+                subtitle="Konfigurasi SMTP untuk notifikasi keluhan dan pesan ke admin"
+                actions={
+                    <Button
+                        variant="primary"
+                        size="sm"
+                        loading={isSaving}
+                        onClick={handleSave}
+                        leftIcon={<CheckCircle className="w-3.5 h-3.5" aria-hidden="true" />}
+                    >
+                        Simpan pengaturan
+                    </Button>
+                }
+            />
 
-            {/* Enable/Disable Toggle */}
-            <div className="card-elevated">
-                <div className="flex items-center justify-between">
+            <Card>
+                <div className="flex items-center justify-between gap-4">
                     <div>
-                        <h3 className="text-lg font-semibold text-slate-800">Aktifkan Notifikasi Email</h3>
-                        <p className="text-sm text-slate-500">Kirim email notifikasi saat ada keluhan baru</p>
+                        <h2 className="text-[15px] font-bold text-[#1c1917]">Aktifkan notifikasi email</h2>
+                        <p className="text-[12.5px] text-[#78716c]">
+                            Kirim notifikasi email otomatis ketika ada keluhan atau sanggahan baru
+                        </p>
                     </div>
-                    <label className="relative inline-flex items-center cursor-pointer">
-                        <input
-                            type="checkbox"
-                            checked={settings.emailEnabled}
-                            onChange={(e) => setSettings({ ...settings, emailEnabled: e.target.checked })}
-                            className="sr-only peer"
+                    <button
+                        type="button"
+                        role="switch"
+                        aria-checked={settings.emailEnabled}
+                        onClick={() => setSettings((s) => ({ ...s, emailEnabled: !s.emailEnabled }))}
+                        className={`relative inline-flex h-6 w-11 items-center rounded-full border-0 cursor-pointer transition-colors ${
+                            settings.emailEnabled ? 'bg-[#16a34a]' : 'bg-[#d6d3d1]'
+                        }`}
+                    >
+                        <span
+                            className={`inline-block h-4 w-4 rounded-full bg-[#fff] transition-transform ${
+                                settings.emailEnabled ? 'translate-x-6' : 'translate-x-1'
+                            }`}
                         />
-                        <div className="w-11 h-6 bg-slate-300 peer-focus:outline-none peer-focus:ring-4 peer-focus:ring-primary-300 rounded-full peer peer-checked:after:translate-x-full rtl:peer-checked:after:-translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:start-[2px] after:bg-white after:border-slate-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-primary-600"></div>
-                    </label>
+                    </button>
                 </div>
-            </div>
+            </Card>
 
-            {/* SMTP Settings */}
-            <div className="card-elevated space-y-6">
-                <div className="flex items-center gap-3 mb-4">
-                    <Server className="w-5 h-5 text-primary-500" />
-                    <h3 className="text-lg font-semibold text-slate-800">Konfigurasi SMTP</h3>
+            <Card>
+                <div className="flex items-center gap-2 mb-4">
+                    <Server className="w-4 h-4 text-[#b45309]" aria-hidden="true" />
+                    <h2 className="text-[15px] font-bold text-[#1c1917]">Konfigurasi SMTP</h2>
                 </div>
 
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                    {/* SMTP Host */}
-                    <div>
-                        <label className="block text-sm font-medium text-slate-700 mb-2">
-                            SMTP Host
-                        </label>
-                        <input
-                            type="text"
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                    <Field label="SMTP Host">
+                        <Input
                             value={settings.smtpHost || ''}
-                            onChange={(e) => setSettings({ ...settings, smtpHost: e.target.value })}
+                            onChange={(e) => setSettings((s) => ({ ...s, smtpHost: e.target.value }))}
                             placeholder="smtp.gmail.com"
-                            className="input-field"
                         />
-                    </div>
-
-                    {/* SMTP Port */}
-                    <div>
-                        <label className="block text-sm font-medium text-slate-700 mb-2">
-                            SMTP Port
-                        </label>
-                        <input
+                    </Field>
+                    <Field label="SMTP Port">
+                        <Input
                             type="number"
                             value={settings.smtpPort}
-                            onChange={(e) => setSettings({ ...settings, smtpPort: Number(e.target.value) })}
-                            placeholder="587"
-                            className="input-field"
+                            onChange={(e) =>
+                                setSettings((s) => ({ ...s, smtpPort: Number(e.target.value) || 587 }))
+                            }
                         />
-                    </div>
-
-                    {/* SMTP User */}
-                    <div>
-                        <label className="block text-sm font-medium text-slate-700 mb-2">
-                            Username / Email
-                        </label>
-                        <input
-                            type="text"
+                    </Field>
+                    <Field label="Username / Email">
+                        <Input
                             value={settings.smtpUser || ''}
-                            onChange={(e) => setSettings({ ...settings, smtpUser: e.target.value })}
-                            placeholder="user@gmail.com"
-                            className="input-field"
+                            onChange={(e) => setSettings((s) => ({ ...s, smtpUser: e.target.value }))}
+                            placeholder="user@company.com"
                         />
-                    </div>
-
-                    {/* SMTP Password */}
-                    <div>
-                        <label className="block text-sm font-medium text-slate-700 mb-2">
-                            Password / App Password
-                        </label>
+                    </Field>
+                    <Field label="Password / App Password">
                         <div className="relative">
-                            <input
+                            <Input
                                 type={showPassword ? 'text' : 'password'}
                                 value={settings.smtpPass || ''}
-                                onChange={(e) => setSettings({ ...settings, smtpPass: e.target.value })}
+                                onChange={(e) => setSettings((s) => ({ ...s, smtpPass: e.target.value }))}
                                 placeholder="••••••••"
-                                className="input-field pr-10"
+                                className="pr-10"
                             />
                             <button
                                 type="button"
+                                aria-label={showPassword ? 'Sembunyikan password' : 'Tampilkan password'}
                                 onClick={() => setShowPassword(!showPassword)}
-                                className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600"
+                                className="absolute right-2.5 top-1/2 -translate-y-1/2 text-[#78716c] bg-transparent border-0 cursor-pointer p-1"
                             >
                                 {showPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
                             </button>
                         </div>
-                    </div>
-
-                    {/* Sender Email */}
-                    <div>
-                        <label className="block text-sm font-medium text-slate-700 mb-2">
-                            Email Pengirim (From)
-                        </label>
-                        <input
+                    </Field>
+                    <Field label="Email pengirim (From)">
+                        <Input
                             type="email"
                             value={settings.smtpFrom || ''}
-                            onChange={(e) => setSettings({ ...settings, smtpFrom: e.target.value })}
+                            onChange={(e) => setSettings((s) => ({ ...s, smtpFrom: e.target.value }))}
                             placeholder="noreply@company.com"
-                            className="input-field"
                         />
-                    </div>
-
-                    {/* Admin Email */}
-                    <div>
-                        <label className="block text-sm font-medium text-slate-700 mb-2">
-                            Email Admin (Penerima Notifikasi)
-                        </label>
-                        <input
+                    </Field>
+                    <Field label="Email admin penerima">
+                        <Input
                             type="email"
                             value={settings.adminEmail || ''}
-                            onChange={(e) => setSettings({ ...settings, adminEmail: e.target.value })}
+                            onChange={(e) => setSettings((s) => ({ ...s, adminEmail: e.target.value }))}
                             placeholder="admin@company.com"
-                            className="input-field"
                         />
-                    </div>
+                    </Field>
                 </div>
 
-                {/* Secure Connection */}
-                <div className="flex items-center gap-3">
+                <label className="flex items-center gap-2 mt-4 text-[13px] font-medium text-[#1c1917] cursor-pointer">
                     <input
                         type="checkbox"
-                        id="smtpSecure"
                         checked={settings.smtpSecure}
-                        onChange={(e) => setSettings({ ...settings, smtpSecure: e.target.checked })}
-                        className="w-4 h-4 text-primary-600 bg-white border-slate-300 rounded focus:ring-primary-500"
+                        onChange={(e) => setSettings((s) => ({ ...s, smtpSecure: e.target.checked }))}
                     />
-                    <label htmlFor="smtpSecure" className="text-sm text-slate-700">
-                        Gunakan SSL/TLS (port 465)
-                    </label>
-                </div>
-            </div>
+                    Gunakan SSL/TLS langsung (biasanya port 465)
+                </label>
+            </Card>
 
-            {/* Test Section */}
-            <div className="card-elevated space-y-4">
-                <div className="flex items-center gap-3 mb-4">
-                    <TestTube className="w-5 h-5 text-primary-500" />
-                    <h3 className="text-lg font-semibold text-slate-800">Test Koneksi</h3>
-                </div>
-
-                <div className="flex flex-col sm:flex-row gap-4">
-                    <button
-                        onClick={handleTestConnection}
-                        disabled={isTesting || !settings.smtpHost}
-                        className="btn-secondary flex items-center justify-center gap-2"
-                    >
-                        {isTesting ? (
-                            <Loader2 className="w-4 h-4 animate-spin" />
-                        ) : (
-                            <CheckCircle className="w-4 h-4" />
-                        )}
-                        Test Koneksi SMTP
-                    </button>
-                </div>
-
-                <div className="border-t border-slate-200 pt-4 mt-4">
-                    <label className="block text-sm font-medium text-slate-700 mb-2">
-                        Kirim Email Test
-                    </label>
-                    <div className="flex gap-3">
-                        <input
-                            type="email"
-                            value={testEmail}
-                            onChange={(e) => setTestEmail(e.target.value)}
-                            placeholder="test@email.com"
-                            className="input-field flex-1"
-                        />
-                        <button
-                            onClick={handleSendTestEmail}
-                            disabled={isTesting || !testEmail}
-                            className="btn-primary flex items-center gap-2"
+            <Card>
+                <h2 className="text-[15px] font-bold text-[#1c1917] mb-3">Uji koneksi & kirim tes</h2>
+                <div className="space-y-4">
+                    <div>
+                        <Button
+                            variant="secondary"
+                            size="sm"
+                            loading={isTesting}
+                            disabled={!settings.smtpHost}
+                            onClick={handleTestConnection}
                         >
-                            {isTesting ? (
-                                <Loader2 className="w-4 h-4 animate-spin" />
-                            ) : (
-                                <Send className="w-4 h-4" />
-                            )}
-                            Kirim
-                        </button>
+                            Uji koneksi SMTP
+                        </Button>
+                    </div>
+                    <div className="flex flex-wrap items-end gap-2.5 pt-3 border-t border-[#f5f5f4]">
+                        <Field label="Alamat email tujuan tes" className="flex-1 min-w-[220px]">
+                            <Input
+                                type="email"
+                                value={testEmail}
+                                onChange={(e) => setTestEmail(e.target.value)}
+                                placeholder="test@company.com"
+                            />
+                        </Field>
+                        <Button
+                            variant="primary"
+                            loading={isTesting}
+                            disabled={!testEmail}
+                            onClick={handleSendTestEmail}
+                            leftIcon={<Send className="w-3.5 h-3.5" aria-hidden="true" />}
+                        >
+                            Kirim tes
+                        </Button>
                     </div>
                 </div>
-            </div>
+            </Card>
 
-            {/* Save Button */}
-            <div className="flex justify-end">
-                <button
-                    onClick={handleSave}
-                    disabled={isSaving}
-                    className="btn-primary flex items-center gap-2 px-6"
-                >
-                    {isSaving ? (
-                        <>
-                            <Loader2 className="w-4 h-4 animate-spin" />
-                            Menyimpan...
-                        </>
-                    ) : (
-                        <>
-                            <CheckCircle className="w-4 h-4" />
-                            Simpan Pengaturan
-                        </>
-                    )}
-                </button>
-            </div>
-
-            {/* Info */}
-            <div className="bg-blue-50 border border-blue-200 rounded-xl p-4">
-                <h4 className="font-medium text-blue-800 mb-2">💡 Tips Konfigurasi</h4>
-                <ul className="text-sm text-blue-700 space-y-1 list-disc list-inside">
-                    <li>Untuk Gmail, gunakan App Password (bukan password akun biasa)</li>
-                    <li>Port 587 untuk STARTTLS, Port 465 untuk SSL/TLS</li>
-                    <li>Email Admin akan menerima notifikasi setiap ada keluhan baru</li>
-                </ul>
-            </div>
+            <Card padding="sm">
+                <div className="flex items-start gap-3">
+                    <Info className="w-4 h-4 text-[#2563eb] flex-shrink-0 mt-0.5" aria-hidden="true" />
+                    <div className="text-[12.5px] text-[#57534e]">
+                        Untuk Gmail, gunakan App Password. Port 587 memakai STARTTLS (SSL/TLS tidak dicentang); port 465 memakai SSL/TLS dicentang.
+                    </div>
+                </div>
+            </Card>
         </div>
     );
 }

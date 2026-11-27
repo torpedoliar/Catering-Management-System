@@ -1,61 +1,26 @@
 import { useState, useEffect, useCallback } from 'react';
-import { format } from 'date-fns';
-import { id } from 'date-fns/locale';
+import {
+    Activity,
+    RefreshCw,
+    Eye,
+    ArrowRight,
+    RotateCcw,
+} from 'lucide-react';
 import toast from 'react-hot-toast';
+import { api } from '../../contexts/AuthContext';
 import { formatDateTimeWIB } from '../../utils/timezone';
 import { useSSERefresh, ALL_DATA_EVENTS } from '../../contexts/SSEContext';
 import {
-    Search,
-    Filter,
-    ChevronLeft,
-    ChevronRight,
-    Eye,
-    X,
-    Download,
-    RefreshCw,
-    Activity,
-    CheckCircle2,
-    XCircle,
-    LogIn,
-    LogOut,
-    UserPlus,
-    UserMinus,
-    Edit,
-    Trash2,
-    ShoppingCart,
-    Ban,
-    Settings,
-    Calendar,
-    Building2,
-    Clock,
-    AlertTriangle,
-    FileText,
-    ArrowRight,
-    Loader2
-} from 'lucide-react';
-import { api } from '../../contexts/AuthContext';
-
-// Helper to format timestamp - timestamps are stored in WIB already
-const formatWIBDate = (timestamp: string): string => {
-    // Parse timestamp and format without timezone conversion
-    // Remove 'Z' suffix if present to prevent UTC interpretation
-    const cleanTimestamp = timestamp.replace('Z', '');
-    const date = new Date(cleanTimestamp);
-    const day = date.getDate().toString().padStart(2, '0');
-    const month = (date.getMonth() + 1).toString().padStart(2, '0');
-    const year = date.getFullYear();
-    return `${day}/${month}/${year}`;
-};
-
-const formatWIBTime = (timestamp: string): string => {
-    // Remove 'Z' suffix if present to prevent UTC interpretation
-    const cleanTimestamp = timestamp.replace('Z', '');
-    const date = new Date(cleanTimestamp);
-    const hours = date.getHours().toString().padStart(2, '0');
-    const minutes = date.getMinutes().toString().padStart(2, '0');
-    const seconds = date.getSeconds().toString().padStart(2, '0');
-    return `${hours}.${minutes}.${seconds}`;
-};
+    PageHeader,
+    Button,
+    Card,
+    StatTile,
+    Badge,
+    Pagination,
+    Modal,
+    EmptyState,
+    Skeleton,
+} from '../../components/ui';
 
 interface AuditLog {
     id: string;
@@ -67,14 +32,14 @@ interface AuditLog {
     entity: string;
     entityId: string | null;
     entityName: string | null;
-    oldValue: any;
-    newValue: any;
-    changes: any;
+    oldValue: Record<string, unknown> | null;
+    newValue: Record<string, unknown> | null;
+    changes: Record<string, { from: unknown; to: unknown }> | null;
     ipAddress: string | null;
     userAgent: string | null;
     requestPath: string | null;
     requestMethod: string | null;
-    metadata: any;
+    metadata: Record<string, unknown> | null;
     description: string | null;
     success: boolean;
     errorMessage: string | null;
@@ -85,16 +50,52 @@ interface AuditStats {
     totalLogs: number;
     failedCount: number;
     successRate: string;
-    byAction: { action: string; count: number }[];
-    byEntity: { entity: string; count: number }[];
-    recentActivity: any[];
 }
 
-interface Pagination {
+interface PaginationState {
     page: number;
     limit: number;
     total: number;
     totalPages: number;
+}
+
+const ACTION_LABELS: Record<string, string> = {
+    LOGIN: 'Login',
+    LOGOUT: 'Logout',
+    LOGIN_FAILED: 'Login gagal',
+    PASSWORD_CHANGE: 'Ubah password',
+    CREATE: 'Tambah data',
+    UPDATE: 'Perbarui data',
+    DELETE: 'Hapus data',
+    ORDER_CREATED: 'Pesan makanan',
+    ORDER_CANCELLED: 'Batal pesan',
+    ORDER_CHECKIN: 'Ambil makanan',
+    ORDER_NOSHOW: 'Tidak diambil',
+    USER_BLACKLISTED: 'Blacklist user',
+    USER_UNBLOCKED: 'Unblock user',
+    STRIKES_RESET: 'Reset strike',
+    SETTINGS_UPDATE: 'Ubah pengaturan',
+    NTP_SYNC: 'Sinkron waktu',
+    IMPORT_DATA: 'Impor data',
+    EXPORT_DATA: 'Ekspor data',
+};
+
+function formatActionLabel(action: string): string {
+    return ACTION_LABELS[action] || action.replace(/_/g, ' ');
+}
+
+function getActionVariant(action: string): 'info' | 'success' | 'warning' | 'danger' | 'neutral' {
+    if (action === 'LOGIN_FAILED' || action.includes('DELETE') || action.includes('CANCELLED') || action.includes('BLACKLIST') || action.includes('NOSHOW')) {
+        return 'danger';
+    }
+    if (action.includes('CREATE') || action === 'ORDER_CREATED' || action.includes('CHECKIN') || action.includes('UNBLOCK')) {
+        return 'success';
+    }
+    if (action.includes('UPDATE') || action.includes('SETTINGS') || action === 'STRIKES_RESET') {
+        return 'warning';
+    }
+    if (action.includes('LOGIN')) return 'info';
+    return 'neutral';
 }
 
 export default function AuditLogPage() {
@@ -102,27 +103,31 @@ export default function AuditLogPage() {
     const [stats, setStats] = useState<AuditStats | null>(null);
     const [actions, setActions] = useState<string[]>([]);
     const [entities, setEntities] = useState<string[]>([]);
-    const [pagination, setPagination] = useState<Pagination>({ page: 1, limit: 50, total: 0, totalPages: 0 });
+    const [pagination, setPagination] = useState<PaginationState>({
+        page: 1,
+        limit: 50,
+        total: 0,
+        totalPages: 0,
+    });
     const [loading, setLoading] = useState(true);
     const [selectedLog, setSelectedLog] = useState<AuditLog | null>(null);
-    const [showFilters, setShowFilters] = useState(false);
 
-    // Filters
     const [filterAction, setFilterAction] = useState('');
     const [filterEntity, setFilterEntity] = useState('');
     const [filterSuccess, setFilterSuccess] = useState('');
     const [filterSearch, setFilterSearch] = useState('');
     const [filterStartDate, setFilterStartDate] = useState('');
     const [filterEndDate, setFilterEndDate] = useState('');
+    const [page, setPage] = useState(1);
+    const [limit, setLimit] = useState(50);
 
-    const fetchLogs = useCallback(async (page = 1) => {
+    const fetchLogs = useCallback(async () => {
+        setLoading(true);
         try {
-            setLoading(true);
             const params = new URLSearchParams({
                 page: page.toString(),
-                limit: '50',
+                limit: limit.toString(),
             });
-
             if (filterAction) params.append('action', filterAction);
             if (filterEntity) params.append('entity', filterEntity);
             if (filterSuccess) params.append('success', filterSuccess);
@@ -130,122 +135,44 @@ export default function AuditLogPage() {
             if (filterStartDate) params.append('startDate', filterStartDate);
             if (filterEndDate) params.append('endDate', filterEndDate);
 
-            const response = await api.get(`/api/audit?${params}`);
-            setLogs(response.data.logs);
-            setPagination(response.data.pagination);
+            const res = await api.get(`/api/audit?${params}`);
+            setLogs(res.data.logs || []);
+            setPagination(res.data.pagination || { page: 1, limit, total: 0, totalPages: 0 });
         } catch (error) {
             console.error('Error fetching logs:', error);
             toast.error('Gagal memuat audit log');
         } finally {
             setLoading(false);
         }
-    }, [filterAction, filterEntity, filterSuccess, filterSearch, filterStartDate, filterEndDate]);
+    }, [page, limit, filterAction, filterEntity, filterSuccess, filterSearch, filterStartDate, filterEndDate]);
 
-    const fetchStats = async () => {
+    const fetchStatsAndFilters = useCallback(async () => {
         try {
-            const response = await api.get('/api/audit/stats?days=7');
-            setStats(response.data);
-        } catch (error) {
-            console.error('Error fetching stats:', error);
-        }
-    };
-
-    const fetchFilters = async () => {
-        try {
-            const [actionsRes, entitiesRes] = await Promise.all([
+            const [statsRes, actionsRes, entitiesRes] = await Promise.all([
+                api.get('/api/audit/stats?days=7'),
                 api.get('/api/audit/actions'),
                 api.get('/api/audit/entities'),
             ]);
-
-            setActions(actionsRes.data);
-            setEntities(entitiesRes.data);
+            setStats(statsRes.data);
+            setActions(actionsRes.data || []);
+            setEntities(entitiesRes.data || []);
         } catch (error) {
-            console.error('Error fetching filters:', error);
+            console.error('Error fetching audit metadata:', error);
         }
-    };
+    }, []);
 
     useEffect(() => {
-        fetchFilters();
-        fetchStats();
+        fetchStatsAndFilters();
+    }, [fetchStatsAndFilters]);
+
+    useEffect(() => {
         fetchLogs();
     }, [fetchLogs]);
 
     useSSERefresh(ALL_DATA_EVENTS, () => {
         fetchLogs();
-        fetchStats();
+        fetchStatsAndFilters();
     });
-
-    const getActionIcon = (action: string) => {
-        if (action === 'LOGIN') return <LogIn className="w-4 h-4" />;
-        if (action === 'LOGOUT') return <LogOut className="w-4 h-4" />;
-        if (action === 'LOGIN_FAILED') return <AlertTriangle className="w-4 h-4" />;
-        if (action === 'PASSWORD_CHANGE') return <Settings className="w-4 h-4" />;
-        if (action === 'CREATE' || action === 'ORDER_CREATED') return <UserPlus className="w-4 h-4" />;
-        if (action === 'UPDATE' || action === 'SETTINGS_UPDATE') return <Edit className="w-4 h-4" />;
-        if (action === 'DELETE') return <Trash2 className="w-4 h-4" />;
-        if (action === 'ORDER_CANCELLED') return <XCircle className="w-4 h-4" />;
-        if (action === 'ORDER_CHECKIN') return <CheckCircle2 className="w-4 h-4" />;
-        if (action === 'ORDER_NOSHOW') return <Clock className="w-4 h-4" />;
-        if (action === 'USER_BLACKLISTED') return <Ban className="w-4 h-4" />;
-        if (action === 'USER_UNBLOCKED') return <UserPlus className="w-4 h-4" />;
-        if (action === 'STRIKES_RESET') return <RefreshCw className="w-4 h-4" />;
-        if (action === 'IMPORT_DATA' || action === 'EXPORT_DATA') return <FileText className="w-4 h-4" />;
-        return <Activity className="w-4 h-4" />;
-    };
-
-    const getEntityIcon = (entity: string) => {
-        switch (entity) {
-            case 'Auth': return <LogIn className="w-4 h-4" />;
-            case 'User': return <UserPlus className="w-4 h-4" />;
-            case 'Order': return <ShoppingCart className="w-4 h-4" />;
-            case 'Shift': return <Clock className="w-4 h-4" />;
-            case 'Blacklist': return <Ban className="w-4 h-4" />;
-            case 'Settings': return <Settings className="w-4 h-4" />;
-            case 'Holiday': return <Calendar className="w-4 h-4" />;
-            case 'Company':
-            case 'Division':
-            case 'Department': return <Building2 className="w-4 h-4" />;
-            default: return <FileText className="w-4 h-4" />;
-        }
-    };
-
-    const getActionColor = (action: string) => {
-        if (action.includes('LOGIN') && !action.includes('FAILED')) return 'bg-blue-500/20 text-blue-400 border-blue-500/30';
-        if (action === 'LOGOUT') return 'bg-slate-500/20 text-slate-400 border-slate-500/30';
-        if (action === 'LOGIN_FAILED') return 'bg-red-500/20 text-red-400 border-red-500/30';
-        if (action.includes('CREATE') || action === 'ORDER_CREATED') return 'bg-green-500/20 text-green-400 border-green-500/30';
-        if (action.includes('UPDATE') || action.includes('SETTINGS')) return 'bg-amber-500/20 text-amber-400 border-amber-500/30';
-        if (action.includes('DELETE') || action.includes('CANCELLED')) return 'bg-red-500/20 text-red-400 border-red-500/30';
-        if (action.includes('BLACKLIST') || action.includes('NOSHOW')) return 'bg-orange-500/20 text-orange-400 border-orange-500/30';
-        if (action.includes('CHECKIN') || action.includes('UNBLOCK')) return 'bg-cyan-500/20 text-cyan-400 border-cyan-500/30';
-        if (action.includes('IMPORT') || action.includes('EXPORT')) return 'bg-purple-500/20 text-purple-400 border-purple-500/30';
-        if (action === 'STRIKES_RESET') return 'bg-teal-500/20 text-teal-400 border-teal-500/30';
-        return 'bg-slate-500/20 text-slate-400 border-slate-500/30';
-    };
-
-    const formatActionLabel = (action: string) => {
-        const labels: Record<string, string> = {
-            'LOGIN': 'Login',
-            'LOGOUT': 'Logout',
-            'LOGIN_FAILED': 'Login Gagal',
-            'PASSWORD_CHANGE': 'Ubah Password',
-            'CREATE': 'Tambah Data',
-            'UPDATE': 'Update Data',
-            'DELETE': 'Hapus Data',
-            'ORDER_CREATED': 'Pesan Makanan',
-            'ORDER_CANCELLED': 'Batal Pesan',
-            'ORDER_CHECKIN': 'Ambil Makanan',
-            'ORDER_NOSHOW': 'Tidak Diambil',
-            'USER_BLACKLISTED': 'Blacklist User',
-            'USER_UNBLOCKED': 'Unblock User',
-            'STRIKES_RESET': 'Reset Strike',
-            'SETTINGS_UPDATE': 'Update Setting',
-            'NTP_SYNC': 'Sync Waktu',
-            'IMPORT_DATA': 'Import Data',
-            'EXPORT_DATA': 'Export Data',
-        };
-        return labels[action] || action.replace(/_/g, ' ');
-    };
 
     const clearFilters = () => {
         setFilterAction('');
@@ -254,519 +181,382 @@ export default function AuditLogPage() {
         setFilterSearch('');
         setFilterStartDate('');
         setFilterEndDate('');
+        setPage(1);
     };
 
-    const hasActiveFilters = filterAction || filterEntity || filterSuccess || filterSearch || filterStartDate || filterEndDate;
-
-    const renderChanges = (changes: any) => {
-        if (!changes || Object.keys(changes).length === 0) return null;
-
-        return (
-            <div className="space-y-2">
-                {Object.entries(changes).map(([key, value]: [string, any]) => (
-                    <div key={key} className="flex items-start gap-2 text-sm">
-                        <span className="text-slate-400 min-w-[120px]">{key}:</span>
-                        <div className="flex items-center gap-2 flex-wrap">
-                            <span className="px-2 py-0.5 bg-red-500/20 text-red-400 rounded text-xs line-through">
-                                {JSON.stringify(value.from)}
-                            </span>
-                            <ArrowRight className="w-3 h-3 text-slate-500" />
-                            <span className="px-2 py-0.5 bg-green-500/20 text-green-400 rounded text-xs">
-                                {JSON.stringify(value.to)}
-                            </span>
-                        </div>
-                    </div>
-                ))}
-            </div>
-        );
-    };
+    const hasFilters = Boolean(
+        filterAction || filterEntity || filterSuccess || filterSearch || filterStartDate || filterEndDate
+    );
 
     return (
-        <div className="space-y-6 animate-fade-in">
-            {/* Header */}
-            <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
-                <div>
-                    <h1 className="text-2xl font-bold text-white flex items-center gap-2">
-                        <Activity className="w-7 h-7 text-cyan-400" />
-                        Audit Log
-                    </h1>
-                    <p className="text-slate-400 text-sm mt-1">Catatan semua aktivitas sistem secara detail</p>
-                </div>
-                <div className="flex items-center gap-3">
-                    <button
-                        onClick={() => { fetchLogs(); fetchStats(); }}
-                        className="btn-secondary flex items-center gap-2"
+        <div className="space-y-4">
+            <PageHeader
+                title="Audit log"
+                subtitle="Riwayat aktivitas pengguna dan perubahan sistem"
+                actions={
+                    <Button
+                        variant="secondary"
+                        size="sm"
+                        onClick={() => {
+                            fetchLogs();
+                            fetchStatsAndFilters();
+                        }}
+                        leftIcon={<RefreshCw className="w-3.5 h-3.5" aria-hidden="true" />}
                     >
-                        <RefreshCw className="w-4 h-4" />
-                        Refresh
-                    </button>
-                    <button
-                        onClick={() => setShowFilters(!showFilters)}
-                        className={`btn-secondary flex items-center gap-2 ${hasActiveFilters ? 'ring-2 ring-cyan-500' : ''}`}
-                    >
-                        <Filter className="w-4 h-4" />
-                        Filter
-                        {hasActiveFilters && <span className="w-2 h-2 bg-cyan-400 rounded-full" />}
-                    </button>
-                </div>
-            </div>
+                        Muat ulang
+                    </Button>
+                }
+            />
 
-            {/* Stats Cards */}
             {stats && (
-                <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-                    <div className="glass-dark rounded-xl p-4">
-                        <div className="flex items-center justify-between">
-                            <div>
-                                <p className="text-slate-400 text-xs">Total Log (7 hari)</p>
-                                <p className="text-2xl font-bold text-white mt-1">{stats.totalLogs.toLocaleString()}</p>
-                            </div>
-                            <div className="w-10 h-10 rounded-lg bg-cyan-500/20 flex items-center justify-center">
-                                <Activity className="w-5 h-5 text-cyan-400" />
-                            </div>
-                        </div>
-                    </div>
-
-                    <div className="glass-dark rounded-xl p-4">
-                        <div className="flex items-center justify-between">
-                            <div>
-                                <p className="text-slate-400 text-xs">Sukses</p>
-                                <p className="text-2xl font-bold text-emerald-400 mt-1">{stats.successRate}%</p>
-                            </div>
-                            <div className="w-10 h-10 rounded-lg bg-emerald-500/20 flex items-center justify-center">
-                                <CheckCircle2 className="w-5 h-5 text-emerald-400" />
-                            </div>
-                        </div>
-                    </div>
-
-                    <div className="glass-dark rounded-xl p-4">
-                        <div className="flex items-center justify-between">
-                            <div>
-                                <p className="text-slate-400 text-xs">Gagal</p>
-                                <p className="text-2xl font-bold text-red-400 mt-1">{stats.failedCount}</p>
-                            </div>
-                            <div className="w-10 h-10 rounded-lg bg-red-500/20 flex items-center justify-center">
-                                <XCircle className="w-5 h-5 text-red-400" />
-                            </div>
-                        </div>
-                    </div>
-
-                    <div className="glass-dark rounded-xl p-4">
-                        <div className="flex items-center justify-between">
-                            <div>
-                                <p className="text-slate-400 text-xs">Aktivitas Terbanyak</p>
-                                <p className="text-lg font-bold text-purple-400 mt-1">
-                                    {stats.byAction[0]?.action ? formatActionLabel(stats.byAction[0].action) : '-'}
-                                </p>
-                            </div>
-                            <div className="w-10 h-10 rounded-lg bg-purple-500/20 flex items-center justify-center">
-                                {stats.byAction[0]?.action && getActionIcon(stats.byAction[0].action)}
-                            </div>
-                        </div>
-                    </div>
+                <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
+                    <StatTile label="Total log (7 hari)" value={stats.totalLogs} color="#f59e0b" />
+                    <StatTile
+                        label="Tingkat sukses"
+                        value={`${stats.successRate}%`}
+                        color="#16a34a"
+                        valueColor="#15803d"
+                    />
+                    <StatTile
+                        label="Aktivitas gagal"
+                        value={stats.failedCount}
+                        color="#dc2626"
+                        valueColor="#b91c1c"
+                    />
+                    <StatTile label="Total hasil filter" value={pagination.total} color="#2563eb" />
                 </div>
             )}
 
-            {/* Filters Panel */}
-            {showFilters && (
-                <div className="glass-dark rounded-xl p-4 border border-slate-700/50">
-                    <div className="flex items-center justify-between mb-4">
-                        <h3 className="font-medium text-white flex items-center gap-2">
-                            <Filter className="w-4 h-4 text-cyan-400" />
-                            Filter Log
-                        </h3>
-                        {hasActiveFilters && (
-                            <button
-                                onClick={clearFilters}
-                                className="text-sm text-red-400 hover:text-red-300 transition-colors flex items-center gap-1"
-                            >
-                                <X className="w-4 h-4" />
-                                Reset Filter
-                            </button>
-                        )}
-                    </div>
-                    <div className="grid grid-cols-1 md:grid-cols-3 lg:grid-cols-6 gap-4">
-                        <div>
-                            <label className="block text-xs text-slate-400 mb-1">Cari</label>
-                            <div className="relative">
-                                <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
-                                <input
-                                    type="text"
-                                    placeholder="User, deskripsi..."
-                                    value={filterSearch}
-                                    onChange={(e) => setFilterSearch(e.target.value)}
-                                    className="input-field w-full pl-9"
-                                />
-                            </div>
-                        </div>
-                        <div>
-                            <label className="block text-xs text-slate-400 mb-1">Aksi</label>
-                            <select
-                                value={filterAction}
-                                onChange={(e) => setFilterAction(e.target.value)}
-                                className="input-field w-full"
-                            >
-                                <option value="">Semua Aksi</option>
-                                {actions.map((action) => (
-                                    <option key={action} value={action}>{formatActionLabel(action)}</option>
-                                ))}
-                            </select>
-                        </div>
-                        <div>
-                            <label className="block text-xs text-slate-400 mb-1">Entitas</label>
-                            <select
-                                value={filterEntity}
-                                onChange={(e) => setFilterEntity(e.target.value)}
-                                className="input-field w-full"
-                            >
-                                <option value="">Semua Entitas</option>
-                                {entities.map((entity) => (
-                                    <option key={entity} value={entity}>{entity}</option>
-                                ))}
-                            </select>
-                        </div>
-                        <div>
-                            <label className="block text-xs text-slate-400 mb-1">Status</label>
-                            <select
-                                value={filterSuccess}
-                                onChange={(e) => setFilterSuccess(e.target.value)}
-                                className="input-field w-full"
-                            >
-                                <option value="">Semua Status</option>
-                                <option value="true">Sukses</option>
-                                <option value="false">Gagal</option>
-                            </select>
-                        </div>
-                        <div>
-                            <label className="block text-xs text-slate-400 mb-1">Dari Tanggal</label>
-                            <input
-                                type="date"
-                                value={filterStartDate}
-                                onChange={(e) => setFilterStartDate(e.target.value)}
-                                className="input-field w-full"
-                            />
-                        </div>
-                        <div>
-                            <label className="block text-xs text-slate-400 mb-1">Sampai Tanggal</label>
-                            <input
-                                type="date"
-                                value={filterEndDate}
-                                onChange={(e) => setFilterEndDate(e.target.value)}
-                                className="input-field w-full"
-                            />
-                        </div>
-                    </div>
+            <Card padding="none">
+                <div className="px-4 py-3 border-b border-[#f5f5f4] flex flex-wrap items-center gap-2.5">
+                    <input
+                        type="text"
+                        value={filterSearch}
+                        onChange={(e) => {
+                            setFilterSearch(e.target.value);
+                            setPage(1);
+                        }}
+                        placeholder="Cari pengguna, entitas, atau deskripsi..."
+                        className="h-9 px-3 rounded-[9px] border border-[#e7e5e4] bg-[#fff] text-[13px] text-[#1c1917] flex-1 min-w-[200px]"
+                    />
+                    <select
+                        aria-label="Filter aksi"
+                        value={filterAction}
+                        onChange={(e) => {
+                            setFilterAction(e.target.value);
+                            setPage(1);
+                        }}
+                        className="h-9 px-3 rounded-[9px] border border-[#e7e5e4] bg-[#fff] text-[13px] text-[#1c1917]"
+                    >
+                        <option value="">Semua aksi</option>
+                        {actions.map((a) => (
+                            <option key={a} value={a}>
+                                {formatActionLabel(a)}
+                            </option>
+                        ))}
+                    </select>
+                    <select
+                        aria-label="Filter entitas"
+                        value={filterEntity}
+                        onChange={(e) => {
+                            setFilterEntity(e.target.value);
+                            setPage(1);
+                        }}
+                        className="h-9 px-3 rounded-[9px] border border-[#e7e5e4] bg-[#fff] text-[13px] text-[#1c1917]"
+                    >
+                        <option value="">Semua entitas</option>
+                        {entities.map((ent) => (
+                            <option key={ent} value={ent}>
+                                {ent}
+                            </option>
+                        ))}
+                    </select>
+                    <select
+                        aria-label="Filter status"
+                        value={filterSuccess}
+                        onChange={(e) => {
+                            setFilterSuccess(e.target.value);
+                            setPage(1);
+                        }}
+                        className="h-9 px-3 rounded-[9px] border border-[#e7e5e4] bg-[#fff] text-[13px] text-[#1c1917]"
+                    >
+                        <option value="">Semua status</option>
+                        <option value="true">Sukses</option>
+                        <option value="false">Gagal</option>
+                    </select>
+                    <input
+                        type="date"
+                        aria-label="Dari tanggal"
+                        value={filterStartDate}
+                        onChange={(e) => {
+                            setFilterStartDate(e.target.value);
+                            setPage(1);
+                        }}
+                        className="h-9 px-2.5 rounded-[9px] border border-[#e7e5e4] bg-[#fff] text-[13px] text-[#1c1917]"
+                    />
+                    <input
+                        type="date"
+                        aria-label="Sampai tanggal"
+                        value={filterEndDate}
+                        onChange={(e) => {
+                            setFilterEndDate(e.target.value);
+                            setPage(1);
+                        }}
+                        className="h-9 px-2.5 rounded-[9px] border border-[#e7e5e4] bg-[#fff] text-[13px] text-[#1c1917]"
+                    />
+                    {hasFilters && (
+                        <Button
+                            variant="ghost"
+                            size="sm"
+                            onClick={clearFilters}
+                            leftIcon={<RotateCcw className="w-3.5 h-3.5" aria-hidden="true" />}
+                        >
+                            Reset
+                        </Button>
+                    )}
                 </div>
-            )}
 
-            {/* Logs Table */}
-            <div className="glass-dark rounded-xl overflow-hidden">
                 {loading ? (
-                    <div className="flex items-center justify-center py-12">
-                        <Loader2 className="w-8 h-8 animate-spin text-cyan-500" />
+                    <div className="p-4 space-y-2.5">
+                        {Array.from({ length: 6 }).map((_, i) => (
+                            <Skeleton key={i} className="h-11 w-full" />
+                        ))}
                     </div>
                 ) : logs.length === 0 ? (
-                    <div className="text-center py-12">
-                        <Activity className="w-12 h-12 mx-auto text-slate-600 mb-3" />
-                        <p className="text-slate-400">Tidak ada log ditemukan</p>
-                    </div>
+                    <EmptyState
+                        icon={<Activity className="w-6 h-6" />}
+                        title="Tidak ada log aktivitas"
+                        description="Belum ada log yang cocok dengan filter yang dipilih."
+                    />
                 ) : (
-                    <div className="overflow-x-auto">
-                        <table className="w-full">
-                            <thead className="bg-slate-800/50 border-b border-slate-700/50">
-                                <tr>
-                                    <th className="px-4 py-3 text-left text-xs font-medium text-slate-400 uppercase">Waktu</th>
-                                    <th className="px-4 py-3 text-left text-xs font-medium text-slate-400 uppercase">User</th>
-                                    <th className="px-4 py-3 text-left text-xs font-medium text-slate-400 uppercase">Aksi</th>
-                                    <th className="px-4 py-3 text-left text-xs font-medium text-slate-400 uppercase">Entitas</th>
-                                    <th className="px-4 py-3 text-left text-xs font-medium text-slate-400 uppercase">Deskripsi</th>
-                                    <th className="px-4 py-3 text-left text-xs font-medium text-slate-400 uppercase">Status</th>
-                                    <th className="px-4 py-3 text-center text-xs font-medium text-slate-400 uppercase">Detail</th>
-                                </tr>
-                            </thead>
-                            <tbody className="divide-y divide-slate-700/30">
-                                {logs.map((log) => (
-                                    <tr key={log.id} className="hover:bg-slate-800/30 transition-colors">
-                                        <td className="px-4 py-3 text-sm whitespace-nowrap">
-                                            <div className="text-slate-300">{formatWIBDate(log.timestamp)}</div>
-                                            <div className="text-xs text-slate-500">{formatWIBTime(log.timestamp)} WIB</div>
-                                        </td>
-                                        <td className="px-4 py-3 text-sm">
-                                            <div className="text-white font-medium">{log.userName || 'System'}</div>
-                                            {log.userRole && (
-                                                <div className="text-xs text-slate-400">{log.userRole}</div>
-                                            )}
-                                        </td>
-                                        <td className="px-4 py-3">
-                                            <span className={`inline-flex items-center gap-1.5 px-2.5 py-1 text-xs font-medium rounded-full border ${getActionColor(log.action)}`}>
-                                                {getActionIcon(log.action)}
-                                                {formatActionLabel(log.action)}
-                                            </span>
-                                        </td>
-                                        <td className="px-4 py-3 text-sm">
-                                            <div className="flex items-center gap-2 text-slate-300">
-                                                {getEntityIcon(log.entity)}
-                                                {log.entity}
-                                            </div>
-                                            {log.entityName && (
-                                                <div className="text-xs text-slate-500 truncate max-w-[150px]">{log.entityName}</div>
-                                            )}
-                                        </td>
-                                        <td className="px-4 py-3 text-sm text-slate-300 max-w-xs">
-                                            <div className="truncate">{log.description || '-'}</div>
-                                        </td>
-                                        <td className="px-4 py-3">
-                                            {log.success ? (
-                                                <span className="inline-flex items-center gap-1 px-2 py-1 text-xs font-medium rounded-full bg-emerald-500/20 text-emerald-400">
-                                                    <CheckCircle2 className="w-3 h-3" />
-                                                    Sukses
-                                                </span>
-                                            ) : (
-                                                <span className="inline-flex items-center gap-1 px-2 py-1 text-xs font-medium rounded-full bg-red-500/20 text-red-400">
-                                                    <XCircle className="w-3 h-3" />
-                                                    Gagal
-                                                </span>
-                                            )}
-                                        </td>
-                                        <td className="px-4 py-3 text-center">
-                                            <button
-                                                onClick={() => setSelectedLog(log)}
-                                                className="p-2 hover:bg-slate-700 rounded-lg transition-colors text-slate-400 hover:text-white"
-                                            >
-                                                <Eye className="w-4 h-4" />
-                                            </button>
-                                        </td>
+                    <>
+                        <div className="overflow-x-auto">
+                            <table className="w-full text-[13px]">
+                                <thead>
+                                    <tr className="bg-[#fafaf9] border-b border-[#f5f5f4]">
+                                        <th className="text-left px-4 py-2.5 text-[11.5px] font-semibold uppercase tracking-wider text-[#78716c]">
+                                            Waktu
+                                        </th>
+                                        <th className="text-left px-3 py-2.5 text-[11.5px] font-semibold uppercase tracking-wider text-[#78716c]">
+                                            Pengguna
+                                        </th>
+                                        <th className="text-left px-3 py-2.5 text-[11.5px] font-semibold uppercase tracking-wider text-[#78716c]">
+                                            Aksi
+                                        </th>
+                                        <th className="text-left px-3 py-2.5 text-[11.5px] font-semibold uppercase tracking-wider text-[#78716c]">
+                                            Entitas
+                                        </th>
+                                        <th className="text-left px-3 py-2.5 text-[11.5px] font-semibold uppercase tracking-wider text-[#78716c]">
+                                            Deskripsi
+                                        </th>
+                                        <th className="text-left px-3 py-2.5 text-[11.5px] font-semibold uppercase tracking-wider text-[#78716c]">
+                                            Status
+                                        </th>
+                                        <th className="text-right px-4 py-2.5 text-[11.5px] font-semibold uppercase tracking-wider text-[#78716c]">
+                                            Detail
+                                        </th>
                                     </tr>
-                                ))}
-                            </tbody>
-                        </table>
+                                </thead>
+                                <tbody className="divide-y divide-[#f5f5f4]">
+                                    {logs.map((log) => (
+                                        <tr key={log.id} className="hover:bg-[#fafaf9]">
+                                            <td className="px-4 py-2.5 text-[12px] text-[#57534e] whitespace-nowrap tabular-nums">
+                                                {formatDateTimeWIB(log.timestamp)}
+                                            </td>
+                                            <td className="px-3 py-2.5">
+                                                <div className="font-semibold text-[#1c1917]">
+                                                    {log.userName || 'System'}
+                                                </div>
+                                                {log.userRole && (
+                                                    <div className="text-[11px] text-[#78716c]">{log.userRole}</div>
+                                                )}
+                                            </td>
+                                            <td className="px-3 py-2.5 whitespace-nowrap">
+                                                <Badge variant={getActionVariant(log.action)}>
+                                                    {formatActionLabel(log.action)}
+                                                </Badge>
+                                            </td>
+                                            <td className="px-3 py-2.5">
+                                                <div className="font-medium text-[#1c1917]">{log.entity}</div>
+                                                {log.entityName && (
+                                                    <div className="text-[11.5px] text-[#78716c] truncate max-w-[160px]">
+                                                        {log.entityName}
+                                                    </div>
+                                                )}
+                                            </td>
+                                            <td className="px-3 py-2.5 max-w-xs text-[#57534e]">
+                                                <div className="truncate">{log.description || '-'}</div>
+                                            </td>
+                                            <td className="px-3 py-2.5 whitespace-nowrap">
+                                                <Badge variant={log.success ? 'success' : 'danger'}>
+                                                    {log.success ? 'Sukses' : 'Gagal'}
+                                                </Badge>
+                                            </td>
+                                            <td className="px-4 py-2.5 text-right">
+                                                <Button
+                                                    variant="ghost"
+                                                    size="sm"
+                                                    onClick={() => setSelectedLog(log)}
+                                                    aria-label={`Lihat detail log ${log.id}`}
+                                                >
+                                                    <Eye className="w-3.5 h-3.5" />
+                                                </Button>
+                                            </td>
+                                        </tr>
+                                    ))}
+                                </tbody>
+                            </table>
+                        </div>
+
+                        <Pagination
+                            page={pagination.page}
+                            limit={pagination.limit}
+                            total={pagination.total}
+                            onPageChange={setPage}
+                            onLimitChange={(l) => {
+                                setLimit(l);
+                                setPage(1);
+                            }}
+                            variant="admin"
+                            showJumpToPage
+                        />
+                    </>
+                )}
+            </Card>
+
+            {/* Audit Log Detail Modal */}
+            <Modal
+                open={Boolean(selectedLog)}
+                onClose={() => setSelectedLog(null)}
+                title={selectedLog ? formatActionLabel(selectedLog.action) : ''}
+                size="xl"
+                footer={
+                    <div className="flex items-center justify-between w-full">
+                        <span className="text-[11.5px] font-mono text-[#78716c]">ID: {selectedLog?.id}</span>
+                        <Button variant="secondary" onClick={() => setSelectedLog(null)}>
+                            Tutup
+                        </Button>
+                    </div>
+                }
+            >
+                {selectedLog && (
+                    <div className="space-y-4">
+                        {!selectedLog.success && selectedLog.errorMessage && (
+                            <div className="p-3 rounded-[10px] bg-[#fef2f2] border border-[#fecaca] text-[13px] text-[#991b1b]">
+                                <b>Aksi gagal:</b> {selectedLog.errorMessage}
+                            </div>
+                        )}
+
+                        <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                            <div className="p-3 rounded-[10px] bg-[#fafaf9] border border-[#e7e5e4]">
+                                <div className="text-[11px] font-semibold uppercase text-[#78716c]">Pengguna</div>
+                                <div className="text-[13.5px] font-semibold text-[#1c1917] mt-0.5">
+                                    {selectedLog.userName || 'System'}
+                                </div>
+                                {selectedLog.userRole && (
+                                    <div className="text-[11.5px] text-[#78716c]">{selectedLog.userRole}</div>
+                                )}
+                            </div>
+                            <div className="p-3 rounded-[10px] bg-[#fafaf9] border border-[#e7e5e4]">
+                                <div className="text-[11px] font-semibold uppercase text-[#78716c]">Entitas</div>
+                                <div className="text-[13.5px] font-semibold text-[#1c1917] mt-0.5">
+                                    {selectedLog.entity}
+                                </div>
+                                {selectedLog.entityName && (
+                                    <div className="text-[11.5px] text-[#78716c]">{selectedLog.entityName}</div>
+                                )}
+                            </div>
+                            <div className="p-3 rounded-[10px] bg-[#fafaf9] border border-[#e7e5e4]">
+                                <div className="text-[11px] font-semibold uppercase text-[#78716c]">Waktu & IP</div>
+                                <div className="text-[12.5px] font-medium text-[#1c1917] mt-0.5">
+                                    {formatDateTimeWIB(selectedLog.timestamp)}
+                                </div>
+                                <div className="text-[11.5px] font-mono text-[#78716c]">
+                                    {selectedLog.ipAddress || '-'}
+                                </div>
+                            </div>
+                        </div>
+
+                        {selectedLog.description && (
+                            <div>
+                                <div className="text-[11.5px] font-semibold uppercase text-[#78716c] mb-1">
+                                    Deskripsi
+                                </div>
+                                <div className="p-3 rounded-[10px] bg-[#fafaf9] border border-[#e7e5e4] text-[13px] text-[#1c1917]">
+                                    {selectedLog.description}
+                                </div>
+                            </div>
+                        )}
+
+                        {selectedLog.requestPath && (
+                            <div>
+                                <div className="text-[11.5px] font-semibold uppercase text-[#78716c] mb-1">
+                                    Request
+                                </div>
+                                <div className="p-2.5 rounded-[10px] bg-[#1c1917] text-[#fafaf9] font-mono text-[12px]">
+                                    <span className="text-[#fbbf24]">{selectedLog.requestMethod}</span>{' '}
+                                    {selectedLog.requestPath}
+                                </div>
+                            </div>
+                        )}
+
+                        {selectedLog.changes && Object.keys(selectedLog.changes).length > 0 && (
+                            <div>
+                                <div className="text-[11.5px] font-semibold uppercase text-[#78716c] mb-1.5">
+                                    Perubahan
+                                </div>
+                                <div className="p-3 rounded-[10px] bg-[#fafaf9] border border-[#e7e5e4] space-y-2">
+                                    {Object.entries(selectedLog.changes).map(([k, val]) => (
+                                        <div key={k} className="flex flex-wrap items-center gap-2 text-[12.5px]">
+                                            <span className="font-semibold text-[#57534e] min-w-[110px]">{k}:</span>
+                                            <span className="px-1.5 py-0.5 rounded bg-[#fee2e2] text-[#b91c1c] line-through font-mono text-[11.5px]">
+                                                {JSON.stringify(val.from)}
+                                            </span>
+                                            <ArrowRight className="w-3 h-3 text-[#78716c]" />
+                                            <span className="px-1.5 py-0.5 rounded bg-[#dcfce7] text-[#15803d] font-mono text-[11.5px]">
+                                                {JSON.stringify(val.to)}
+                                            </span>
+                                        </div>
+                                    ))}
+                                </div>
+                            </div>
+                        )}
+
+                        {selectedLog.oldValue && Object.keys(selectedLog.oldValue).length > 0 && (
+                            <div>
+                                <div className="text-[11.5px] font-semibold uppercase text-[#78716c] mb-1">
+                                    Nilai sebelumnya
+                                </div>
+                                <pre className="p-3 rounded-[10px] bg-[#fef2f2] border border-[#fecaca] text-[#991b1b] text-[12px] font-mono overflow-x-auto max-h-44">
+                                    {JSON.stringify(selectedLog.oldValue, null, 2)}
+                                </pre>
+                            </div>
+                        )}
+
+                        {selectedLog.newValue && Object.keys(selectedLog.newValue).length > 0 && (
+                            <div>
+                                <div className="text-[11.5px] font-semibold uppercase text-[#78716c] mb-1">
+                                    Nilai setelahnya
+                                </div>
+                                <pre className="p-3 rounded-[10px] bg-[#f0fdf4] border border-[#bbf7d0] text-[#166534] text-[12px] font-mono overflow-x-auto max-h-44">
+                                    {JSON.stringify(selectedLog.newValue, null, 2)}
+                                </pre>
+                            </div>
+                        )}
+
+                        {selectedLog.metadata && Object.keys(selectedLog.metadata).length > 0 && (
+                            <div>
+                                <div className="text-[11.5px] font-semibold uppercase text-[#78716c] mb-1">
+                                    Metadata
+                                </div>
+                                <pre className="p-3 rounded-[10px] bg-[#fafaf9] border border-[#e7e5e4] text-[#1c1917] text-[12px] font-mono overflow-x-auto">
+                                    {JSON.stringify(selectedLog.metadata, null, 2)}
+                                </pre>
+                            </div>
+                        )}
                     </div>
                 )}
-
-                {/* Pagination */}
-                {pagination.totalPages > 1 && (
-                    <div className="px-4 py-3 border-t border-slate-700/50 flex items-center justify-between">
-                        <p className="text-sm text-slate-400">
-                            {((pagination.page - 1) * pagination.limit) + 1} - {Math.min(pagination.page * pagination.limit, pagination.total)} dari {pagination.total.toLocaleString()} log
-                        </p>
-                        <div className="flex items-center gap-2">
-                            <button
-                                onClick={() => fetchLogs(pagination.page - 1)}
-                                disabled={pagination.page === 1}
-                                className="p-2 hover:bg-slate-700 disabled:opacity-50 disabled:cursor-not-allowed rounded-lg transition-colors"
-                            >
-                                <ChevronLeft className="w-5 h-5 text-slate-400" />
-                            </button>
-                            <span className="px-3 py-1 text-sm text-slate-400">
-                                {pagination.page} / {pagination.totalPages}
-                            </span>
-                            <button
-                                onClick={() => fetchLogs(pagination.page + 1)}
-                                disabled={pagination.page === pagination.totalPages}
-                                className="p-2 hover:bg-slate-700 disabled:opacity-50 disabled:cursor-not-allowed rounded-lg transition-colors"
-                            >
-                                <ChevronRight className="w-5 h-5 text-slate-400" />
-                            </button>
-                        </div>
-                    </div>
-                )}
-            </div>
-
-            {/* Detail Modal */}
-            {selectedLog && (
-                <div className="fixed inset-0 bg-black/60 backdrop-blur-sm flex items-center justify-center z-50 p-4">
-                    <div className="bg-slate-800 rounded-2xl border border-slate-700 max-w-4xl w-full max-h-[90vh] overflow-hidden flex flex-col">
-                        {/* Modal Header */}
-                        <div className="px-6 py-4 border-b border-slate-700 flex items-center justify-between bg-slate-800/80">
-                            <div className="flex items-center gap-3">
-                                <div className={`p-2 rounded-lg ${getActionColor(selectedLog.action)}`}>
-                                    {getActionIcon(selectedLog.action)}
-                                </div>
-                                <div>
-                                    <h3 className="text-lg font-semibold text-white">{formatActionLabel(selectedLog.action)}</h3>
-                                    <p className="text-sm text-slate-400">
-                                        {formatDateTimeWIB(selectedLog.timestamp)}
-                                    </p>
-                                </div>
-                            </div>
-                            <button
-                                onClick={() => setSelectedLog(null)}
-                                className="p-2 hover:bg-slate-700 rounded-lg transition-colors"
-                            >
-                                <X className="w-5 h-5 text-slate-400" />
-                            </button>
-                        </div>
-
-                        {/* Modal Content */}
-                        <div className="flex-1 overflow-y-auto p-6 space-y-6">
-                            {/* Status Banner */}
-                            {!selectedLog.success && selectedLog.errorMessage && (
-                                <div className="bg-red-500/10 border border-red-500/30 rounded-xl p-4 flex items-start gap-3">
-                                    <AlertTriangle className="w-5 h-5 text-red-400 flex-shrink-0 mt-0.5" />
-                                    <div>
-                                        <p className="text-red-400 font-medium">Aksi Gagal</p>
-                                        <p className="text-red-300/80 text-sm mt-1">{selectedLog.errorMessage}</p>
-                                    </div>
-                                </div>
-                            )}
-
-                            {/* Basic Info Grid */}
-                            <div className="grid grid-cols-2 md:grid-cols-3 gap-4">
-                                <div className="bg-slate-700/30 rounded-lg p-3">
-                                    <p className="text-xs text-slate-400 mb-1">User</p>
-                                    <p className="text-white font-medium">{selectedLog.userName || 'System'}</p>
-                                    {selectedLog.userRole && <p className="text-xs text-slate-400">{selectedLog.userRole}</p>}
-                                </div>
-                                <div className="bg-slate-700/30 rounded-lg p-3">
-                                    <p className="text-xs text-slate-400 mb-1">Entitas</p>
-                                    <div className="flex items-center gap-2 text-white font-medium">
-                                        {getEntityIcon(selectedLog.entity)}
-                                        {selectedLog.entity}
-                                    </div>
-                                    {selectedLog.entityName && <p className="text-xs text-slate-400">{selectedLog.entityName}</p>}
-                                </div>
-                                <div className="bg-slate-700/30 rounded-lg p-3">
-                                    <p className="text-xs text-slate-400 mb-1">IP Address</p>
-                                    <p className="text-white font-mono text-sm">{selectedLog.ipAddress || '-'}</p>
-                                </div>
-                            </div>
-
-                            {/* Description */}
-                            {selectedLog.description && (
-                                <div>
-                                    <h4 className="text-sm font-medium text-slate-400 mb-2">Deskripsi</h4>
-                                    <p className="text-white bg-slate-700/30 rounded-lg p-3">{selectedLog.description}</p>
-                                </div>
-                            )}
-
-                            {/* Rate Limit Info for LOGIN_FAILED */}
-                            {selectedLog.action === 'LOGIN_FAILED' && selectedLog.metadata && (
-                                <div>
-                                    <h4 className="text-sm font-medium text-slate-400 mb-2">Informasi Rate Limiting</h4>
-                                    <div className="bg-orange-500/10 border border-orange-500/30 rounded-lg p-4 space-y-2">
-                                        {selectedLog.metadata.ip && (
-                                            <div className="flex items-center justify-between">
-                                                <span className="text-sm text-slate-400">IP Address:</span>
-                                                <code className="text-orange-400 font-mono text-sm bg-orange-500/10 px-2 py-1 rounded">
-                                                    {selectedLog.metadata.ip}
-                                                </code>
-                                            </div>
-                                        )}
-                                        {selectedLog.metadata.remainingAttempts !== undefined && (
-                                            <div className="flex items-center justify-between">
-                                                <span className="text-sm text-slate-400">Sisa Percobaan:</span>
-                                                <span className={`font-semibold px-2 py-1 rounded ${selectedLog.metadata.remainingAttempts === 0
-                                                    ? 'text-red-400 bg-red-500/20'
-                                                    : selectedLog.metadata.remainingAttempts <= 2
-                                                        ? 'text-orange-400 bg-orange-500/20'
-                                                        : 'text-green-400 bg-green-500/20'
-                                                    }`}>
-                                                    {selectedLog.metadata.remainingAttempts === 0
-                                                        ? 'LOCKED - Tunggu 1 menit'
-                                                        : `${selectedLog.metadata.remainingAttempts} kali lagi`}
-                                                </span>
-                                            </div>
-                                        )}
-                                        {selectedLog.metadata.remainingAttempts === 0 && (
-                                            <div className="mt-3 p-3 bg-red-500/10 border border-red-500/30 rounded-lg">
-                                                <p className="text-xs text-red-400 flex items-center gap-2">
-                                                    <AlertTriangle className="w-4 h-4" />
-                                                    User diblokir selama 1 menit setelah log ini dibuat
-                                                </p>
-                                            </div>
-                                        )}
-                                    </div>
-                                </div>
-                            )}
-
-                            {/* Request Info */}
-                            {selectedLog.requestPath && (
-                                <div>
-                                    <h4 className="text-sm font-medium text-slate-400 mb-2">Request</h4>
-                                    <div className="bg-slate-900 rounded-lg p-3 font-mono text-sm">
-                                        <span className="text-cyan-400">{selectedLog.requestMethod}</span>{' '}
-                                        <span className="text-slate-300">{selectedLog.requestPath}</span>
-                                    </div>
-                                </div>
-                            )}
-
-                            {/* Changes (Diff View) */}
-                            {selectedLog.changes && Object.keys(selectedLog.changes).length > 0 && (
-                                <div>
-                                    <h4 className="text-sm font-medium text-slate-400 mb-2">Perubahan</h4>
-                                    <div className="bg-slate-900 rounded-lg p-4">
-                                        {renderChanges(selectedLog.changes)}
-                                    </div>
-                                </div>
-                            )}
-
-                            {/* Old Value */}
-                            {selectedLog.oldValue && Object.keys(selectedLog.oldValue).length > 0 && (
-                                <div>
-                                    <h4 className="text-sm font-medium text-slate-400 mb-2 flex items-center gap-2">
-                                        <span className="w-3 h-3 bg-red-500 rounded-full" />
-                                        Nilai Sebelumnya
-                                    </h4>
-                                    <div className="bg-slate-900 rounded-lg p-4 overflow-x-auto max-h-48">
-                                        <pre className="text-sm text-red-300 font-mono whitespace-pre-wrap">
-                                            {JSON.stringify(selectedLog.oldValue, null, 2)}
-                                        </pre>
-                                    </div>
-                                </div>
-                            )}
-
-                            {/* New Value */}
-                            {selectedLog.newValue && Object.keys(selectedLog.newValue).length > 0 && (
-                                <div>
-                                    <h4 className="text-sm font-medium text-slate-400 mb-2 flex items-center gap-2">
-                                        <span className="w-3 h-3 bg-green-500 rounded-full" />
-                                        Nilai Setelahnya
-                                    </h4>
-                                    <div className="bg-slate-900 rounded-lg p-4 overflow-x-auto max-h-48">
-                                        <pre className="text-sm text-green-300 font-mono whitespace-pre-wrap">
-                                            {JSON.stringify(selectedLog.newValue, null, 2)}
-                                        </pre>
-                                    </div>
-                                </div>
-                            )}
-
-                            {/* Metadata */}
-                            {selectedLog.metadata && Object.keys(selectedLog.metadata).length > 0 && (
-                                <div>
-                                    <h4 className="text-sm font-medium text-slate-400 mb-2">Metadata</h4>
-                                    <div className="bg-slate-900 rounded-lg p-4 overflow-x-auto">
-                                        <pre className="text-sm text-slate-300 font-mono whitespace-pre-wrap">
-                                            {JSON.stringify(selectedLog.metadata, null, 2)}
-                                        </pre>
-                                    </div>
-                                </div>
-                            )}
-
-                            {/* User Agent */}
-                            {selectedLog.userAgent && (
-                                <div>
-                                    <h4 className="text-sm font-medium text-slate-400 mb-2">User Agent</h4>
-                                    <p className="text-xs text-slate-500 bg-slate-700/30 rounded-lg p-3 break-all">
-                                        {selectedLog.userAgent}
-                                    </p>
-                                </div>
-                            )}
-                        </div>
-
-                        {/* Modal Footer */}
-                        <div className="px-6 py-4 border-t border-slate-700 bg-slate-800/50">
-                            <div className="flex items-center justify-between">
-                                <p className="text-xs text-slate-500">ID: {selectedLog.id}</p>
-                                <button
-                                    onClick={() => setSelectedLog(null)}
-                                    className="btn-secondary"
-                                >
-                                    Tutup
-                                </button>
-                            </div>
-                        </div>
-                    </div>
-                </div>
-            )}
+            </Modal>
         </div>
     );
 }

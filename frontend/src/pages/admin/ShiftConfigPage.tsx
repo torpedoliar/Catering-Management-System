@@ -1,10 +1,19 @@
 import { useState, useEffect, useCallback } from 'react';
+import { Clock, Save, Plus, RotateCcw } from 'lucide-react';
+import toast from 'react-hot-toast';
 import { api } from '../../contexts/AuthContext';
 import { useSSERefresh, SHIFT_EVENTS, SETTINGS_EVENTS } from '../../contexts/SSEContext';
-import { Clock, Save, Loader2, Plus, RotateCcw } from 'lucide-react';
-import toast from 'react-hot-toast';
 import TimeInput from '../../components/TimeInput';
-
+import {
+    PageHeader,
+    Button,
+    Card,
+    Badge,
+    Field,
+    Input,
+    Select,
+    Skeleton,
+} from '../../components/ui';
 
 interface DayBreak {
     dayOfWeek: number;
@@ -40,6 +49,16 @@ interface Settings {
     enforceCanteenCheckin?: boolean;
 }
 
+const WEEKDAYS = [
+    { value: 1, short: 'Sen', label: 'Senin' },
+    { value: 2, short: 'Sel', label: 'Selasa' },
+    { value: 3, short: 'Rab', label: 'Rabu' },
+    { value: 4, short: 'Kam', label: 'Kamis' },
+    { value: 5, short: 'Jum', label: 'Jumat' },
+    { value: 6, short: 'Sab', label: 'Sabtu' },
+    { value: 0, short: 'Min', label: 'Minggu' },
+];
+
 export default function ShiftConfigPage() {
     const [originalShifts, setOriginalShifts] = useState<Shift[]>([]);
     const [shifts, setShifts] = useState<Shift[]>([]);
@@ -47,7 +66,14 @@ export default function ShiftConfigPage() {
     const [originalSettings, setOriginalSettings] = useState<Settings | null>(null);
     const [isLoading, setIsLoading] = useState(true);
     const [isSaving, setIsSaving] = useState(false);
-    const [newShift, setNewShift] = useState({ name: '', startTime: '', endTime: '', mealPrice: 25000, breakStartTime: '', breakEndTime: '' });
+    const [newShift, setNewShift] = useState({
+        name: '',
+        startTime: '',
+        endTime: '',
+        mealPrice: 25000,
+        breakStartTime: '',
+        breakEndTime: '',
+    });
     const [showAddForm, setShowAddForm] = useState(false);
     const [hasChanges, setHasChanges] = useState(false);
 
@@ -57,12 +83,13 @@ export default function ShiftConfigPage() {
                 api.get('/api/shifts?includeInactive=true'),
                 api.get('/api/settings'),
             ]);
-            setShifts(shiftsRes.data.shifts);
-            setOriginalShifts(shiftsRes.data.shifts);
+            setShifts(shiftsRes.data.shifts || []);
+            setOriginalShifts(shiftsRes.data.shifts || []);
             setSettings(settingsRes.data);
             setOriginalSettings(settingsRes.data);
         } catch (error) {
             console.error('Failed to load config:', error);
+            toast.error('Gagal memuat konfigurasi shift');
         } finally {
             setIsLoading(false);
         }
@@ -72,43 +99,32 @@ export default function ShiftConfigPage() {
         loadData();
     }, [loadData]);
 
-    // Auto-refresh on shift or settings events (SSE)
     useSSERefresh([...SHIFT_EVENTS, ...SETTINGS_EVENTS], loadData);
 
-    // Check for changes whenever shifts or settings change
     useEffect(() => {
         const shiftsChanged = JSON.stringify(shifts) !== JSON.stringify(originalShifts);
         const settingsChanged = JSON.stringify(settings) !== JSON.stringify(originalSettings);
         setHasChanges(shiftsChanged || settingsChanged);
     }, [shifts, settings, originalShifts, originalSettings]);
 
-    // Update shift in local state only (not database)
     const updateShiftLocal = (id: string, data: Partial<Shift>) => {
-        setShifts(prevShifts =>
-            prevShifts.map(shift =>
-                shift.id === id ? { ...shift, ...data } : shift
-            )
-        );
+        setShifts((prev) => prev.map((s) => (s.id === id ? { ...s, ...data } : s)));
     };
 
-    // Reset all changes
     const resetChanges = () => {
         setShifts([...originalShifts]);
         setSettings(originalSettings ? { ...originalSettings } : null);
         toast.success('Perubahan direset');
     };
 
-    // Save all changes to database
     const saveAllChanges = async () => {
         setIsSaving(true);
         try {
-            // Find shifts that changed
             const changedShifts = shifts.filter((shift) => {
-                const original = originalShifts.find(s => s.id === shift.id);
-                return JSON.stringify(shift) !== JSON.stringify(original);
+                const orig = originalShifts.find((s) => s.id === shift.id);
+                return JSON.stringify(shift) !== JSON.stringify(orig);
             });
 
-            // Update each changed shift
             for (const shift of changedShifts) {
                 await api.put(`/api/shifts/${shift.id}`, {
                     name: shift.name,
@@ -119,21 +135,18 @@ export default function ShiftConfigPage() {
                     breakStartTime: shift.breakStartTime || null,
                     breakEndTime: shift.breakEndTime || null,
                     hasSpecialDayBreaks: shift.hasSpecialDayBreaks || false,
-                    dayBreaks: shift.hasSpecialDayBreaks ? (shift.dayBreaks || []) : [],
+                    dayBreaks: shift.hasSpecialDayBreaks ? shift.dayBreaks || [] : [],
                 });
             }
 
-            // Save settings if changed
             if (settings && JSON.stringify(settings) !== JSON.stringify(originalSettings)) {
                 await api.put('/api/settings', settings);
             }
 
-            toast.success('Semua perubahan berhasil disimpan');
-
-            // Reload data to get fresh state
+            toast.success('Semua perubahan disimpan');
             await loadData();
-        } catch (error: any) {
-            toast.error(error.response?.data?.error || 'Gagal menyimpan perubahan');
+        } catch (error) {
+            toast.error((error as { response?: { data?: { error?: string } } })?.response?.data?.error || 'Gagal menyimpan perubahan');
         } finally {
             setIsSaving(false);
         }
@@ -141,299 +154,314 @@ export default function ShiftConfigPage() {
 
     const createShift = async () => {
         if (!newShift.name || !newShift.startTime || !newShift.endTime) {
-            toast.error('Harap isi semua field');
+            toast.error('Harap isi nama shift dan jam mulai/selesai');
             return;
         }
-
         try {
             await api.post('/api/shifts', {
                 ...newShift,
-                mealPrice: newShift.mealPrice || 25000
+                mealPrice: newShift.mealPrice || 25000,
             });
-            toast.success('Shift berhasil dibuat');
-            setNewShift({ name: '', startTime: '', endTime: '', mealPrice: 25000, breakStartTime: '', breakEndTime: '' });
+            toast.success('Shift dibuat');
+            setNewShift({
+                name: '',
+                startTime: '',
+                endTime: '',
+                mealPrice: 25000,
+                breakStartTime: '',
+                breakEndTime: '',
+            });
             setShowAddForm(false);
             loadData();
-        } catch (error: any) {
-            toast.error(error.response?.data?.error || 'Gagal membuat shift');
+        } catch (error) {
+            toast.error((error as { response?: { data?: { error?: string } } })?.response?.data?.error || 'Gagal membuat shift');
         }
     };
 
     if (isLoading) {
         return (
-            <div className="flex items-center justify-center h-[60vh]">
-                <Loader2 className="w-8 h-8 animate-spin text-orange-500" />
+            <div className="space-y-4">
+                <Skeleton className="h-9 w-64" />
+                <Skeleton className="h-64 w-full" />
+                <Skeleton className="h-64 w-full" />
             </div>
         );
     }
 
     return (
-        <div className="w-full max-w-7xl mx-auto space-y-6 animate-fade-in">
-            <div className="flex items-center justify-between">
-                <div>
-                    <h1 className="text-2xl font-bold text-[#1a1f37]">Konfigurasi Shift</h1>
-                    <p className="text-slate-500">Atur shift makan dan waktu cutoff</p>
-                </div>
-                {hasChanges && (
-                    <div className="flex items-center gap-3">
-                        <button
-                            onClick={resetChanges}
-                            className="btn-secondary flex items-center gap-2"
-                        >
-                            <RotateCcw className="w-4 h-4" />
-                            Reset
-                        </button>
-                        <button
-                            onClick={saveAllChanges}
-                            disabled={isSaving}
-                            className="bg-emerald-500 hover:bg-emerald-600 text-white px-4 py-2 rounded-xl flex items-center gap-2 font-medium transition-colors disabled:opacity-50"
-                        >
-                            {isSaving ? <Loader2 className="w-4 h-4 animate-spin" /> : <Save className="w-4 h-4" />}
-                            Simpan Semua
-                        </button>
-                    </div>
-                )}
-            </div>
+        <div className="space-y-4">
+            <PageHeader
+                title="Konfigurasi shift & cutoff"
+                subtitle="Atur jadwal shift makan, jam istirahat, harga porsi, batas waktu order, dan aturan blacklist"
+                actions={
+                    hasChanges ? (
+                        <>
+                            <Button
+                                variant="secondary"
+                                size="sm"
+                                onClick={resetChanges}
+                                leftIcon={<RotateCcw className="w-3.5 h-3.5" aria-hidden="true" />}
+                            >
+                                Reset
+                            </Button>
+                            <Button
+                                variant="primary"
+                                size="sm"
+                                loading={isSaving}
+                                onClick={saveAllChanges}
+                                leftIcon={<Save className="w-3.5 h-3.5" aria-hidden="true" />}
+                            >
+                                Simpan semua
+                            </Button>
+                        </>
+                    ) : undefined
+                }
+            />
 
-            {/* Unsaved changes indicator */}
             {hasChanges && (
-                <div className="bg-amber-50 border border-amber-200 rounded-xl p-3 text-amber-700 text-sm flex items-center gap-2">
-                    <div className="w-2 h-2 rounded-full bg-amber-500 animate-pulse"></div>
-                    Ada perubahan yang belum disimpan. Klik "Simpan Semua" untuk menyimpan.
+                <div className="px-4 py-2.5 rounded-[12px] bg-[#fffbeb] border border-[#fde68a] text-[#92400e] text-[13px] flex items-center justify-between gap-3">
+                    <span>Ada perubahan yang belum disimpan.</span>
+                    <Button variant="primary" size="sm" loading={isSaving} onClick={saveAllChanges}>
+                        Simpan sekarang
+                    </Button>
                 </div>
             )}
 
-            {/* Shifts */}
-            <div className="card p-6">
-                <div className="flex items-center justify-between mb-6">
-                    <h2 className="text-lg font-semibold text-[#1a1f37] flex items-center gap-2">
-                        <Clock className="w-5 h-5 text-orange-500" />
-                        Shift Makan
-                    </h2>
-                    <button
+            {/* Shift Makan */}
+            <Card>
+                <div className="flex items-center justify-between gap-2 mb-4">
+                    <div className="flex items-center gap-2">
+                        <Clock className="w-4 h-4 text-[#b45309]" aria-hidden="true" />
+                        <h2 className="text-[15px] font-bold text-[#1c1917]">Shift makan</h2>
+                    </div>
+                    <Button
+                        variant="secondary"
+                        size="sm"
                         onClick={() => setShowAddForm(!showAddForm)}
-                        className="btn-secondary flex items-center gap-2"
+                        leftIcon={<Plus className="w-3.5 h-3.5" aria-hidden="true" />}
                     >
-                        <Plus className="w-4 h-4" />
-                        Tambah Shift
-                    </button>
+                        {showAddForm ? 'Tutup form' : 'Tambah shift'}
+                    </Button>
                 </div>
 
-                {/* Add Shift Form */}
                 {showAddForm && (
-                    <div className="mb-6 p-4 rounded-xl bg-slate-50 border border-slate-200">
-                        <div className="grid grid-cols-1 md:grid-cols-5 gap-4">
-                            <input
-                                type="text"
-                                placeholder="Nama Shift"
-                                value={newShift.name}
-                                onChange={(e) => setNewShift(s => ({ ...s, name: e.target.value }))}
-                                className="input-field"
-                            />
-                            <TimeInput
-                                value={newShift.startTime}
-                                onChange={(v) => setNewShift(s => ({ ...s, startTime: v }))}
-                            />
-                            <TimeInput
-                                value={newShift.endTime}
-                                onChange={(v) => setNewShift(s => ({ ...s, endTime: v }))}
-                            />
-                            <div className="relative">
-                                <span className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400 text-sm">Rp</span>
-                                <input
-                                    type="number"
-                                    placeholder="Harga"
-                                    value={newShift.mealPrice}
-                                    onChange={(e) => setNewShift(s => ({ ...s, mealPrice: parseInt(e.target.value) || 0 }))}
-                                    className="input-field pl-10"
-                                    min="0"
-                                    step="1000"
+                    <div className="mb-4 p-3.5 rounded-[12px] bg-[#fafaf9] border border-[#e7e5e4]">
+                        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-3 items-end">
+                            <Field label="Nama shift" required>
+                                <Input
+                                    placeholder="Contoh: Shift 1"
+                                    value={newShift.name}
+                                    onChange={(e) => setNewShift((s) => ({ ...s, name: e.target.value }))}
                                 />
-                            </div>
-                            <button onClick={createShift} className="bg-orange-500 hover:bg-orange-600 text-white px-4 py-2 rounded-xl font-medium transition-colors">
-                                Buat
-                            </button>
+                            </Field>
+                            <Field label="Jam mulai" required>
+                                <TimeInput
+                                    value={newShift.startTime}
+                                    onChange={(v) => setNewShift((s) => ({ ...s, startTime: v }))}
+                                />
+                            </Field>
+                            <Field label="Jam selesai" required>
+                                <TimeInput
+                                    value={newShift.endTime}
+                                    onChange={(v) => setNewShift((s) => ({ ...s, endTime: v }))}
+                                />
+                            </Field>
+                            <Field label="Harga porsi (Rp)">
+                                <Input
+                                    type="number"
+                                    min={0}
+                                    step={1000}
+                                    value={newShift.mealPrice}
+                                    onChange={(e) =>
+                                        setNewShift((s) => ({ ...s, mealPrice: parseInt(e.target.value, 10) || 0 }))
+                                    }
+                                />
+                            </Field>
+                            <Button variant="primary" onClick={createShift}>
+                                Buat shift
+                            </Button>
                         </div>
                     </div>
                 )}
 
-                <div className="space-y-4">
+                <div className="space-y-3">
                     {shifts.map((shift) => (
-                        <div key={shift.id} className="p-4 rounded-xl bg-slate-50 border border-slate-200">
-                            <div className="grid grid-cols-1 md:grid-cols-5 gap-4 items-center">
-                                <div>
-                                    <label className="text-xs text-slate-500 uppercase tracking-wide">Nama</label>
-                                    <input
-                                        type="text"
+                        <div
+                            key={shift.id}
+                            className="p-4 rounded-[12px] bg-[#fafaf9] border border-[#e7e5e4] space-y-3"
+                        >
+                            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-3 items-end">
+                                <Field label="Nama">
+                                    <Input
                                         value={shift.name}
                                         onChange={(e) => updateShiftLocal(shift.id, { name: e.target.value })}
-                                        className="input-field mt-1"
                                     />
-                                </div>
-                                <div>
-                                    <label className="text-xs text-slate-500 uppercase tracking-wide">Jam Mulai</label>
+                                </Field>
+                                <Field label="Jam mulai">
                                     <TimeInput
                                         value={shift.startTime}
                                         onChange={(v) => updateShiftLocal(shift.id, { startTime: v })}
-                                        className="mt-1"
                                     />
-                                </div>
-                                <div>
-                                    <label className="text-xs text-slate-500 uppercase tracking-wide">Jam Selesai</label>
+                                </Field>
+                                <Field label="Jam selesai">
                                     <TimeInput
                                         value={shift.endTime}
                                         onChange={(v) => updateShiftLocal(shift.id, { endTime: v })}
-                                        className="mt-1"
                                     />
-                                </div>
-                                <div>
-                                    <label className="text-xs text-slate-500 uppercase tracking-wide">Harga Makanan</label>
-                                    <div className="relative mt-1">
-                                        <span className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400 text-sm">Rp</span>
-                                        <input
-                                            type="number"
-                                            value={shift.mealPrice || 25000}
-                                            onChange={(e) => updateShiftLocal(shift.id, { mealPrice: parseInt(e.target.value) || 0 })}
-                                            className="input-field pl-10"
-                                            min="0"
-                                            step="1000"
-                                        />
-                                    </div>
-                                </div>
-                                <div className="flex items-end">
-                                    <label className="flex items-center gap-2 cursor-pointer">
+                                </Field>
+                                <Field label="Harga makanan (Rp)">
+                                    <Input
+                                        type="number"
+                                        min={0}
+                                        step={1000}
+                                        value={shift.mealPrice || 25000}
+                                        onChange={(e) =>
+                                            updateShiftLocal(shift.id, {
+                                                mealPrice: parseInt(e.target.value, 10) || 0,
+                                            })
+                                        }
+                                    />
+                                </Field>
+                                <div className="flex items-center justify-between h-9">
+                                    <label className="flex items-center gap-2 cursor-pointer text-[13px] font-semibold text-[#1c1917]">
                                         <input
                                             type="checkbox"
                                             checked={shift.isActive}
                                             onChange={(e) => updateShiftLocal(shift.id, { isActive: e.target.checked })}
-                                            className="w-4 h-4 rounded border-slate-300 text-orange-500 focus:ring-orange-500"
                                         />
-                                        <span className="text-slate-700">Aktif</span>
+                                        Aktif
                                     </label>
+                                    <Badge variant={shift.isActive ? 'success' : 'neutral'}>
+                                        {shift.isActive ? 'Aktif' : 'Nonaktif'}
+                                    </Badge>
                                 </div>
                             </div>
-                            {/* Break Time Section */}
-                            <div className="mt-4 pt-4 border-t border-slate-200">
-                                <div className="flex items-center gap-2 mb-3">
-                                    <span className="text-sm font-medium text-slate-600">🍽️ Jam Istirahat (Pengambilan Makanan)</span>
+
+                            {/* Break window */}
+                            <div className="pt-3 border-t border-[#e7e5e4]">
+                                <div className="text-[12.5px] font-semibold text-[#44403c] mb-2">
+                                    Jam istirahat (pengambilan makanan)
                                 </div>
-                                <div className="grid grid-cols-1 md:grid-cols-2 gap-4 max-w-md">
-                                    <div>
-                                        <label className="text-xs text-slate-500 uppercase tracking-wide">Mulai</label>
+                                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 max-w-md">
+                                    <Field label="Mulai istirahat">
                                         <TimeInput
                                             value={shift.breakStartTime || ''}
-                                            onChange={(v) => updateShiftLocal(shift.id, { breakStartTime: v || null })}
-                                            className="mt-1"
+                                            onChange={(v) =>
+                                                updateShiftLocal(shift.id, { breakStartTime: v || null })
+                                            }
                                         />
-                                    </div>
-                                    <div>
-                                        <label className="text-xs text-slate-500 uppercase tracking-wide">Selesai</label>
+                                    </Field>
+                                    <Field label="Selesai istirahat">
                                         <TimeInput
                                             value={shift.breakEndTime || ''}
-                                            onChange={(v) => updateShiftLocal(shift.id, { breakEndTime: v || null })}
-                                            className="mt-1"
+                                            onChange={(v) =>
+                                                updateShiftLocal(shift.id, { breakEndTime: v || null })
+                                            }
                                         />
-                                    </div>
+                                    </Field>
                                 </div>
-                                {shift.breakStartTime && shift.breakEndTime && (
-                                    <p className="text-xs text-emerald-600 mt-2">
-                                        ✓ Makanan hanya bisa diambil antara {shift.breakStartTime} - {shift.breakEndTime}
-                                    </p>
-                                )}
-                                {!shift.breakStartTime && !shift.breakEndTime && (
-                                    <p className="text-xs text-slate-400 mt-2">
-                                        Kosongkan untuk mengizinkan pengambilan kapan saja selama shift
-                                    </p>
-                                )}
+                                <p className="text-[12px] text-[#78716c] mt-1.5">
+                                    {shift.breakStartTime && shift.breakEndTime
+                                        ? `Makanan hanya dapat diambil antara ${shift.breakStartTime} – ${shift.breakEndTime}.`
+                                        : 'Kosongkan untuk mengizinkan pengambilan kapan saja selama shift.'}
+                                </p>
 
-                                {/* Special Day Break Time Toggle */}
                                 {shift.breakStartTime && shift.breakEndTime && (
-                                    <div className="mt-4 pt-3 border-t border-dashed border-slate-200">
-                                        <label className="flex items-center gap-2 cursor-pointer">
+                                    <div className="mt-3 pt-3 border-t border-dashed border-[#e7e5e4]">
+                                        <label className="flex items-center gap-2 cursor-pointer text-[12.5px] font-semibold text-[#44403c]">
                                             <input
                                                 type="checkbox"
                                                 checked={shift.hasSpecialDayBreaks || false}
-                                                onChange={(e) => updateShiftLocal(shift.id, {
-                                                    hasSpecialDayBreaks: e.target.checked,
-                                                    dayBreaks: e.target.checked ? (shift.dayBreaks || []) : []
-                                                })}
-                                                className="w-4 h-4 rounded border-slate-300 text-orange-500 focus:ring-orange-500"
+                                                onChange={(e) =>
+                                                    updateShiftLocal(shift.id, {
+                                                        hasSpecialDayBreaks: e.target.checked,
+                                                        dayBreaks: e.target.checked ? shift.dayBreaks || [] : [],
+                                                    })
+                                                }
                                             />
-                                            <span className="text-sm font-medium text-slate-600">⚙️ Hari Khusus Istirahat</span>
+                                            Jam istirahat khusus per hari (mis. Jumat)
                                         </label>
-                                        <p className="text-xs text-slate-400 mt-1 ml-6">Atur jam istirahat berbeda untuk hari tertentu</p>
 
                                         {shift.hasSpecialDayBreaks && (
-                                            <div className="mt-3 space-y-2 ml-2">
-                                                {[
-                                                    { value: 1, label: 'Senin' },
-                                                    { value: 2, label: 'Selasa' },
-                                                    { value: 3, label: 'Rabu' },
-                                                    { value: 4, label: 'Kamis' },
-                                                    { value: 5, label: 'Jumat' },
-                                                    { value: 6, label: 'Sabtu' },
-                                                    { value: 0, label: 'Minggu' },
-                                                ].map(day => {
-                                                    const dayBreak = (shift.dayBreaks || []).find(db => db.dayOfWeek === day.value);
-                                                    const isChecked = !!dayBreak;
+                                            <div className="mt-2.5 space-y-1.5">
+                                                {WEEKDAYS.map((day) => {
+                                                    const dayBreak = (shift.dayBreaks || []).find(
+                                                        (db) => db.dayOfWeek === day.value
+                                                    );
+                                                    const isChecked = Boolean(dayBreak);
                                                     return (
-                                                        <div key={day.value} className="flex items-center gap-3 py-1">
-                                                            <label className="flex items-center gap-2 cursor-pointer min-w-[100px]">
+                                                        <div key={day.value} className="flex flex-wrap items-center gap-3 py-1">
+                                                            <label className="flex items-center gap-2 cursor-pointer min-w-[96px] text-[12.5px]">
                                                                 <input
                                                                     type="checkbox"
                                                                     checked={isChecked}
                                                                     onChange={(e) => {
-                                                                        const currentBreaks = [...(shift.dayBreaks || [])];
+                                                                        const cur = [...(shift.dayBreaks || [])];
                                                                         if (e.target.checked) {
-                                                                            currentBreaks.push({
+                                                                            cur.push({
                                                                                 dayOfWeek: day.value,
                                                                                 breakStartTime: shift.breakStartTime || '12:00',
-                                                                                breakEndTime: shift.breakEndTime || '13:00'
+                                                                                breakEndTime: shift.breakEndTime || '13:00',
                                                                             });
                                                                         } else {
-                                                                            const idx = currentBreaks.findIndex(db => db.dayOfWeek === day.value);
-                                                                            if (idx !== -1) currentBreaks.splice(idx, 1);
+                                                                            const idx = cur.findIndex(
+                                                                                (db) => db.dayOfWeek === day.value
+                                                                            );
+                                                                            if (idx !== -1) cur.splice(idx, 1);
                                                                         }
-                                                                        updateShiftLocal(shift.id, { dayBreaks: currentBreaks });
+                                                                        updateShiftLocal(shift.id, { dayBreaks: cur });
                                                                     }}
-                                                                    className="w-4 h-4 rounded border-slate-300 text-orange-500 focus:ring-orange-500"
                                                                 />
-                                                                <span className={`text-sm ${isChecked ? 'text-slate-700 font-medium' : 'text-slate-400'}`}>{day.label}</span>
+                                                                <span className={isChecked ? 'font-semibold text-[#1c1917]' : 'text-[#78716c]'}>
+                                                                    {day.label}
+                                                                </span>
                                                             </label>
-                                                            {isChecked && (
+                                                            {isChecked ? (
                                                                 <div className="flex items-center gap-2">
                                                                     <TimeInput
                                                                         value={dayBreak?.breakStartTime || ''}
                                                                         onChange={(v) => {
-                                                                            const currentBreaks = [...(shift.dayBreaks || [])];
-                                                                            const idx = currentBreaks.findIndex(db => db.dayOfWeek === day.value);
-                                                                            if (idx !== -1) currentBreaks[idx] = { ...currentBreaks[idx], breakStartTime: v || '' };
-                                                                            updateShiftLocal(shift.id, { dayBreaks: currentBreaks });
+                                                                            const cur = [...(shift.dayBreaks || [])];
+                                                                            const idx = cur.findIndex(
+                                                                                (db) => db.dayOfWeek === day.value
+                                                                            );
+                                                                            if (idx !== -1) {
+                                                                                cur[idx] = {
+                                                                                    ...cur[idx],
+                                                                                    breakStartTime: v || '',
+                                                                                };
+                                                                            }
+                                                                            updateShiftLocal(shift.id, { dayBreaks: cur });
                                                                         }}
-                                                                        className="w-20 !text-xs !py-1 !px-2"
+                                                                        className="w-24"
                                                                     />
-                                                                    <span className="text-slate-400 text-xs">—</span>
+                                                                    <span className="text-[#78716c] text-[12px]">–</span>
                                                                     <TimeInput
                                                                         value={dayBreak?.breakEndTime || ''}
                                                                         onChange={(v) => {
-                                                                            const currentBreaks = [...(shift.dayBreaks || [])];
-                                                                            const idx = currentBreaks.findIndex(db => db.dayOfWeek === day.value);
-                                                                            if (idx !== -1) currentBreaks[idx] = { ...currentBreaks[idx], breakEndTime: v || '' };
-                                                                            updateShiftLocal(shift.id, { dayBreaks: currentBreaks });
+                                                                            const cur = [...(shift.dayBreaks || [])];
+                                                                            const idx = cur.findIndex(
+                                                                                (db) => db.dayOfWeek === day.value
+                                                                            );
+                                                                            if (idx !== -1) {
+                                                                                cur[idx] = {
+                                                                                    ...cur[idx],
+                                                                                    breakEndTime: v || '',
+                                                                                };
+                                                                            }
+                                                                            updateShiftLocal(shift.id, { dayBreaks: cur });
                                                                         }}
-                                                                        className="w-20 !text-xs !py-1 !px-2"
+                                                                        className="w-24"
                                                                     />
                                                                 </div>
-                                                            )}
-                                                            {!isChecked && (
-                                                                <span className="text-xs text-slate-300">— Pakai default ({shift.breakStartTime} - {shift.breakEndTime})</span>
+                                                            ) : (
+                                                                <span className="text-[11.5px] text-[#a8a29e]">
+                                                                    Pakai default ({shift.breakStartTime}–{shift.breakEndTime})
+                                                                </span>
                                                             )}
                                                         </div>
                                                     );
                                                 })}
-                                                <p className="text-xs text-orange-500 mt-2">
-                                                    ℹ️ Hari yang tidak dicentang menggunakan jam default ({shift.breakStartTime} - {shift.breakEndTime})
-                                                </p>
                                             </div>
                                         )}
                                     </div>
@@ -442,262 +470,269 @@ export default function ShiftConfigPage() {
                         </div>
                     ))}
                 </div>
-            </div>
+            </Card>
 
-            {/* Settings - Dual Cutoff Mode */}
-            <div className="card p-6">
-                <h2 className="text-lg font-semibold text-[#1a1f37] mb-6">Pengaturan Sistem</h2>
+            {/* Pengaturan Sistem */}
+            {settings && (
+                <Card>
+                    <h2 className="text-[15px] font-bold text-[#1c1917] mb-4">Pengaturan pemesanan & blacklist</h2>
 
-                {/* Mode Cutoff Selection */}
-                <div className="mb-6">
-                    <label className="flex items-center gap-2 text-sm font-medium text-slate-600 mb-3">
-                        <Clock className="w-4 h-4" />
-                        Mode Cutoff
-                    </label>
-                    <div className="grid grid-cols-2 gap-3">
-                        <label className={`flex items-center gap-3 p-4 rounded-xl border-2 cursor-pointer transition-all ${settings?.cutoffMode === 'per-shift' ? 'border-orange-500 bg-orange-50' : 'border-slate-200 bg-white'}`}>
-                            <input
-                                type="radio"
-                                name="cutoffMode"
-                                checked={settings?.cutoffMode === 'per-shift'}
-                                onChange={() => setSettings(s => s ? { ...s, cutoffMode: 'per-shift' } : null)}
-                                className="sr-only"
-                            />
-                            <div className={`w-4 h-4 rounded-full border-2 flex items-center justify-center ${settings?.cutoffMode === 'per-shift' ? 'border-orange-500 bg-orange-500' : 'border-slate-300'}`}>
-                                {settings?.cutoffMode === 'per-shift' && <div className="w-2 h-2 bg-white rounded-full" />}
-                            </div>
-                            <div>
-                                <div className="text-slate-800 font-medium">Per-Shift</div>
-                                <div className="text-xs text-slate-500">X hari/jam sebelum shift</div>
-                            </div>
-                        </label>
-                        <label className={`flex items-center gap-3 p-4 rounded-xl border-2 cursor-pointer transition-all ${settings?.cutoffMode === 'weekly' ? 'border-orange-500 bg-orange-50' : 'border-slate-200 bg-white'}`}>
-                            <input
-                                type="radio"
-                                name="cutoffMode"
-                                checked={settings?.cutoffMode === 'weekly'}
-                                onChange={() => setSettings(s => s ? { ...s, cutoffMode: 'weekly' } : null)}
-                                className="sr-only"
-                            />
-                            <div className={`w-4 h-4 rounded-full border-2 flex items-center justify-center ${settings?.cutoffMode === 'weekly' ? 'border-orange-500 bg-orange-500' : 'border-slate-300'}`}>
-                                {settings?.cutoffMode === 'weekly' && <div className="w-2 h-2 bg-white rounded-full" />}
-                            </div>
-                            <div>
-                                <div className="text-slate-800 font-medium">Mingguan</div>
-                                <div className="text-xs text-slate-500">Cutoff hari tertentu</div>
-                            </div>
-                        </label>
-                    </div>
-                </div>
-
-                {/* Per-Shift Mode Settings */}
-                {settings?.cutoffMode === 'per-shift' && (
-                    <div className="p-4 bg-slate-50 rounded-xl mb-6">
-                        <p className="text-sm text-slate-500 mb-4">Batas waktu order sebelum shift dimulai</p>
-                        <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
-                            <div>
-                                <label className="block text-xs text-slate-500 mb-1">Hari sebelum shift</label>
-                                <input
-                                    type="number"
-                                    min="0"
-                                    max="30"
-                                    value={settings?.cutoffDays || 0}
-                                    onChange={(e) => setSettings(s => s ? { ...s, cutoffDays: parseInt(e.target.value) || 0 } : null)}
-                                    className="input-field"
-                                />
-                            </div>
-                            <div>
-                                <label className="block text-xs text-slate-500 mb-1">Jam sebelum shift</label>
-                                <input
-                                    type="number"
-                                    min="0"
-                                    max="23"
-                                    value={settings?.cutoffHours || 6}
-                                    onChange={(e) => setSettings(s => s ? { ...s, cutoffHours: parseInt(e.target.value) || 0 } : null)}
-                                    className="input-field"
-                                />
-                            </div>
-                            <div>
-                                <label className="block text-xs text-slate-500 mb-1">Maksimal hari order</label>
-                                <input
-                                    type="number"
-                                    min="1"
-                                    max="30"
-                                    value={settings?.maxOrderDaysAhead || 7}
-                                    onChange={(e) => setSettings(s => s ? { ...s, maxOrderDaysAhead: parseInt(e.target.value) || 7 } : null)}
-                                    className="input-field"
-                                />
-                            </div>
-                        </div>
-                        <p className="text-xs text-orange-500 mt-2">
-                            Total: {((settings?.cutoffDays || 0) * 24) + (settings?.cutoffHours || 6)} jam sebelum shift
-                        </p>
-                    </div>
-                )}
-
-                {/* Weekly Mode Settings */}
-                {settings?.cutoffMode === 'weekly' && (
-                    <div className="p-4 bg-slate-50 rounded-xl mb-6 space-y-4">
-                        <p className="text-sm text-slate-500">Cutoff hari & jam tertentu untuk order minggu depan</p>
-                        <div className="grid grid-cols-3 gap-3">
-                            <div>
-                                <label className="block text-xs text-slate-500 mb-1">Hari Cutoff</label>
-                                <select
-                                    value={settings?.weeklyCutoffDay ?? 5}
-                                    onChange={(e) => setSettings(s => s ? { ...s, weeklyCutoffDay: parseInt(e.target.value) } : null)}
-                                    className="input-field"
-                                >
-                                    <option value={1}>Senin</option>
-                                    <option value={2}>Selasa</option>
-                                    <option value={3}>Rabu</option>
-                                    <option value={4}>Kamis</option>
-                                    <option value={5}>Jumat</option>
-                                    <option value={6}>Sabtu</option>
-                                    <option value={0}>Minggu</option>
-                                </select>
-                            </div>
-                            <div>
-                                <label className="block text-xs text-slate-500 mb-1">Jam</label>
-                                <input
-                                    type="number"
-                                    min="0"
-                                    max="23"
-                                    value={settings?.weeklyCutoffHour ?? 17}
-                                    onChange={(e) => setSettings(s => s ? { ...s, weeklyCutoffHour: parseInt(e.target.value) || 0 } : null)}
-                                    className="input-field"
-                                />
-                            </div>
-                            <div>
-                                <label className="block text-xs text-slate-500 mb-1">Menit</label>
-                                <input
-                                    type="number"
-                                    min="0"
-                                    max="59"
-                                    value={settings?.weeklyCutoffMinute ?? 0}
-                                    onChange={(e) => setSettings(s => s ? { ...s, weeklyCutoffMinute: parseInt(e.target.value) || 0 } : null)}
-                                    className="input-field"
-                                />
-                            </div>
-                        </div>
-
+                    <div className="space-y-5">
                         <div>
-                            <label className="block text-xs text-slate-500 mb-2">Hari yang Dapat Dipesan</label>
-                            <div className="flex flex-wrap gap-2">
+                            <div className="text-[12.5px] font-semibold text-[#44403c] mb-2">Mode cutoff</div>
+                            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                                 {[
-                                    { value: 1, label: 'Sen' },
-                                    { value: 2, label: 'Sel' },
-                                    { value: 3, label: 'Rab' },
-                                    { value: 4, label: 'Kam' },
-                                    { value: 5, label: 'Jum' },
-                                    { value: 6, label: 'Sab' },
-                                    { value: 0, label: 'Min' },
-                                ].map(day => {
-                                    const orderableDays = (settings?.orderableDays || '1,2,3,4,5,6').split(',').map(d => parseInt(d));
-                                    const isSelected = orderableDays.includes(day.value);
+                                    {
+                                        key: 'per-shift' as const,
+                                        title: 'Per-Shift',
+                                        desc: 'Batas order dihitung X hari/jam sebelum shift',
+                                    },
+                                    {
+                                        key: 'weekly' as const,
+                                        title: 'Mingguan',
+                                        desc: 'Cutoff pada hari dan jam tertentu tiap minggu',
+                                    },
+                                ].map((opt) => {
+                                    const active = settings.cutoffMode === opt.key;
                                     return (
-                                        <label
-                                            key={day.value}
-                                            className={`px-3 py-1.5 rounded-lg cursor-pointer transition-all ${isSelected ? 'bg-orange-500 text-white' : 'bg-slate-200 text-slate-600'}`}
+                                        <button
+                                            key={opt.key}
+                                            type="button"
+                                            onClick={() => setSettings((s) => (s ? { ...s, cutoffMode: opt.key } : null))}
+                                            className={`p-3.5 rounded-[12px] border text-left cursor-pointer transition-colors ${
+                                                active
+                                                    ? 'bg-[#fffbeb] border-[#f59e0b]'
+                                                    : 'bg-[#fff] border-[#e7e5e4] hover:bg-[#fafaf9]'
+                                            }`}
                                         >
-                                            <input
-                                                type="checkbox"
-                                                checked={isSelected}
-                                                onChange={(e) => {
-                                                    const currentDays = (settings?.orderableDays || '1,2,3,4,5,6').split(',').map(d => parseInt(d));
-                                                    let newDays: number[];
-                                                    if (e.target.checked) {
-                                                        newDays = [...currentDays, day.value];
-                                                    } else {
-                                                        newDays = currentDays.filter(d => d !== day.value);
-                                                    }
-                                                    setSettings(s => s ? { ...s, orderableDays: newDays.join(',') } : null);
-                                                }}
-                                                className="sr-only"
-                                            />
-                                            {day.label}
-                                        </label>
+                                            <div className="text-[13.5px] font-bold text-[#1c1917]">{opt.title}</div>
+                                            <div className="text-[12px] text-[#78716c] mt-0.5">{opt.desc}</div>
+                                        </button>
                                     );
                                 })}
                             </div>
                         </div>
 
-                        <div>
-                            <label className="block text-xs text-slate-500 mb-1">Maksimal Minggu ke Depan</label>
-                            <select
-                                value={settings?.maxWeeksAhead ?? 1}
-                                onChange={(e) => setSettings(s => s ? { ...s, maxWeeksAhead: parseInt(e.target.value) } : null)}
-                                className="input-field w-40"
+                        {settings.cutoffMode === 'per-shift' ? (
+                            <div className="p-4 rounded-[12px] bg-[#fafaf9] border border-[#e7e5e4] space-y-3">
+                                <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                                    <Field label="Hari sebelum shift">
+                                        <Input
+                                            type="number"
+                                            min={0}
+                                            max={30}
+                                            value={settings.cutoffDays || 0}
+                                            onChange={(e) =>
+                                                setSettings((s) =>
+                                                    s ? { ...s, cutoffDays: parseInt(e.target.value, 10) || 0 } : null
+                                                )
+                                            }
+                                        />
+                                    </Field>
+                                    <Field label="Jam sebelum shift">
+                                        <Input
+                                            type="number"
+                                            min={0}
+                                            max={23}
+                                            value={settings.cutoffHours || 0}
+                                            onChange={(e) =>
+                                                setSettings((s) =>
+                                                    s ? { ...s, cutoffHours: parseInt(e.target.value, 10) || 0 } : null
+                                                )
+                                            }
+                                        />
+                                    </Field>
+                                    <Field label="Maksimal hari order ke depan">
+                                        <Input
+                                            type="number"
+                                            min={1}
+                                            max={30}
+                                            value={settings.maxOrderDaysAhead || 7}
+                                            onChange={(e) =>
+                                                setSettings((s) =>
+                                                    s
+                                                        ? {
+                                                              ...s,
+                                                              maxOrderDaysAhead: parseInt(e.target.value, 10) || 7,
+                                                          }
+                                                        : null
+                                                )
+                                            }
+                                        />
+                                    </Field>
+                                </div>
+                                <p className="text-[12px] font-semibold text-[#b45309]">
+                                    Total batas waktu: {(settings.cutoffDays || 0) * 24 + (settings.cutoffHours || 0)} jam sebelum shift
+                                </p>
+                            </div>
+                        ) : (
+                            <div className="p-4 rounded-[12px] bg-[#fafaf9] border border-[#e7e5e4] space-y-4">
+                                <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                                    <Field label="Hari cutoff">
+                                        <Select
+                                            value={settings.weeklyCutoffDay ?? 5}
+                                            onChange={(e) =>
+                                                setSettings((s) =>
+                                                    s ? { ...s, weeklyCutoffDay: parseInt(e.target.value, 10) } : null
+                                                )
+                                            }
+                                        >
+                                            {WEEKDAYS.map((w) => (
+                                                <option key={w.value} value={w.value}>
+                                                    {w.label}
+                                                </option>
+                                            ))}
+                                        </Select>
+                                    </Field>
+                                    <Field label="Jam cutoff">
+                                        <Input
+                                            type="number"
+                                            min={0}
+                                            max={23}
+                                            value={settings.weeklyCutoffHour ?? 17}
+                                            onChange={(e) =>
+                                                setSettings((s) =>
+                                                    s
+                                                        ? {
+                                                              ...s,
+                                                              weeklyCutoffHour: parseInt(e.target.value, 10) || 0,
+                                                          }
+                                                        : null
+                                                )
+                                            }
+                                        />
+                                    </Field>
+                                    <Field label="Menit cutoff">
+                                        <Input
+                                            type="number"
+                                            min={0}
+                                            max={59}
+                                            value={settings.weeklyCutoffMinute ?? 0}
+                                            onChange={(e) =>
+                                                setSettings((s) =>
+                                                    s
+                                                        ? {
+                                                              ...s,
+                                                              weeklyCutoffMinute: parseInt(e.target.value, 10) || 0,
+                                                          }
+                                                        : null
+                                                )
+                                            }
+                                        />
+                                    </Field>
+                                </div>
+
+                                <div>
+                                    <div className="text-[12.5px] font-semibold text-[#44403c] mb-1.5">
+                                        Hari yang dapat dipesan
+                                    </div>
+                                    <div className="flex flex-wrap gap-1.5">
+                                        {WEEKDAYS.map((day) => {
+                                            const cur = (settings.orderableDays || '1,2,3,4,5,6')
+                                                .split(',')
+                                                .map((d) => parseInt(d, 10));
+                                            const active = cur.includes(day.value);
+                                            return (
+                                                <button
+                                                    key={day.value}
+                                                    type="button"
+                                                    onClick={() => {
+                                                        const next = active
+                                                            ? cur.filter((d) => d !== day.value)
+                                                            : [...cur, day.value];
+                                                        setSettings((s) =>
+                                                            s ? { ...s, orderableDays: next.join(',') } : null
+                                                        );
+                                                    }}
+                                                    className={`h-8 px-3 rounded-[8px] text-[12px] font-semibold border cursor-pointer ${
+                                                        active
+                                                            ? 'bg-[#f59e0b] text-[#1c1917] border-[#f59e0b]'
+                                                            : 'bg-[#fff] text-[#57534e] border-[#e7e5e4]'
+                                                    }`}
+                                                >
+                                                    {day.short}
+                                                </button>
+                                            );
+                                        })}
+                                    </div>
+                                </div>
+
+                                <Field label="Maksimal minggu ke depan" className="max-w-xs">
+                                    <Select
+                                        value={settings.maxWeeksAhead ?? 1}
+                                        onChange={(e) =>
+                                            setSettings((s) =>
+                                                s ? { ...s, maxWeeksAhead: parseInt(e.target.value, 10) } : null
+                                            )
+                                        }
+                                    >
+                                        <option value={1}>1 Minggu</option>
+                                        <option value={2}>2 Minggu</option>
+                                    </Select>
+                                </Field>
+                            </div>
+                        )}
+
+                        <div className="p-3.5 rounded-[12px] bg-[#fafaf9] border border-[#e7e5e4] flex items-center justify-between gap-4">
+                            <div>
+                                <div className="text-[13.5px] font-semibold text-[#1c1917]">
+                                    Validasi lokasi kantin saat check-in
+                                </div>
+                                <div className="text-[12px] text-[#78716c]">
+                                    Pesanan hanya bisa di-check-in di kantin tempat pemesanan
+                                </div>
+                            </div>
+                            <button
+                                type="button"
+                                role="switch"
+                                aria-checked={Boolean(settings.enforceCanteenCheckin)}
+                                onClick={() =>
+                                    setSettings((s) =>
+                                        s ? { ...s, enforceCanteenCheckin: !s.enforceCanteenCheckin } : null
+                                    )
+                                }
+                                className={`relative inline-flex h-6 w-11 items-center rounded-full border-0 cursor-pointer transition-colors ${
+                                    settings.enforceCanteenCheckin ? 'bg-[#16a34a]' : 'bg-[#d6d3d1]'
+                                }`}
                             >
-                                <option value={1}>1 Minggu</option>
-                                <option value={2}>2 Minggu</option>
-                            </select>
+                                <span
+                                    className={`inline-block h-4 w-4 rounded-full bg-[#fff] transition-transform ${
+                                        settings.enforceCanteenCheckin ? 'translate-x-6' : 'translate-x-1'
+                                    }`}
+                                />
+                            </button>
+                        </div>
+
+                        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                            <Field label="Strike untuk blacklist" hint="Jumlah tidak diambil sebelum diblokir otomatis">
+                                <Input
+                                    type="number"
+                                    min={1}
+                                    max={10}
+                                    value={settings.blacklistStrikes || 3}
+                                    onChange={(e) =>
+                                        setSettings((s) =>
+                                            s ? { ...s, blacklistStrikes: parseInt(e.target.value, 10) || 1 } : null
+                                        )
+                                    }
+                                />
+                            </Field>
+                            <Field label="Durasi blacklist (hari)" hint="Lama pemblokiran otomatis">
+                                <Input
+                                    type="number"
+                                    min={1}
+                                    max={365}
+                                    value={settings.blacklistDuration || 7}
+                                    onChange={(e) =>
+                                        setSettings((s) =>
+                                            s ? { ...s, blacklistDuration: parseInt(e.target.value, 10) || 1 } : null
+                                        )
+                                    }
+                                />
+                            </Field>
                         </div>
                     </div>
-                )}
-
-                {/* Canteen Check-in Enforcement */}
-                <div className="mb-6 p-4 bg-slate-50 rounded-xl">
-                    <div className="flex items-center justify-between">
-                        <div>
-                            <h3 className="font-medium text-[#1a1f37]">Validasi Lokasi Kantin</h3>
-                            <p className="text-sm text-slate-500">Pesanan hanya bisa di check-in di kantin tempat pemesanan</p>
-                        </div>
-                        <button
-                            type="button"
-                            onClick={() => setSettings(s => s ? { ...s, enforceCanteenCheckin: !s.enforceCanteenCheckin } : null)}
-                            className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors ${settings?.enforceCanteenCheckin ? 'bg-emerald-500' : 'bg-slate-300'}`}
-                        >
-                            <span className={`inline-block h-4 w-4 transform rounded-full bg-white transition-transform ${settings?.enforceCanteenCheckin ? 'translate-x-6' : 'translate-x-1'}`} />
-                        </button>
-                    </div>
-                    {settings?.enforceCanteenCheckin && (
-                        <p className="text-xs text-emerald-600 mt-2">
-                            ✓ Aktif: Operator check-in harus memilih kantin dan hanya bisa memproses pesanan untuk kantin tersebut
-                        </p>
-                    )}
-                </div>
-
-                {/* Blacklist Settings */}
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                    <div>
-                        <label className="block text-sm text-slate-500 mb-2">Strike untuk Blacklist</label>
-                        <input
-                            type="number"
-                            min="1"
-                            max="10"
-                            value={settings?.blacklistStrikes || 3}
-                            onChange={(e) => setSettings(s => s ? { ...s, blacklistStrikes: parseInt(e.target.value) } : null)}
-                            className="input-field"
-                        />
-                        <p className="text-xs text-slate-500 mt-1">Jumlah tidak diambil sebelum di-blacklist</p>
-                    </div>
-                    <div>
-                        <label className="block text-sm text-slate-500 mb-2">Durasi Blacklist (Hari)</label>
-                        <input
-                            type="number"
-                            min="1"
-                            max="365"
-                            value={settings?.blacklistDuration || 7}
-                            onChange={(e) => setSettings(s => s ? { ...s, blacklistDuration: parseInt(e.target.value) } : null)}
-                            className="input-field"
-                        />
-                        <p className="text-xs text-slate-500 mt-1">Berapa lama user tetap di-blacklist</p>
-                    </div>
-                </div>
-            </div>
-
-            {/* Floating Save Button when there are changes */}
-            {hasChanges && (
-                <div className="fixed bottom-6 right-6 z-50">
-                    <button
-                        onClick={saveAllChanges}
-                        disabled={isSaving}
-                        className="bg-emerald-500 hover:bg-emerald-600 text-white px-6 py-3 rounded-2xl flex items-center gap-2 shadow-lg shadow-emerald-500/25 font-medium transition-colors disabled:opacity-50"
-                    >
-                        {isSaving ? <Loader2 className="w-5 h-5 animate-spin" /> : <Save className="w-5 h-5" />}
-                        Simpan Semua Perubahan
-                    </button>
-                </div>
+                </Card>
             )}
         </div>
     );

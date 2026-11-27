@@ -1,8 +1,36 @@
 import { useState, useEffect, useCallback, useMemo } from 'react';
-import { ChevronLeft, ChevronRight, Copy, Trash2, Pizza, Store, Plus, Edit2, Image, X, Search } from 'lucide-react';
+import { Link } from 'react-router-dom';
+import {
+    ChevronLeft,
+    ChevronRight,
+    Copy,
+    Trash2,
+    Pizza,
+    Store,
+    Plus,
+    Edit2,
+    Image as ImageIcon,
+    Search,
+    Check,
+} from 'lucide-react';
+import toast from 'react-hot-toast';
 import { api } from '../../contexts/AuthContext';
 import { useSSERefresh, VENDOR_EVENTS, MENU_EVENTS } from '../../contexts/SSEContext';
-import toast from 'react-hot-toast';
+import { getLocalDateString, formatOrderDate } from '../../utils/dateHelpers';
+import {
+    PageHeader,
+    Button,
+    Card,
+    Badge,
+    Pagination,
+    Modal,
+    Field,
+    Input,
+    Select,
+    Textarea,
+    EmptyState,
+    Skeleton,
+} from '../../components/ui';
 
 interface Vendor {
     id: string;
@@ -43,8 +71,6 @@ interface Shift {
     endTime: string;
     breakStartTime?: string | null;
     breakEndTime?: string | null;
-    hasSpecialDayBreaks?: boolean;
-    dayBreaks?: { dayOfWeek: number; breakStartTime: string; breakEndTime: string }[];
 }
 
 interface ShiftGroup {
@@ -55,74 +81,89 @@ interface ShiftGroup {
     isGrouped: boolean;
 }
 
-// Group shifts by break time for merged display
-const groupShiftsByBreakTime = (shifts: Shift[]): ShiftGroup[] => {
-    const groups: Map<string, Shift[]> = new Map();
+interface SelectedSlot {
+    dayOfWeek: number;
+    dayName: string;
+    date: string;
+    group: ShiftGroup;
+    existingMenu?: DayMenu;
+}
 
-    shifts.forEach(shift => {
-        const key = shift.breakStartTime && shift.breakEndTime
-            ? `${shift.breakStartTime}-${shift.breakEndTime}`
-            : `_shift_${shift.id}`;
+const CATEGORIES = ['Nasi', 'Mie', 'Lauk', 'Sayur', 'Buah', 'Minuman', 'Snack', 'Lainnya'];
+const CATALOG_LIMIT = 10;
 
+function groupShiftsByBreakTime(shifts: Shift[]): ShiftGroup[] {
+    const groups = new Map<string, Shift[]>();
+    shifts.forEach((shift) => {
+        const key =
+            shift.breakStartTime && shift.breakEndTime
+                ? `${shift.breakStartTime}–${shift.breakEndTime}`
+                : `_shift_${shift.id}`;
         if (!groups.has(key)) groups.set(key, []);
         groups.get(key)!.push(shift);
     });
 
-    return Array.from(groups.entries()).map(([key, shiftsInGroup]) => ({
-        key,
-        label: key.startsWith('_shift_') ? shiftsInGroup[0].name : key,
-        shifts: shiftsInGroup,
-        shiftIds: shiftsInGroup.map(s => s.id),
-        isGrouped: !key.startsWith('_shift_')
-    })).sort((a, b) => a.shifts[0].startTime.localeCompare(b.shifts[0].startTime));
-};
+    return Array.from(groups.entries())
+        .map(([key, shiftsInGroup]) => ({
+            key,
+            label: key.startsWith('_shift_') ? shiftsInGroup[0].name : key,
+            shifts: shiftsInGroup,
+            shiftIds: shiftsInGroup.map((s) => s.id),
+            isGrouped: !key.startsWith('_shift_'),
+        }))
+        .sort((a, b) => a.shifts[0].startTime.localeCompare(b.shifts[0].startTime));
+}
 
-const categories = ['Nasi', 'Mie', 'Lauk', 'Sayur', 'Buah', 'Minuman', 'Snack', 'Lainnya'];
+function formatDayShort(iso: string): string {
+    const key = formatOrderDate(iso);
+    if (key === '-') return iso;
+    const [y, m, d] = key.split('-').map(Number);
+    return new Date(y, m - 1, d).toLocaleDateString('id-ID', { day: 'numeric', month: 'short' });
+}
 
 export default function WeeklyMenuPage() {
-    const [weekData, setWeekData] = useState<{ week: number; year: number; weekStart: string; weekEnd: string; shifts: Shift[]; dailyMenus: DailyMenuData[] } | null>(null);
+    const [weekData, setWeekData] = useState<{
+        week: number;
+        year: number;
+        weekStart: string;
+        weekEnd: string;
+        shifts: Shift[];
+        dailyMenus: DailyMenuData[];
+    } | null>(null);
     const [menuItems, setMenuItems] = useState<MenuItem[]>([]);
     const [vendors, setVendors] = useState<Vendor[]>([]);
     const [loading, setLoading] = useState(true);
     const [selectedWeek, setSelectedWeek] = useState<{ week: number; year: number } | null>(null);
-    const [showMenuSelector, setShowMenuSelector] = useState<{ dayOfWeek: number; shiftId: string | null; shiftIds?: string[] } | null>(null);
-    const [menuSearch, setMenuSearch] = useState<string>('');
-    const [menuCategoryFilter, setMenuCategoryFilter] = useState<string>('all');
-    const [menuVendorFilter, setMenuVendorFilter] = useState<string>('all');
 
-    const closeMenuSelector = useCallback(() => {
-        setShowMenuSelector(null);
-        setMenuSearch('');
-        setMenuCategoryFilter('all');
-        setMenuVendorFilter('all');
-    }, []);
+    // Side inspector panel state
+    const [selectedSlot, setSelectedSlot] = useState<SelectedSlot | null>(null);
+    const [pickedMenuItemId, setPickedMenuItemId] = useState<string>('');
+    const [slotSearch, setSlotSearch] = useState('');
+    const [slotVendorFilter, setSlotVendorFilter] = useState('all');
+    const [savingSlot, setSavingSlot] = useState(false);
 
-    // Build the vendor list from menu items themselves (so inactive vendors
-    // with zero items never appear). Sorted by name for stable display.
-    const availableVendors = useMemo(() => {
-        const seen = new Map<string, string>();
-        menuItems.forEach(i => { if (!seen.has(i.vendorId)) seen.set(i.vendorId, i.vendor.name); });
-        return Array.from(seen.entries())
-            .map(([id, name]) => ({ id, name }))
-            .sort((a, b) => a.name.localeCompare(b.name));
-    }, [menuItems]);
+    // Catalog filter & pagination
+    const [catalogSearch, setCatalogSearch] = useState('');
+    const [catalogVendorFilter, setCatalogVendorFilter] = useState('all');
+    const [catalogCategoryFilter, setCatalogCategoryFilter] = useState('all');
+    const [catalogPage, setCatalogPage] = useState(1);
 
-    const filteredMenuItems = useMemo(() => menuItems.filter(i => {
-        const matchCat = menuCategoryFilter === 'all' || i.category === menuCategoryFilter;
-        const matchVendor = menuVendorFilter === 'all' || i.vendorId === menuVendorFilter;
-        const matchSearch = menuSearch.trim() === '' || i.name.toLowerCase().includes(menuSearch.trim().toLowerCase());
-        return matchCat && matchVendor && matchSearch;
-    }), [menuItems, menuSearch, menuCategoryFilter, menuVendorFilter]);
+    // Modals
     const [showCopyModal, setShowCopyModal] = useState(false);
-    const [copyTarget, setCopyTarget] = useState({ week: 1, year: 2025 });
-    const [menuMode, setMenuMode] = useState<'SAME_ALL_SHIFTS' | 'DIFFERENT_PER_SHIFT'>('SAME_ALL_SHIFTS');
+    const [copyTarget, setCopyTarget] = useState({ week: 1, year: 2026 });
+    const [copyingFromPrev, setCopyingFromPrev] = useState(false);
 
-    // Menu item form state
     const [showMenuItemForm, setShowMenuItemForm] = useState(false);
     const [editingMenuItem, setEditingMenuItem] = useState<MenuItem | null>(null);
-    const [menuItemForm, setMenuItemForm] = useState({ name: '', description: '', category: '', vendorId: '' });
+    const [menuItemForm, setMenuItemForm] = useState({
+        name: '',
+        description: '',
+        category: '',
+        vendorId: '',
+    });
     const [imageFile, setImageFile] = useState<File | null>(null);
     const [savingMenuItem, setSavingMenuItem] = useState(false);
+    const [deleteMenuTarget, setDeleteMenuTarget] = useState<MenuItem | null>(null);
     const [lightboxImage, setLightboxImage] = useState<string | null>(null);
 
     const loadData = useCallback(async () => {
@@ -132,9 +173,8 @@ export default function WeeklyMenuPage() {
             const [weekRes, menuRes, vendorRes] = await Promise.all([
                 api.get(`/api/weekly-menu${weekParam}`),
                 api.get('/api/menu-items'),
-                api.get('/api/vendors')
+                api.get('/api/vendors'),
             ]);
-
             if (weekRes.data) {
                 setWeekData(weekRes.data);
                 if (!selectedWeek) {
@@ -145,8 +185,8 @@ export default function WeeklyMenuPage() {
             setMenuItems(menuRes.data || []);
             setVendors(vendorRes.data || []);
         } catch (error) {
-            console.error('Load data error:', error);
-            toast.error('Gagal memuat data');
+            console.error('Load weekly menu error:', error);
+            toast.error('Gagal memuat data menu mingguan');
         } finally {
             setLoading(false);
         }
@@ -156,14 +196,62 @@ export default function WeeklyMenuPage() {
         loadData();
     }, [loadData]);
 
-    // SSE integration for real-time updates
     useSSERefresh([...VENDOR_EVENTS, ...MENU_EVENTS], loadData);
+
+    const shiftGroups = useMemo(
+        () => (weekData?.shifts ? groupShiftsByBreakTime(weekData.shifts) : []),
+        [weekData?.shifts]
+    );
+
+    const availableVendors = useMemo(() => {
+        const seen = new Map<string, string>();
+        menuItems.forEach((i) => {
+            if (!seen.has(i.vendorId)) seen.set(i.vendorId, i.vendor.name);
+        });
+        return Array.from(seen.entries())
+            .map(([id, name]) => ({ id, name }))
+            .sort((a, b) => a.name.localeCompare(b.name));
+    }, [menuItems]);
+
+    const slotFilteredMenuItems = useMemo(
+        () =>
+            menuItems.filter((i) => {
+                const matchV = slotVendorFilter === 'all' || i.vendorId === slotVendorFilter;
+                const matchQ =
+                    slotSearch.trim() === '' ||
+                    i.name.toLowerCase().includes(slotSearch.trim().toLowerCase()) ||
+                    i.vendor.name.toLowerCase().includes(slotSearch.trim().toLowerCase());
+                return matchV && matchQ;
+            }),
+        [menuItems, slotVendorFilter, slotSearch]
+    );
+
+    const catalogFilteredItems = useMemo(
+        () =>
+            menuItems.filter((i) => {
+                const matchV = catalogVendorFilter === 'all' || i.vendorId === catalogVendorFilter;
+                const matchC = catalogCategoryFilter === 'all' || i.category === catalogCategoryFilter;
+                const matchQ =
+                    catalogSearch.trim() === '' ||
+                    i.name.toLowerCase().includes(catalogSearch.trim().toLowerCase());
+                return matchV && matchC && matchQ;
+            }),
+        [menuItems, catalogVendorFilter, catalogCategoryFilter, catalogSearch]
+    );
+
+    const pagedCatalogItems = useMemo(
+        () =>
+            catalogFilteredItems.slice(
+                (catalogPage - 1) * CATALOG_LIMIT,
+                catalogPage * CATALOG_LIMIT
+            ),
+        [catalogFilteredItems, catalogPage]
+    );
 
     const navigateWeek = (direction: number) => {
         if (!selectedWeek) return;
         let newWeek = selectedWeek.week + direction;
         let newYear = selectedWeek.year;
-
         if (newWeek < 1) {
             newWeek = 52;
             newYear--;
@@ -171,98 +259,124 @@ export default function WeeklyMenuPage() {
             newWeek = 1;
             newYear++;
         }
-
+        setSelectedSlot(null);
         setSelectedWeek({ week: newWeek, year: newYear });
     };
 
-    const setMenu = async (dayOfWeek: number, shiftId: string | null, menuItemId: string, shiftIds?: string[]) => {
-        if (!selectedWeek) return;
+    const handleSelectSlot = (day: DailyMenuData, group: ShiftGroup, existingMenu?: DayMenu) => {
+        setSelectedSlot({
+            dayOfWeek: day.dayOfWeek,
+            dayName: day.dayName,
+            date: day.date,
+            group,
+            existingMenu,
+        });
+        setPickedMenuItemId(existingMenu?.menuItem.id || '');
+    };
 
+    const handleSaveSlot = async () => {
+        if (!selectedWeek || !selectedSlot || !pickedMenuItemId) {
+            toast.error('Pilih hidangan terlebih dahulu');
+            return;
+        }
+        setSavingSlot(true);
         try {
-            // If shiftIds provided (break time group), save for all shifts in the group
-            if (shiftIds && shiftIds.length > 0) {
-                await Promise.all(shiftIds.map(sid =>
+            await Promise.all(
+                selectedSlot.group.shiftIds.map((sid) =>
                     api.post('/api/weekly-menu', {
                         weekNumber: selectedWeek.week,
                         year: selectedWeek.year,
-                        dayOfWeek,
+                        dayOfWeek: selectedSlot.dayOfWeek,
                         shiftId: sid,
-                        menuMode,
-                        menuItemId
+                        menuMode: 'SAME_ALL_SHIFTS',
+                        menuItemId: pickedMenuItemId,
                     })
-                ));
-            } else {
-                await api.post('/api/weekly-menu', {
-                    weekNumber: selectedWeek.week,
-                    year: selectedWeek.year,
-                    dayOfWeek,
-                    shiftId: menuMode === 'DIFFERENT_PER_SHIFT' ? shiftId : null,
-                    menuMode,
-                    menuItemId
-                });
-            }
-            closeMenuSelector();
-            toast.success('Menu berhasil ditambahkan');
+                )
+            );
+            toast.success('Jadwal menu disimpan');
             loadData();
-        } catch (error) {
-            console.error('Set menu error:', error);
-            toast.error('Gagal menambahkan menu');
+        } catch {
+            toast.error('Gagal menyimpan jadwal menu');
+        } finally {
+            setSavingSlot(false);
         }
     };
 
-    const deleteMenu = async (menuId: string, dayOfWeek?: number, menuItemId?: string) => {
-        if (!confirm('Hapus menu ini?')) return;
-
+    const handleClearSlot = async (
+        slotToClear: SelectedSlot | { dayOfWeek: number; menuId: string; menuItemId: string }
+    ) => {
+        if (!weekData) return;
         try {
-            // If grouped mode, find ALL menu IDs for the same menuItem on the same day
-            if (weekData && dayOfWeek !== undefined && menuItemId) {
-                const dayData = weekData.dailyMenus.find(d => d.dayOfWeek === dayOfWeek);
-                if (dayData) {
-                    const relatedMenuIds = dayData.menus
-                        .filter(m => m.menuItem.id === menuItemId)
-                        .map(m => m.id);
+            const targetMenuId =
+                'menuId' in slotToClear
+                    ? slotToClear.menuId
+                    : slotToClear.existingMenu?.id;
+            const targetItemId =
+                'menuId' in slotToClear
+                    ? slotToClear.menuItemId
+                    : slotToClear.existingMenu?.menuItem.id;
+            if (!targetMenuId || !targetItemId) return;
 
-                    if (relatedMenuIds.length > 1) {
-                        // Delete all related entries (one per shift in the group)
-                        await Promise.all(relatedMenuIds.map(id =>
-                            api.delete(`/api/weekly-menu/${id}`)
-                        ));
-                        toast.success(`${relatedMenuIds.length} entri menu dihapus`);
-                        loadData();
-                        return;
-                    }
-                }
-            }
+            const dayData = weekData.dailyMenus.find((d) => d.dayOfWeek === slotToClear.dayOfWeek);
+            const relatedIds = dayData
+                ? dayData.menus.filter((m) => m.menuItem.id === targetItemId).map((m) => m.id)
+                : [targetMenuId];
 
-            // Single delete fallback
-            await api.delete(`/api/weekly-menu/${menuId}`);
-            toast.success('Menu dihapus');
+            await Promise.all(
+                (relatedIds.length > 0 ? relatedIds : [targetMenuId]).map((id) =>
+                    api.delete(`/api/weekly-menu/${id}`)
+                )
+            );
+            toast.success('Slot dikosongkan');
+            setSelectedSlot(null);
+            setPickedMenuItemId('');
             loadData();
-        } catch (error) {
-            console.error('Delete menu error:', error);
-            toast.error('Gagal menghapus menu');
+        } catch {
+            toast.error('Gagal mengosongkan slot');
         }
     };
 
-    const copyWeek = async () => {
+    const handleCopyFromPreviousWeek = async () => {
         if (!selectedWeek) return;
+        let prevWeek = selectedWeek.week - 1;
+        let prevYear = selectedWeek.year;
+        if (prevWeek < 1) {
+            prevWeek = 52;
+            prevYear--;
+        }
+        setCopyingFromPrev(true);
+        try {
+            const res = await api.post('/api/weekly-menu/copy', {
+                fromWeek: prevWeek,
+                fromYear: prevYear,
+                toWeek: selectedWeek.week,
+                toYear: selectedWeek.year,
+            });
+            toast.success(res.data?.message || 'Menu minggu lalu disalin');
+            loadData();
+        } catch (error) {
+            toast.error((error as { response?: { data?: { error?: string } } })?.response?.data?.error || 'Gagal menyalin minggu lalu');
+        } finally {
+            setCopyingFromPrev(false);
+        }
+    };
 
+    const copyWeekToTarget = async () => {
+        if (!selectedWeek) return;
         try {
             const res = await api.post('/api/weekly-menu/copy', {
                 fromWeek: selectedWeek.week,
                 fromYear: selectedWeek.year,
                 toWeek: copyTarget.week,
-                toYear: copyTarget.year
+                toYear: copyTarget.year,
             });
-            toast.success(res.data?.message || 'Menu berhasil dicopy');
+            toast.success(res.data?.message || 'Menu berhasil disalin');
             setShowCopyModal(false);
-        } catch (error: any) {
-            console.error('Copy week error:', error);
-            toast.error(error.response?.data?.error || 'Gagal copy menu');
+        } catch (error) {
+            toast.error((error as { response?: { data?: { error?: string } } })?.response?.data?.error || 'Gagal menyalin menu');
         }
     };
 
-    // Menu Item CRUD
     const openMenuItemForm = (item?: MenuItem) => {
         if (item) {
             setEditingMenuItem(item);
@@ -270,11 +384,16 @@ export default function WeeklyMenuPage() {
                 name: item.name,
                 description: item.description || '',
                 category: item.category || '',
-                vendorId: item.vendorId
+                vendorId: item.vendorId,
             });
         } else {
             setEditingMenuItem(null);
-            setMenuItemForm({ name: '', description: '', category: '', vendorId: vendors[0]?.id || '' });
+            setMenuItemForm({
+                name: '',
+                description: '',
+                category: '',
+                vendorId: vendors[0]?.id || '',
+            });
         }
         setImageFile(null);
         setShowMenuItemForm(true);
@@ -283,10 +402,9 @@ export default function WeeklyMenuPage() {
     const saveMenuItem = async (e: React.FormEvent) => {
         e.preventDefault();
         if (!menuItemForm.name.trim() || !menuItemForm.vendorId) {
-            toast.error('Nama dan Vendor wajib diisi');
+            toast.error('Nama dan vendor wajib diisi');
             return;
         }
-
         setSavingMenuItem(true);
         try {
             const form = new FormData();
@@ -298,549 +416,675 @@ export default function WeeklyMenuPage() {
 
             if (editingMenuItem) {
                 await api.put(`/api/menu-items/${editingMenuItem.id}`, form);
-                toast.success('Menu berhasil diperbarui');
+                toast.success('Menu diperbarui');
             } else {
                 await api.post('/api/menu-items', form);
-                toast.success('Menu berhasil dibuat');
+                toast.success('Menu ditambahkan');
             }
-
             setShowMenuItemForm(false);
             loadData();
-        } catch (error: any) {
-            console.error('Save menu item error:', error);
-            toast.error(error.response?.data?.error || 'Gagal menyimpan menu');
+        } catch (error) {
+            toast.error((error as { response?: { data?: { error?: string } } })?.response?.data?.error || 'Gagal menyimpan menu');
         } finally {
             setSavingMenuItem(false);
         }
     };
 
-    const deleteMenuItem = async (item: MenuItem) => {
-        if (!confirm(`Hapus menu "${item.name}"? Menu yang sudah dijadwalkan juga akan terhapus.`)) return;
-
+    const confirmDeleteMenuItem = async () => {
+        if (!deleteMenuTarget) return;
         try {
-            await api.delete(`/api/menu-items/${item.id}`);
-            toast.success('Menu berhasil dihapus');
+            await api.delete(`/api/menu-items/${deleteMenuTarget.id}`);
+            toast.success('Menu dihapus');
+            setDeleteMenuTarget(null);
             loadData();
-        } catch (error: any) {
-            console.error('Delete menu item error:', error);
-            toast.error(error.response?.data?.error || 'Gagal menghapus menu');
+        } catch (error) {
+            toast.error((error as { response?: { data?: { error?: string } } })?.response?.data?.error || 'Gagal menghapus menu');
         }
     };
 
-    const formatDate = (dateStr: string) => {
-        const d = new Date(dateStr);
-        return d.toLocaleDateString('id-ID', { day: 'numeric', month: 'short' });
-    };
+    const todayKey = getLocalDateString();
 
     if (loading && !weekData) {
         return (
-            <div className="flex items-center justify-center h-64">
-                <div className="animate-spin rounded-full h-8 w-8 border-t-2 border-b-2 border-teal-500"></div>
+            <div className="space-y-4">
+                <Skeleton className="h-9 w-64" />
+                <div className="grid grid-cols-1 lg:grid-cols-[1.5fr_340px] gap-4">
+                    <Skeleton className="h-96" />
+                    <Skeleton className="h-96" />
+                </div>
             </div>
         );
     }
 
     return (
-        <div className="space-y-6">
-            {/* Header */}
-            <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
-                <div>
-                    <h1 className="text-2xl font-bold text-slate-800">Menu Mingguan</h1>
-                    <p className="text-slate-500">Atur menu makanan per minggu</p>
-                </div>
-                <div className="flex gap-2">
-                    <button onClick={() => openMenuItemForm()} className="btn-primary flex items-center gap-2">
-                        <Plus className="w-4 h-4" />
-                        Tambah Menu Baru
-                    </button>
-                    <button onClick={() => setShowCopyModal(true)} className="btn-secondary flex items-center gap-2">
-                        <Copy className="w-4 h-4" />
-                        Copy Minggu
-                    </button>
-                </div>
-            </div>
-
-            {/* Check vendors */}
-            {vendors.length === 0 && (
-                <div className="card p-6 text-center">
-                    <Store className="w-12 h-12 mx-auto mb-4 text-amber-400" />
-                    <p className="text-slate-600 font-medium">Belum ada vendor</p>
-                    <p className="text-sm text-slate-400 mt-1">Buat vendor terlebih dahulu sebelum membuat menu</p>
-                    <a href="/admin/vendors" className="inline-block mt-4 btn-primary">
-                        Buat Vendor
-                    </a>
-                </div>
-            )}
-
-            {vendors.length > 0 && (
-                <>
-                    {/* Week Navigator */}
-                    <div className="card p-4">
-                        <div className="flex items-center justify-between">
-                            <button onClick={() => navigateWeek(-1)} className="p-2 rounded-lg hover:bg-slate-100">
-                                <ChevronLeft className="w-5 h-5" />
+        <div className="space-y-4">
+            <PageHeader
+                title="Menu mingguan"
+                subtitle={
+                    weekData
+                        ? `Minggu ke-${selectedWeek?.week}, ${selectedWeek?.year} (${formatDayShort(weekData.weekStart)} – ${formatDayShort(weekData.weekEnd)})`
+                        : 'Atur jadwal hidangan mingguan per waktu istirahat'
+                }
+                actions={
+                    <>
+                        <div className="inline-flex items-center rounded-[9px] border border-[#e7e5e4] bg-[#fff] overflow-hidden">
+                            <button
+                                type="button"
+                                aria-label="Minggu sebelumnya"
+                                onClick={() => navigateWeek(-1)}
+                                className="h-[34px] px-2.5 hover:bg-[#fafaf9] text-[#57534e] border-0 bg-transparent cursor-pointer"
+                            >
+                                <ChevronLeft className="w-4 h-4" />
                             </button>
-                            <div className="text-center">
-                                <p className="font-semibold text-slate-800">Week {selectedWeek?.week}, {selectedWeek?.year}</p>
-                                {weekData && (
-                                    <p className="text-sm text-slate-500">{formatDate(weekData.weekStart)} - {formatDate(weekData.weekEnd)}</p>
+                            <span className="px-2.5 text-[12.5px] font-semibold text-[#1c1917] tabular-nums">
+                                M{selectedWeek?.week} · {selectedWeek?.year}
+                            </span>
+                            <button
+                                type="button"
+                                aria-label="Minggu berikutnya"
+                                onClick={() => navigateWeek(1)}
+                                className="h-[34px] px-2.5 hover:bg-[#fafaf9] text-[#57534e] border-0 bg-transparent cursor-pointer"
+                            >
+                                <ChevronRight className="w-4 h-4" />
+                            </button>
+                        </div>
+                        <Button
+                            variant="secondary"
+                            size="sm"
+                            loading={copyingFromPrev}
+                            onClick={handleCopyFromPreviousWeek}
+                            leftIcon={<Copy className="w-3.5 h-3.5" aria-hidden="true" />}
+                        >
+                            Salin dari minggu lalu
+                        </Button>
+                        <Button
+                            variant="ghost"
+                            size="sm"
+                            onClick={() => setShowCopyModal(true)}
+                        >
+                            Salin ke minggu lain
+                        </Button>
+                        <Button
+                            variant="primary"
+                            size="sm"
+                            onClick={() => openMenuItemForm()}
+                            leftIcon={<Plus className="w-3.5 h-3.5" aria-hidden="true" />}
+                        >
+                            Menu baru
+                        </Button>
+                    </>
+                }
+            />
+
+            {vendors.length === 0 ? (
+                <Card>
+                    <EmptyState
+                        icon={<Store className="w-6 h-6" />}
+                        title="Belum ada vendor"
+                        description="Buat vendor terlebih dahulu sebelum menjadwalkan menu mingguan."
+                        action={
+                            <Link
+                                to="/admin/vendors"
+                                className="inline-flex items-center gap-1.5 h-[36px] px-4 rounded-[9px] text-[13px] font-semibold bg-[#f59e0b] text-[#1c1917] no-underline"
+                            >
+                                Kelola Vendor
+                            </Link>
+                        }
+                    />
+                </Card>
+            ) : (
+                <>
+                    {/* Split Calendar + Slot Inspector */}
+                    <div className="grid grid-cols-1 xl:grid-cols-[1fr_340px] gap-4 items-start">
+                        <Card padding="none">
+                            <div className="overflow-x-auto">
+                                <div className="min-w-[800px]">
+                                    {/* Column headers */}
+                                    <div className="grid grid-cols-[120px_repeat(7,minmax(96px,1fr))] border-b border-[#e7e5e4] bg-[#fafaf9]">
+                                        <div className="px-3 py-2.5 text-[11px] font-bold uppercase tracking-wider text-[#78716c] flex items-center">
+                                            Istirahat
+                                        </div>
+                                        {weekData?.dailyMenus.map((day) => {
+                                            const isToday = formatOrderDate(day.date) === todayKey;
+                                            return (
+                                                <div
+                                                    key={day.date}
+                                                    className={`px-2 py-2.5 text-center border-l border-[#f5f5f4] ${
+                                                        isToday ? 'bg-[#fffbeb]' : ''
+                                                    }`}
+                                                >
+                                                    <div
+                                                        className={`text-[12px] font-bold ${
+                                                            isToday ? 'text-[#b45309]' : 'text-[#1c1917]'
+                                                        }`}
+                                                    >
+                                                        {day.dayName}
+                                                    </div>
+                                                    <div className="text-[11px] text-[#78716c]">
+                                                        {formatDayShort(day.date)}
+                                                    </div>
+                                                </div>
+                                            );
+                                        })}
+                                    </div>
+
+                                    {/* Break time rows */}
+                                    {shiftGroups.map((group) => (
+                                        <div
+                                            key={group.key}
+                                            className="grid grid-cols-[120px_repeat(7,minmax(96px,1fr))] border-b border-[#f5f5f4] last:border-b-0"
+                                        >
+                                            <div className="px-3 py-3 flex flex-col justify-center">
+                                                <div className="text-[12.5px] font-bold text-[#1c1917]">
+                                                    {group.label}
+                                                </div>
+                                                {group.isGrouped && (
+                                                    <div className="text-[11px] text-[#78716c] leading-snug mt-0.5">
+                                                        {group.shifts.map((s) => s.name).join(', ')}
+                                                    </div>
+                                                )}
+                                            </div>
+
+                                            {weekData?.dailyMenus.map((day) => {
+                                                const isToday = formatOrderDate(day.date) === todayKey;
+                                                const menu = day.menus.find((m) =>
+                                                    group.shiftIds.includes(m.shiftId || '')
+                                                );
+                                                const isSelected =
+                                                    selectedSlot?.dayOfWeek === day.dayOfWeek &&
+                                                    selectedSlot?.group.key === group.key;
+
+                                                return (
+                                                    <div
+                                                        key={`${day.date}-${group.key}`}
+                                                        className={`p-1.5 border-l border-[#f5f5f4] ${
+                                                            isToday ? 'bg-[#fffbeb]/50' : ''
+                                                        }`}
+                                                    >
+                                                        {menu ? (
+                                                            <div
+                                                                className={`group relative rounded-[10px] p-2 h-full min-h-[82px] border transition-colors cursor-pointer ${
+                                                                    isSelected
+                                                                        ? 'bg-[#fffbeb] border-[#f59e0b] ring-1 ring-[#f59e0b]'
+                                                                        : 'bg-[#fafaf9] border-[#e7e5e4] hover:border-[#d6d3d1]'
+                                                                }`}
+                                                                onClick={() => handleSelectSlot(day, group, menu)}
+                                                            >
+                                                                {menu.menuItem.imageUrl ? (
+                                                                    <img
+                                                                        src={menu.menuItem.imageUrl}
+                                                                        alt=""
+                                                                        className="w-full h-11 object-cover rounded-[6px] mb-1.5"
+                                                                    />
+                                                                ) : (
+                                                                    <div className="w-6 h-6 rounded-[6px] bg-[#fffbeb] text-[#b45309] flex items-center justify-center mb-1.5">
+                                                                        <Pizza className="w-3.5 h-3.5" aria-hidden="true" />
+                                                                    </div>
+                                                                )}
+                                                                <div className="text-[11.5px] font-semibold text-[#1c1917] leading-tight line-clamp-2">
+                                                                    {menu.menuItem.name}
+                                                                </div>
+                                                                <div className="text-[10.5px] text-[#78716c] truncate mt-0.5">
+                                                                    {menu.menuItem.vendor.name}
+                                                                </div>
+                                                                <button
+                                                                    type="button"
+                                                                    aria-label={`Hapus ${menu.menuItem.name}`}
+                                                                    onClick={(e) => {
+                                                                        e.stopPropagation();
+                                                                        handleClearSlot({
+                                                                            dayOfWeek: day.dayOfWeek,
+                                                                            menuId: menu.id,
+                                                                            menuItemId: menu.menuItem.id,
+                                                                        });
+                                                                    }}
+                                                                    className="absolute top-1 right-1 w-5 h-5 rounded-[5px] bg-[#dc2626] text-[#fff] flex items-center justify-center border-0 cursor-pointer opacity-0 group-hover:opacity-100 focus-visible:opacity-100 transition-opacity"
+                                                                >
+                                                                    <Trash2 className="w-3 h-3" />
+                                                                </button>
+                                                            </div>
+                                                        ) : (
+                                                            <button
+                                                                type="button"
+                                                                onClick={() => handleSelectSlot(day, group)}
+                                                                className={`w-full h-full min-h-[82px] rounded-[10px] border border-dashed flex flex-col items-center justify-center gap-1 cursor-pointer transition-colors ${
+                                                                    isSelected
+                                                                        ? 'bg-[#fffbeb] border-[#f59e0b] text-[#b45309]'
+                                                                        : 'bg-transparent border-[#d6d3d1] text-[#a8a29e] hover:border-[#f59e0b] hover:text-[#b45309] hover:bg-[#fffbeb]/40'
+                                                                }`}
+                                                            >
+                                                                <Plus className="w-4 h-4" aria-hidden="true" />
+                                                                <span className="text-[11px] font-medium">
+                                                                    Atur menu
+                                                                </span>
+                                                            </button>
+                                                        )}
+                                                    </div>
+                                                );
+                                            })}
+                                        </div>
+                                    ))}
+                                </div>
+                            </div>
+                        </Card>
+
+                        {/* Side Slot Inspector ("Atur menu") */}
+                        <Card>
+                            <div className="flex items-center justify-between mb-3">
+                                <h2 className="text-[15px] font-bold text-[#1c1917]">Atur menu</h2>
+                                {selectedSlot && (
+                                    <Badge variant="warning">{selectedSlot.dayName}</Badge>
                                 )}
                             </div>
-                            <button onClick={() => navigateWeek(1)} className="p-2 rounded-lg hover:bg-slate-100">
-                                <ChevronRight className="w-5 h-5" />
-                            </button>
-                        </div>
 
-                        {/* Mode indicator */}
-                        <div className="flex items-center justify-center gap-2 mt-4 pt-4 border-t border-slate-100">
-                            <span className="text-sm text-teal-600 font-medium">● Menu Setiap Waktu Istirahat</span>
-                        </div>
-                    </div>
+                            {!selectedSlot ? (
+                                <div className="py-10 text-center text-[13px] text-[#78716c]">
+                                    Klik salah satu kotak pada tabel mingguan di samping untuk menetapkan atau mengubah menu.
+                                </div>
+                            ) : (
+                                <div className="space-y-3">
+                                    <div className="px-3 py-2 rounded-[10px] bg-[#fafaf9] border border-[#e7e5e4]">
+                                        <div className="text-[13px] font-bold text-[#1c1917]">
+                                            {selectedSlot.dayName}, {formatDayShort(selectedSlot.date)}
+                                        </div>
+                                        <div className="text-[12px] text-[#57534e]">
+                                            Istirahat {selectedSlot.group.label} ·{' '}
+                                            {selectedSlot.group.shifts.map((s) => s.name).join(', ')}
+                                        </div>
+                                    </div>
 
-                    {/* Calendar Grid */}
-                    {weekData && (
-                        <div className="card overflow-hidden">
-                            <div className="overflow-x-auto">
-                                <table className="w-full">
-                                    <thead>
-                                        <tr className="bg-slate-50">
-                                            <th className="text-left px-4 py-3 text-xs font-semibold text-slate-600 uppercase">
-                                                Waktu Istirahat
-                                            </th>
-                                            {weekData.dailyMenus.map(day => (
-                                                <th key={day.date} className="text-center px-2 py-3 min-w-[120px]">
-                                                    <div className="text-xs font-semibold text-slate-600">{day.dayName}</div>
-                                                    <div className="text-xs text-slate-400">{formatDate(day.date)}</div>
-                                                </th>
-                                            ))}
-                                        </tr>
-                                    </thead>
-                                    <tbody>
-                                        {menuMode === 'SAME_ALL_SHIFTS' ? (
-                                            groupShiftsByBreakTime(weekData.shifts).map(group => (
-                                                <tr key={group.key} className="border-t border-slate-100">
-                                                    <td className="px-4 py-3">
-                                                        <p className="text-sm font-medium text-slate-700">
-                                                            {group.isGrouped ? group.label : group.shifts[0].name}
-                                                        </p>
-                                                        {group.isGrouped && (
-                                                            <p className="text-[10px] text-slate-400">
-                                                                {group.shifts.map(s => s.name).join(', ')}
-                                                            </p>
-                                                        )}
-                                                    </td>
-                                                    {weekData.dailyMenus.map(day => {
-                                                        // Find menu for this break time group (using first shift's id as key)
-                                                        const menu = day.menus.find(m => group.shiftIds.includes(m.shiftId || ''));
-                                                        return (
-                                                            <td key={`${day.date}-${group.key}`} className="px-2 py-3">
-                                                                {menu ? (
-                                                                    <div className="bg-slate-50 rounded-lg p-2 relative group">
-                                                                        {menu.menuItem.imageUrl && (
-                                                                            <img src={menu.menuItem.imageUrl} alt="" className="w-full h-16 object-cover rounded mb-2" />
-                                                                        )}
-                                                                        <p className="text-xs font-medium text-slate-800 line-clamp-2">{menu.menuItem.name}</p>
-                                                                        <p className="text-[10px] text-slate-400 flex items-center gap-1 mt-1">
-                                                                            <Store className="w-2.5 h-2.5" />
-                                                                            {menu.menuItem.vendor.name}
-                                                                        </p>
-                                                                        <button
-                                                                            onClick={() => deleteMenu(menu.id, day.dayOfWeek, menu.menuItem.id)}
-                                                                            className="absolute top-1 right-1 p-1 bg-red-500 text-white rounded opacity-0 group-hover:opacity-100 transition-opacity"
-                                                                        >
-                                                                            <Trash2 className="w-3 h-3" />
-                                                                        </button>
-                                                                    </div>
-                                                                ) : (
-                                                                    <button
-                                                                        onClick={() => setShowMenuSelector({ dayOfWeek: day.dayOfWeek, shiftId: group.shiftIds[0], shiftIds: group.shiftIds })}
-                                                                        className="w-full h-20 border-2 border-dashed border-slate-200 rounded-lg hover:border-teal-400 hover:bg-teal-50/50 transition-colors flex items-center justify-center"
-                                                                    >
-                                                                        <Pizza className="w-5 h-5 text-slate-300" />
-                                                                    </button>
-                                                                )}
-                                                            </td>
-                                                        );
-                                                    })}
-                                                </tr>
-                                            ))
-                                        ) : (
-                                            groupShiftsByBreakTime(weekData.shifts).map(group => (
-                                                <tr key={group.key} className="border-t border-slate-100">
-                                                    <td className="px-4 py-3">
-                                                        <p className="text-sm font-medium text-slate-700">
-                                                            {group.isGrouped ? group.label : group.shifts[0].name}
-                                                        </p>
-                                                        {group.isGrouped && (
-                                                            <p className="text-[10px] text-slate-400">
-                                                                {group.shifts.map(s => s.name).join(', ')}
-                                                            </p>
-                                                        )}
-                                                    </td>
-                                                    {weekData.dailyMenus.map(day => {
-                                                        // Find menu for any shift in this group
-                                                        const menu = day.menus.find(m => group.shiftIds.includes(m.shiftId || ''));
-                                                        return (
-                                                            <td key={`${day.date}-${group.key}`} className="px-2 py-3">
-                                                                {menu ? (
-                                                                    <div className="bg-slate-50 rounded-lg p-2 relative group">
-                                                                        <p className="text-xs font-medium text-slate-800 line-clamp-2">{menu.menuItem.name}</p>
-                                                                        <p className="text-[10px] text-slate-400">{menu.menuItem.vendor.name}</p>
-                                                                        <button
-                                                                            onClick={() => deleteMenu(menu.id, day.dayOfWeek, menu.menuItem.id)}
-                                                                            className="absolute top-1 right-1 p-1 bg-red-500 text-white rounded opacity-0 group-hover:opacity-100 transition-opacity"
-                                                                        >
-                                                                            <Trash2 className="w-3 h-3" />
-                                                                        </button>
-                                                                    </div>
-                                                                ) : (
-                                                                    <button
-                                                                        onClick={() => setShowMenuSelector({ dayOfWeek: day.dayOfWeek, shiftId: group.shiftIds[0] })}
-                                                                        className="w-full h-12 border-2 border-dashed border-slate-200 rounded-lg hover:border-teal-400 hover:bg-teal-50/50 transition-colors flex items-center justify-center"
-                                                                    >
-                                                                        <Pizza className="w-4 h-4 text-slate-300" />
-                                                                    </button>
-                                                                )}
-                                                            </td>
-                                                        );
-                                                    })}
-                                                </tr>
-                                            ))
-                                        )}
-                                    </tbody>
-                                </table>
-                            </div>
-                        </div>
-                    )}
-
-                    {/* Menu Item List */}
-                    <div className="card p-4">
-                        <div className="flex items-center justify-between mb-4">
-                            <h2 className="font-semibold text-slate-800">Daftar Menu</h2>
-                            <span className="text-sm text-slate-400">{menuItems.length} menu</span>
-                        </div>
-                        <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-4">
-                            {menuItems.map(item => (
-                                <div key={item.id} className="relative group">
-                                    <div className="bg-slate-50 rounded-xl p-3 hover:shadow-md transition-shadow">
-                                        {item.imageUrl ? (
-                                            <img
-                                                src={item.imageUrl}
-                                                alt={item.name}
-                                                className="w-full h-28 object-cover rounded-lg mb-2 cursor-pointer hover:opacity-90 transition-opacity"
-                                                onClick={() => setLightboxImage(item.imageUrl)}
+                                    <div className="flex gap-2">
+                                        <div className="relative flex-1">
+                                            <Search
+                                                className="w-3.5 h-3.5 text-[#a8a29e] absolute left-2.5 top-1/2 -translate-y-1/2"
+                                                aria-hidden="true"
                                             />
+                                            <input
+                                                type="text"
+                                                value={slotSearch}
+                                                onChange={(e) => setSlotSearch(e.target.value)}
+                                                placeholder="Cari hidangan..."
+                                                className="w-full h-9 pl-8 pr-2.5 rounded-[9px] border border-[#e7e5e4] bg-[#fff] text-[12.5px] text-[#1c1917]"
+                                            />
+                                        </div>
+                                        {availableVendors.length > 1 && (
+                                            <select
+                                                aria-label="Filter vendor"
+                                                value={slotVendorFilter}
+                                                onChange={(e) => setSlotVendorFilter(e.target.value)}
+                                                className="h-9 px-2.5 rounded-[9px] border border-[#e7e5e4] bg-[#fff] text-[12.5px] text-[#1c1917] max-w-[120px]"
+                                            >
+                                                <option value="all">Semua</option>
+                                                {availableVendors.map((v) => (
+                                                    <option key={v.id} value={v.id}>
+                                                        {v.name}
+                                                    </option>
+                                                ))}
+                                            </select>
+                                        )}
+                                    </div>
+
+                                    <div className="max-h-[280px] overflow-y-auto space-y-1.5 pr-0.5">
+                                        {slotFilteredMenuItems.length > 0 ? (
+                                            slotFilteredMenuItems.map((item) => {
+                                                const active = pickedMenuItemId === item.id;
+                                                return (
+                                                    <button
+                                                        key={item.id}
+                                                        type="button"
+                                                        onClick={() => setPickedMenuItemId(item.id)}
+                                                        className={`w-full flex items-center gap-2.5 p-2 rounded-[10px] border text-left cursor-pointer transition-colors ${
+                                                            active
+                                                                ? 'bg-[#fffbeb] border-[#f59e0b]'
+                                                                : 'bg-[#fff] border-[#e7e5e4] hover:bg-[#fafaf9]'
+                                                        }`}
+                                                    >
+                                                        {item.imageUrl ? (
+                                                            <img
+                                                                src={item.imageUrl}
+                                                                alt=""
+                                                                className="w-9 h-9 rounded-[7px] object-cover flex-shrink-0"
+                                                            />
+                                                        ) : (
+                                                            <div className="w-9 h-9 rounded-[7px] bg-[#f5f5f4] flex items-center justify-center flex-shrink-0">
+                                                                <Pizza className="w-4 h-4 text-[#a8a29e]" />
+                                                            </div>
+                                                        )}
+                                                        <div className="flex-1 min-w-0">
+                                                            <div className="text-[12.5px] font-semibold text-[#1c1917] truncate">
+                                                                {item.name}
+                                                            </div>
+                                                            <div className="text-[11px] text-[#78716c] truncate">
+                                                                {item.vendor.name}
+                                                            </div>
+                                                        </div>
+                                                        {active && (
+                                                            <Check className="w-4 h-4 text-[#b45309] flex-shrink-0" />
+                                                        )}
+                                                    </button>
+                                                );
+                                            })
                                         ) : (
-                                            <div className="w-full h-28 bg-slate-200 rounded-lg mb-2 flex items-center justify-center">
-                                                <Pizza className="w-8 h-8 text-slate-400" />
+                                            <div className="py-6 text-center text-[12.5px] text-[#78716c]">
+                                                Tidak ada hidangan cocok.
                                             </div>
                                         )}
-                                        <p className="text-sm font-medium text-slate-800 line-clamp-2">{item.name}</p>
-                                        <p className="text-xs text-slate-400 mt-1">{item.vendor.name}</p>
                                     </div>
-                                    <div className="absolute top-2 right-2 flex gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
-                                        <button
-                                            onClick={() => openMenuItemForm(item)}
-                                            className="p-1.5 bg-blue-500 text-white rounded-lg shadow-sm"
+
+                                    <div className="flex gap-2 pt-2 border-t border-[#f5f5f4]">
+                                        <Button
+                                            variant="primary"
+                                            className="flex-1"
+                                            loading={savingSlot}
+                                            disabled={!pickedMenuItemId}
+                                            onClick={handleSaveSlot}
                                         >
-                                            <Edit2 className="w-3.5 h-3.5" />
-                                        </button>
-                                        <button
-                                            onClick={() => deleteMenuItem(item)}
-                                            className="p-1.5 bg-red-500 text-white rounded-lg shadow-sm"
-                                        >
-                                            <Trash2 className="w-3.5 h-3.5" />
-                                        </button>
+                                            Simpan
+                                        </Button>
+                                        {selectedSlot.existingMenu && (
+                                            <Button
+                                                variant="danger"
+                                                onClick={() => handleClearSlot(selectedSlot)}
+                                            >
+                                                Kosongkan
+                                            </Button>
+                                        )}
                                     </div>
-                                </div>
-                            ))}
-                            {menuItems.length === 0 && (
-                                <div className="col-span-full text-center py-8 text-slate-400">
-                                    <Pizza className="w-8 h-8 mx-auto mb-2 opacity-50" />
-                                    <p className="text-sm">Belum ada menu, klik "Tambah Menu Baru"</p>
                                 </div>
                             )}
-                        </div>
+                        </Card>
                     </div>
+
+                    {/* Daftar Menu (Catalog with client search + filter + pagination) */}
+                    <Card padding="none">
+                        <div className="p-4 border-b border-[#f5f5f4] flex flex-wrap items-center justify-between gap-3">
+                            <div>
+                                <h2 className="text-[15px] font-bold text-[#1c1917]">Daftar menu</h2>
+                                <p className="text-[12px] text-[#78716c]">
+                                    {catalogFilteredItems.length} hidangan tersedia
+                                </p>
+                            </div>
+                            <div className="flex flex-wrap items-center gap-2">
+                                <div className="relative">
+                                    <Search
+                                        className="w-3.5 h-3.5 text-[#a8a29e] absolute left-2.5 top-1/2 -translate-y-1/2"
+                                        aria-hidden="true"
+                                    />
+                                    <input
+                                        type="text"
+                                        value={catalogSearch}
+                                        onChange={(e) => {
+                                            setCatalogSearch(e.target.value);
+                                            setCatalogPage(1);
+                                        }}
+                                        placeholder="Cari menu..."
+                                        className="h-9 pl-8 pr-3 rounded-[9px] border border-[#e7e5e4] bg-[#fff] text-[13px] text-[#1c1917]"
+                                    />
+                                </div>
+                                <select
+                                    aria-label="Filter kategori"
+                                    value={catalogCategoryFilter}
+                                    onChange={(e) => {
+                                        setCatalogCategoryFilter(e.target.value);
+                                        setCatalogPage(1);
+                                    }}
+                                    className="h-9 px-3 rounded-[9px] border border-[#e7e5e4] bg-[#fff] text-[13px] text-[#1c1917]"
+                                >
+                                    <option value="all">Semua kategori</option>
+                                    {CATEGORIES.map((c) => (
+                                        <option key={c} value={c}>
+                                            {c}
+                                        </option>
+                                    ))}
+                                </select>
+                                <select
+                                    aria-label="Filter vendor katalog"
+                                    value={catalogVendorFilter}
+                                    onChange={(e) => {
+                                        setCatalogVendorFilter(e.target.value);
+                                        setCatalogPage(1);
+                                    }}
+                                    className="h-9 px-3 rounded-[9px] border border-[#e7e5e4] bg-[#fff] text-[13px] text-[#1c1917]"
+                                >
+                                    <option value="all">Semua vendor</option>
+                                    {availableVendors.map((v) => (
+                                        <option key={v.id} value={v.id}>
+                                            {v.name}
+                                        </option>
+                                    ))}
+                                </select>
+                            </div>
+                        </div>
+
+                        <div className="p-4">
+                            {pagedCatalogItems.length > 0 ? (
+                                <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-3">
+                                    {pagedCatalogItems.map((item) => (
+                                        <div
+                                            key={item.id}
+                                            className="group relative rounded-[12px] border border-[#e7e5e4] bg-[#fafaf9] p-2.5 flex flex-col"
+                                        >
+                                            {item.imageUrl ? (
+                                                <button
+                                                    type="button"
+                                                    onClick={() => setLightboxImage(item.imageUrl)}
+                                                    className="p-0 border-0 bg-transparent cursor-pointer rounded-[8px] overflow-hidden mb-2"
+                                                >
+                                                    <img
+                                                        src={item.imageUrl}
+                                                        alt={item.name}
+                                                        className="w-full h-24 object-cover"
+                                                    />
+                                                </button>
+                                            ) : (
+                                                <div className="w-full h-24 rounded-[8px] bg-[#f5f5f4] flex items-center justify-center mb-2">
+                                                    <Pizza className="w-7 h-7 text-[#a8a29e]" aria-hidden="true" />
+                                                </div>
+                                            )}
+                                            <div className="text-[13px] font-semibold text-[#1c1917] line-clamp-2 flex-1">
+                                                {item.name}
+                                            </div>
+                                            <div className="flex items-center justify-between gap-1.5 mt-1.5">
+                                                <span className="text-[11px] text-[#78716c] truncate">
+                                                    {item.vendor.name}
+                                                </span>
+                                                {item.category && <Badge variant="neutral">{item.category}</Badge>}
+                                            </div>
+                                            <div className="absolute top-2 right-2 flex gap-1 opacity-0 group-hover:opacity-100 focus-within:opacity-100 transition-opacity">
+                                                <button
+                                                    type="button"
+                                                    aria-label={`Edit ${item.name}`}
+                                                    onClick={() => openMenuItemForm(item)}
+                                                    className="w-7 h-7 rounded-[7px] bg-[#fff] border border-[#e7e5e4] text-[#1c1917] flex items-center justify-center cursor-pointer shadow-sm"
+                                                >
+                                                    <Edit2 className="w-3.5 h-3.5" />
+                                                </button>
+                                                <button
+                                                    type="button"
+                                                    aria-label={`Hapus ${item.name}`}
+                                                    onClick={() => setDeleteMenuTarget(item)}
+                                                    className="w-7 h-7 rounded-[7px] bg-[#dc2626] text-[#fff] border-0 flex items-center justify-center cursor-pointer shadow-sm"
+                                                >
+                                                    <Trash2 className="w-3.5 h-3.5" />
+                                                </button>
+                                            </div>
+                                        </div>
+                                    ))}
+                                </div>
+                            ) : (
+                                <EmptyState
+                                    icon={<Pizza className="w-6 h-6" />}
+                                    title="Belum ada hidangan cocok"
+                                    description="Tambahkan menu baru atau ubah kata kunci pencarian."
+                                />
+                            )}
+                        </div>
+
+                        {catalogFilteredItems.length > CATALOG_LIMIT && (
+                            <Pagination
+                                page={catalogPage}
+                                limit={CATALOG_LIMIT}
+                                total={catalogFilteredItems.length}
+                                onPageChange={setCatalogPage}
+                                variant="user"
+                            />
+                        )}
+                    </Card>
                 </>
             )}
 
-            {/* Menu Selector Modal */}
-            {showMenuSelector && (
-                <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
-                    <div className="bg-white rounded-2xl w-full max-w-2xl max-h-[80vh] overflow-hidden">
-                        <div className="p-4 border-b border-slate-100 flex items-center justify-between">
-                            <h2 className="text-lg font-semibold text-slate-800">Pilih Menu</h2>
-                            <button onClick={closeMenuSelector} className="p-1 rounded hover:bg-slate-100">
-                                <X className="w-5 h-5" />
-                            </button>
-                        </div>
-                        {menuItems.length > 0 && (
-                            <div className="p-4 border-b border-slate-100 space-y-3">
-                                <div className="relative">
-                                    <Search className="w-4 h-4 text-slate-400 absolute left-3 top-1/2 -translate-y-1/2" />
-                                    <input
-                                        type="text"
-                                        value={menuSearch}
-                                        onChange={e => setMenuSearch(e.target.value)}
-                                        placeholder="Cari menu..."
-                                        className="w-full pl-9 pr-3 py-2 border border-slate-200 rounded-lg text-sm focus:outline-none focus:border-teal-400"
-                                    />
-                                </div>
-                                <div className="flex flex-wrap gap-1.5">
-                                    <button
-                                        onClick={() => setMenuCategoryFilter('all')}
-                                        className={`px-3 py-1 text-xs rounded-full transition-colors ${
-                                            menuCategoryFilter === 'all'
-                                                ? 'bg-teal-500 text-white'
-                                                : 'bg-slate-100 text-slate-600 hover:bg-slate-200'
-                                        }`}
-                                    >
-                                        Semua
-                                    </button>
-                                    {categories.map(c => (
-                                        <button
-                                            key={c}
-                                            onClick={() => setMenuCategoryFilter(c)}
-                                            className={`px-3 py-1 text-xs rounded-full transition-colors ${
-                                                menuCategoryFilter === c
-                                                    ? 'bg-teal-500 text-white'
-                                                    : 'bg-slate-100 text-slate-600 hover:bg-slate-200'
-                                            }`}
-                                        >
-                                            {c}
-                                        </button>
-                                    ))}
-                                </div>
-                                {availableVendors.length > 1 && (
-                                    <div className="space-y-1.5">
-                                        <div className="flex items-center gap-1.5 text-xs text-slate-500">
-                                            <Store className="w-3.5 h-3.5" />
-                                            <span className="font-medium">Vendor</span>
-                                        </div>
-                                        <div className="flex flex-wrap gap-1.5">
-                                            <button
-                                                onClick={() => setMenuVendorFilter('all')}
-                                                className={`px-3 py-1 text-xs rounded-full transition-colors ${
-                                                    menuVendorFilter === 'all'
-                                                        ? 'bg-purple-500 text-white'
-                                                        : 'bg-slate-100 text-slate-600 hover:bg-slate-200'
-                                                }`}
-                                            >
-                                                Semua
-                                            </button>
-                                            {availableVendors.map(v => (
-                                                <button
-                                                    key={v.id}
-                                                    onClick={() => setMenuVendorFilter(v.id)}
-                                                    className={`px-3 py-1 text-xs rounded-full transition-colors ${
-                                                        menuVendorFilter === v.id
-                                                            ? 'bg-purple-500 text-white'
-                                                            : 'bg-slate-100 text-slate-600 hover:bg-slate-200'
-                                                    }`}
-                                                >
-                                                    {v.name}
-                                                </button>
-                                            ))}
-                                        </div>
-                                    </div>
-                                )}
-                            </div>
-                        )}
-                        <div className="p-4 overflow-y-auto max-h-[60vh]">
-                            {menuItems.length > 0 ? (
-                                filteredMenuItems.length > 0 ? (
-                                    <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
-                                        {filteredMenuItems.map(item => (
-                                            <button
-                                                key={item.id}
-                                                onClick={() => setMenu(showMenuSelector.dayOfWeek, showMenuSelector.shiftId, item.id, showMenuSelector.shiftIds)}
-                                                className="p-3 border border-slate-200 rounded-xl hover:border-teal-400 hover:bg-teal-50 transition-colors text-left"
-                                            >
-                                                {item.imageUrl ? (
-                                                    <img src={item.imageUrl} alt="" className="w-full h-20 object-cover rounded-lg mb-2" />
-                                                ) : (
-                                                    <div className="w-full h-20 bg-slate-100 rounded-lg mb-2 flex items-center justify-center">
-                                                        <Pizza className="w-8 h-8 text-slate-300" />
-                                                    </div>
-                                                )}
-                                                <p className="text-sm font-medium text-slate-800 line-clamp-2">{item.name}</p>
-                                                <p className="text-xs text-slate-400 mt-1">{item.vendor.name}</p>
-                                            </button>
-                                        ))}
-                                    </div>
-                                ) : (
-                                    <div className="text-center py-8">
-                                        <Search className="w-12 h-12 mx-auto mb-4 text-slate-300" />
-                                        <p className="text-slate-500">Tidak ada menu yang cocok dengan filter</p>
-                                        <button
-                                            onClick={() => { setMenuSearch(''); setMenuCategoryFilter('all'); setMenuVendorFilter('all'); }}
-                                            className="mt-4 btn-secondary"
-                                        >
-                                            Reset Filter
-                                        </button>
-                                    </div>
-                                )
-                            ) : (
-                                <div className="text-center py-8">
-                                    <Pizza className="w-12 h-12 mx-auto mb-4 text-slate-300" />
-                                    <p className="text-slate-500">Belum ada menu</p>
-                                    <button onClick={() => { closeMenuSelector(); openMenuItemForm(); }} className="mt-4 btn-primary">
-                                        Tambah Menu Baru
-                                    </button>
-                                </div>
-                            )}
-                        </div>
-                        <div className="p-4 border-t border-slate-100">
-                            <button onClick={closeMenuSelector} className="w-full btn-secondary">
-                                Batal
-                            </button>
-                        </div>
-                    </div>
-                </div>
-            )}
+            {/* Add / Edit Menu Item Modal */}
+            <Modal
+                open={showMenuItemForm}
+                onClose={() => setShowMenuItemForm(false)}
+                title={editingMenuItem ? 'Edit menu' : 'Tambah menu baru'}
+                size="md"
+                footer={
+                    <>
+                        <Button variant="secondary" onClick={() => setShowMenuItemForm(false)}>
+                            Batal
+                        </Button>
+                        <Button variant="primary" loading={savingMenuItem} onClick={saveMenuItem}>
+                            Simpan menu
+                        </Button>
+                    </>
+                }
+            >
+                <form onSubmit={saveMenuItem} className="space-y-3">
+                    <Field label="Nama menu" required>
+                        <Input
+                            value={menuItemForm.name}
+                            onChange={(e) => setMenuItemForm((f) => ({ ...f, name: e.target.value }))}
+                            placeholder="Contoh: Nasi Goreng Spesial"
+                        />
+                    </Field>
+                    <Field label="Vendor" required>
+                        <Select
+                            value={menuItemForm.vendorId}
+                            onChange={(e) => setMenuItemForm((f) => ({ ...f, vendorId: e.target.value }))}
+                        >
+                            <option value="">Pilih vendor...</option>
+                            {vendors.map((v) => (
+                                <option key={v.id} value={v.id}>
+                                    {v.name}
+                                </option>
+                            ))}
+                        </Select>
+                    </Field>
+                    <Field label="Kategori">
+                        <Select
+                            value={menuItemForm.category}
+                            onChange={(e) => setMenuItemForm((f) => ({ ...f, category: e.target.value }))}
+                        >
+                            <option value="">Pilih kategori...</option>
+                            {CATEGORIES.map((c) => (
+                                <option key={c} value={c}>
+                                    {c}
+                                </option>
+                            ))}
+                        </Select>
+                    </Field>
+                    <Field label="Deskripsi">
+                        <Textarea
+                            rows={2}
+                            value={menuItemForm.description}
+                            onChange={(e) => setMenuItemForm((f) => ({ ...f, description: e.target.value }))}
+                            placeholder="Keterangan singkat..."
+                        />
+                    </Field>
+                    <Field label="Foto">
+                        <label className="flex items-center gap-2 px-3 py-2 border border-[#e7e5e4] rounded-[9px] cursor-pointer hover:bg-[#fafaf9] text-[13px] text-[#57534e]">
+                            <ImageIcon className="w-4 h-4 text-[#78716c]" aria-hidden="true" />
+                            <span className="truncate">{imageFile ? imageFile.name : 'Pilih gambar...'}</span>
+                            <input
+                                type="file"
+                                accept="image/*"
+                                onChange={(e) => setImageFile(e.target.files?.[0] || null)}
+                                className="hidden"
+                            />
+                        </label>
+                    </Field>
+                </form>
+            </Modal>
 
-            {/* Menu Item Form Modal */}
-            {showMenuItemForm && (
-                <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
-                    <div className="bg-white rounded-2xl w-full max-w-md p-6">
-                        <h2 className="text-xl font-bold text-slate-800 mb-4 flex items-center gap-2">
-                            <Pizza className="w-5 h-5 text-teal-500" />
-                            {editingMenuItem ? 'Edit Menu' : 'Tambah Menu Baru'}
-                        </h2>
-                        <form onSubmit={saveMenuItem} className="space-y-4">
-                            <div>
-                                <label className="block text-sm text-slate-500 mb-1">Nama Menu *</label>
-                                <input
-                                    type="text"
-                                    value={menuItemForm.name}
-                                    onChange={e => setMenuItemForm(f => ({ ...f, name: e.target.value }))}
-                                    className="input-field"
-                                    placeholder="Contoh: Nasi Goreng Spesial"
-                                    required
-                                />
-                            </div>
-                            <div>
-                                <label className="block text-sm text-slate-500 mb-1">Vendor *</label>
-                                <select
-                                    value={menuItemForm.vendorId}
-                                    onChange={e => setMenuItemForm(f => ({ ...f, vendorId: e.target.value }))}
-                                    className="input-field"
-                                    required
-                                >
-                                    <option value="">Pilih Vendor</option>
-                                    {vendors.map(v => (
-                                        <option key={v.id} value={v.id}>{v.name}</option>
-                                    ))}
-                                </select>
-                            </div>
-                            <div>
-                                <label className="block text-sm text-slate-500 mb-1">Kategori</label>
-                                <select
-                                    value={menuItemForm.category}
-                                    onChange={e => setMenuItemForm(f => ({ ...f, category: e.target.value }))}
-                                    className="input-field"
-                                >
-                                    <option value="">Pilih Kategori</option>
-                                    {categories.map(c => (
-                                        <option key={c} value={c}>{c}</option>
-                                    ))}
-                                </select>
-                            </div>
-                            <div>
-                                <label className="block text-sm text-slate-500 mb-1">Deskripsi</label>
-                                <textarea
-                                    value={menuItemForm.description}
-                                    onChange={e => setMenuItemForm(f => ({ ...f, description: e.target.value }))}
-                                    className="input-field"
-                                    rows={2}
-                                    placeholder="Deskripsi singkat menu"
-                                />
-                            </div>
-                            <div>
-                                <label className="block text-sm text-slate-500 mb-1">Foto</label>
-                                <label className="flex items-center gap-2 px-4 py-2 border border-slate-200 rounded-lg cursor-pointer hover:bg-slate-50">
-                                    <Image className="w-4 h-4 text-slate-400" />
-                                    <span className="text-sm text-slate-600">{imageFile ? imageFile.name : 'Pilih Gambar'}</span>
-                                    <input
-                                        type="file"
-                                        accept="image/*"
-                                        onChange={e => setImageFile(e.target.files?.[0] || null)}
-                                        className="hidden"
-                                    />
-                                </label>
-                            </div>
-                            <div className="flex justify-end gap-3 pt-4">
-                                <button type="button" onClick={() => setShowMenuItemForm(false)} className="btn-secondary">
-                                    Batal
-                                </button>
-                                <button type="submit" disabled={savingMenuItem} className="btn-primary">
-                                    {savingMenuItem ? 'Menyimpan...' : 'Simpan'}
-                                </button>
-                            </div>
-                        </form>
-                    </div>
-                </div>
-            )}
+            {/* Delete Menu Item Modal */}
+            <Modal
+                open={Boolean(deleteMenuTarget)}
+                onClose={() => setDeleteMenuTarget(null)}
+                title="Hapus hidangan?"
+                size="sm"
+                footer={
+                    <>
+                        <Button variant="secondary" onClick={() => setDeleteMenuTarget(null)}>
+                            Batal
+                        </Button>
+                        <Button variant="danger" onClick={confirmDeleteMenuItem}>
+                            Hapus
+                        </Button>
+                    </>
+                }
+            >
+                <p className="text-[13.5px] text-[#57534e]">
+                    Hapus <b>{deleteMenuTarget?.name}</b>? Jadwal mingguan yang memakai menu ini juga akan ikut terhapus.
+                </p>
+            </Modal>
 
-            {/* Copy Modal */}
-            {showCopyModal && (
-                <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
-                    <div className="bg-white rounded-2xl w-full max-w-sm p-6">
-                        <h2 className="text-lg font-semibold text-slate-800 mb-4 flex items-center gap-2">
-                            <Copy className="w-5 h-5" />
-                            Copy ke Minggu Lain
-                        </h2>
-                        <div className="space-y-4">
-                            <div>
-                                <label className="block text-sm text-slate-500 mb-1">Target Week</label>
-                                <input
-                                    type="number"
-                                    value={copyTarget.week}
-                                    onChange={e => setCopyTarget(t => ({ ...t, week: parseInt(e.target.value) || 1 }))}
-                                    className="input-field"
-                                    min={1}
-                                    max={53}
-                                />
-                            </div>
-                            <div>
-                                <label className="block text-sm text-slate-500 mb-1">Target Year</label>
-                                <input
-                                    type="number"
-                                    value={copyTarget.year}
-                                    onChange={e => setCopyTarget(t => ({ ...t, year: parseInt(e.target.value) || 2025 }))}
-                                    className="input-field"
-                                />
-                            </div>
-                        </div>
-                        <div className="flex justify-end gap-3 mt-6">
-                            <button onClick={() => setShowCopyModal(false)} className="btn-secondary">Batal</button>
-                            <button onClick={copyWeek} className="btn-primary">Copy</button>
-                        </div>
-                    </div>
+            {/* Copy to Another Week Modal */}
+            <Modal
+                open={showCopyModal}
+                onClose={() => setShowCopyModal(false)}
+                title="Salin jadwal ke minggu lain"
+                size="sm"
+                footer={
+                    <>
+                        <Button variant="secondary" onClick={() => setShowCopyModal(false)}>
+                            Batal
+                        </Button>
+                        <Button variant="primary" onClick={copyWeekToTarget}>
+                            Salin jadwal
+                        </Button>
+                    </>
+                }
+            >
+                <div className="space-y-3">
+                    <Field label="Minggu tujuan (1–53)" required>
+                        <Input
+                            type="number"
+                            min={1}
+                            max={53}
+                            value={copyTarget.week}
+                            onChange={(e) =>
+                                setCopyTarget((t) => ({ ...t, week: parseInt(e.target.value, 10) || 1 }))
+                            }
+                        />
+                    </Field>
+                    <Field label="Tahun tujuan" required>
+                        <Input
+                            type="number"
+                            value={copyTarget.year}
+                            onChange={(e) =>
+                                setCopyTarget((t) => ({ ...t, year: parseInt(e.target.value, 10) || 2026 }))
+                            }
+                        />
+                    </Field>
                 </div>
-            )}
+            </Modal>
 
-            {/* Image Lightbox */}
-            {lightboxImage && (
-                <div
-                    className="fixed inset-0 z-50 flex items-center justify-center bg-black/90 backdrop-blur-sm"
-                    onClick={() => setLightboxImage(null)}
-                >
-                    <button
-                        onClick={() => setLightboxImage(null)}
-                        className="absolute top-4 right-4 p-2 bg-white/10 hover:bg-white/20 rounded-full text-white transition-colors"
-                    >
-                        <X className="w-6 h-6" />
-                    </button>
+            {/* Lightbox Modal */}
+            <Modal
+                open={Boolean(lightboxImage)}
+                onClose={() => setLightboxImage(null)}
+                title="Pratinjau foto menu"
+                size="lg"
+            >
+                {lightboxImage && (
                     <img
                         src={lightboxImage}
-                        alt="Menu Preview"
-                        className="max-w-[90vw] max-h-[85vh] object-contain rounded-lg shadow-2xl"
-                        onClick={e => e.stopPropagation()}
+                        alt="Pratinjau menu"
+                        className="w-full max-h-[65vh] object-contain rounded-[10px]"
                     />
-                </div>
-            )}
+                )}
+            </Modal>
         </div>
     );
 }

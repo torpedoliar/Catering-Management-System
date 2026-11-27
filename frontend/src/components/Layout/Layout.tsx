@@ -14,7 +14,7 @@ import {
     ChevronDown,
 } from 'lucide-react';
 import { useAuth, api } from '../../contexts/AuthContext';
-import { useSSE } from '../../contexts/SSEContext';
+import { useSSE, useSSERefresh, ORDER_EVENTS } from '../../contexts/SSEContext';
 import { getLocalDateString, addDays, formatOrderDate, formatOrderTime } from '../../utils/dateHelpers';
 import NotificationBell from './NotificationBell';
 import CommandPalette from './CommandPalette';
@@ -65,6 +65,7 @@ export default function Layout({ children }: LayoutProps) {
 
     const [branding, setBranding] = useState<{ logoUrl?: string | null; appShortName?: string }>({});
     const [tomorrowCutoffText, setTomorrowCutoffText] = useState<string | null>(null);
+    const [pendingMessages, setPendingMessages] = useState<number>(0);
 
     const toggleCollapse = () => {
         if (isCheckinPage) {
@@ -133,7 +134,7 @@ export default function Layout({ children }: LayoutProps) {
             .then((data) => {
                 if (data) setBranding(data);
             })
-            .catch(() => {});
+            .catch(() => { });
     }, []);
 
     // Fetch tomorrow's cutoff chip for USER role
@@ -200,6 +201,36 @@ export default function Layout({ children }: LayoutProps) {
     }, [user?.role]);
 
     const role = user?.role as UserRole | undefined;
+
+    // Fetch pending appeal count for ADMIN sidebar badge
+    useEffect(() => {
+        if (role !== 'ADMIN') {
+            setPendingMessages(0);
+            return;
+        }
+        let cancelled = false;
+        const loadPending = () => {
+            api.get('/api/messages?type=APPEAL&status=PENDING&limit=1')
+                .then((res) => {
+                    if (!cancelled) {
+                        setPendingMessages(res.data?.pagination?.total || 0);
+                    }
+                })
+                .catch(() => {});
+        };
+        loadPending();
+        return () => {
+            cancelled = true;
+        };
+    }, [role, location.pathname]);
+
+    useSSERefresh(ORDER_EVENTS, () => {
+        if (role !== 'ADMIN') return;
+        api.get('/api/messages?type=APPEAL&status=PENDING&limit=1')
+            .then((res) => setPendingMessages(res.data?.pagination?.total || 0))
+            .catch(() => {});
+    });
+
     const navGroups = getVisibleGroupsForRole(role);
     const breadcrumb = getRouteBreadcrumb(location.pathname, role);
     const subtitleLabel =
@@ -213,15 +244,13 @@ export default function Layout({ children }: LayoutProps) {
 
     const renderSidebarInner = (railMode: boolean, isMobileDrawer = false) => (
         <div
-            className={`flex flex-col h-full bg-[#0f172a] text-[#cbd5e1] select-none ${
-                railMode ? 'items-center py-5 px-0' : 'py-5 px-3.5'
-            }`}
+            className={`flex flex-col h-full bg-[#0f172a] text-[#cbd5e1] select-none ${railMode ? 'items-center py-5 px-0' : 'py-5 px-3.5'
+                }`}
         >
             {/* Brand */}
             <div
-                className={`flex items-center ${
-                    railMode ? 'justify-center mb-3.5' : 'justify-between px-2 pb-[18px]'
-                }`}
+                className={`flex items-center ${railMode ? 'justify-center mb-3.5' : 'justify-between px-2 pb-[18px]'
+                    }`}
             >
                 <Link
                     to={role === 'VENDOR' ? '/vendor' : role === 'CANTEEN' ? '/canteen/checkin' : '/'}
@@ -265,9 +294,8 @@ export default function Layout({ children }: LayoutProps) {
             {/* Navigation */}
             <nav
                 aria-label="Navigasi samping"
-                className={`flex-1 overflow-y-auto overflow-x-hidden ${
-                    railMode ? 'flex flex-col items-center gap-1.5 w-full px-2' : 'space-y-1'
-                }`}
+                className={`flex-1 overflow-y-auto overflow-x-hidden ${railMode ? 'flex flex-col items-center gap-1.5 w-full px-2' : 'space-y-1'
+                    }`}
             >
                 {navGroups.map((group, gIdx) => (
                     <div key={group.id} className={railMode ? 'flex flex-col items-center gap-1.5 w-full' : ''}>
@@ -294,11 +322,10 @@ export default function Layout({ children }: LayoutProps) {
                                         to={item.path}
                                         aria-label={item.label}
                                         title={item.label}
-                                        className={`w-11 h-11 rounded-[10px] flex items-center justify-center no-underline transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#f59e0b] ${
-                                            active
-                                                ? 'bg-[rgba(245,158,11,0.16)] text-[#fbbf24]'
-                                                : 'text-[#94a3b8] hover:bg-[rgba(255,255,255,0.06)] hover:text-[#fff]'
-                                        }`}
+                                        className={`w-11 h-11 rounded-[10px] flex items-center justify-center no-underline transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#f59e0b] ${active
+                                            ? 'bg-[rgba(245,158,11,0.16)] text-[#fbbf24]'
+                                            : 'text-[#94a3b8] hover:bg-[rgba(255,255,255,0.06)] hover:text-[#fff]'
+                                            }`}
                                     >
                                         <Icon className="w-5 h-5" strokeWidth={1.8} aria-hidden="true" />
                                     </Link>
@@ -310,11 +337,10 @@ export default function Layout({ children }: LayoutProps) {
                                     key={item.path}
                                     to={item.path}
                                     onClick={() => isMobileDrawer && setDrawerOpen(false)}
-                                    className={`flex items-center gap-2.5 px-2.5 py-[9px] rounded-[9px] text-[13.5px] no-underline transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#f59e0b] ${
-                                        active
-                                            ? 'bg-[rgba(245,158,11,0.14)] text-[#fbbf24] font-bold'
-                                            : 'text-[#cbd5e1] font-medium hover:bg-[rgba(255,255,255,0.06)] hover:text-[#fff]'
-                                    }`}
+                                    className={`flex items-center gap-2.5 px-2.5 py-[9px] rounded-[9px] text-[13.5px] no-underline transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#f59e0b] ${active
+                                        ? 'bg-[rgba(245,158,11,0.14)] text-[#fbbf24] font-bold'
+                                        : 'text-[#cbd5e1] font-medium hover:bg-[rgba(255,255,255,0.06)] hover:text-[#fff]'
+                                        }`}
                                 >
                                     <Icon
                                         className="w-[18px] h-[18px] flex-shrink-0"
@@ -322,6 +348,11 @@ export default function Layout({ children }: LayoutProps) {
                                         aria-hidden="true"
                                     />
                                     <span className="flex-1 truncate">{item.label}</span>
+                                    {item.badgeKey === 'pendingMessages' && pendingMessages > 0 && (
+                                        <span className="px-1.5 py-0.5 rounded-full text-[11px] font-bold bg-[#b45309] text-[#fff] tabular-nums">
+                                            {pendingMessages > 99 ? '99+' : pendingMessages}
+                                        </span>
+                                    )}
                                 </Link>
                             );
                         })}
@@ -331,9 +362,8 @@ export default function Layout({ children }: LayoutProps) {
 
             {/* Footer */}
             <div
-                className={`mt-3 pt-3 border-t border-[rgba(255,255,255,0.08)] ${
-                    railMode ? 'flex flex-col items-center w-full px-2' : 'space-y-2'
-                }`}
+                className={`mt-3 pt-3 border-t border-[rgba(255,255,255,0.08)] ${railMode ? 'flex flex-col items-center w-full px-2' : 'space-y-2'
+                    }`}
             >
                 {!railMode && isEmployeeRole && (
                     <div className="px-2.5 text-[12px] text-[#94a3b8]">
@@ -347,9 +377,8 @@ export default function Layout({ children }: LayoutProps) {
                         onClick={toggleCollapse}
                         aria-label={railMode ? 'Perluas sidebar' : 'Ciutkan sidebar'}
                         title={railMode ? 'Perluas sidebar' : 'Ciutkan sidebar'}
-                        className={`flex items-center gap-2.5 rounded-[9px] text-[13px] font-medium text-[#94a3b8] hover:text-[#fff] hover:bg-[rgba(255,255,255,0.06)] border-0 bg-transparent cursor-pointer transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#f59e0b] ${
-                            railMode ? 'w-11 h-11 justify-center' : 'w-full px-2.5 py-2'
-                        }`}
+                        className={`flex items-center gap-2.5 rounded-[9px] text-[13px] font-medium text-[#94a3b8] hover:text-[#fff] hover:bg-[rgba(255,255,255,0.06)] border-0 bg-transparent cursor-pointer transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#f59e0b] ${railMode ? 'w-11 h-11 justify-center' : 'w-full px-2.5 py-2'
+                            }`}
                     >
                         {railMode ? (
                             <PanelLeftOpen className="w-[18px] h-[18px]" aria-hidden="true" />
@@ -464,17 +493,15 @@ export default function Layout({ children }: LayoutProps) {
 
                     {/* Live / Disconnected status */}
                     <span
-                        className={`hidden sm:inline-flex items-center gap-1.5 text-[12px] font-semibold rounded-full px-2.5 py-[5px] whitespace-nowrap ${
-                            isConnected
-                                ? 'text-[#166534] bg-[#dcfce7]'
-                                : 'text-[#991b1b] bg-[#fee2e2]'
-                        }`}
+                        className={`hidden sm:inline-flex items-center gap-1.5 text-[12px] font-semibold rounded-full px-2.5 py-[5px] whitespace-nowrap ${isConnected
+                            ? 'text-[#166534] bg-[#dcfce7]'
+                            : 'text-[#991b1b] bg-[#fee2e2]'
+                            }`}
                     >
                         <span
                             aria-hidden="true"
-                            className={`w-[7px] h-[7px] rounded-full ${
-                                isConnected ? 'bg-[#16a34a]' : 'bg-[#dc2626]'
-                            }`}
+                            className={`w-[7px] h-[7px] rounded-full ${isConnected ? 'bg-[#16a34a]' : 'bg-[#dc2626]'
+                                }`}
                         />
                         {isConnected
                             ? `Live · ${Math.max(1, connectedClients)} terhubung`
@@ -571,9 +598,8 @@ export default function Layout({ children }: LayoutProps) {
 
                 {/* Page Content */}
                 <main
-                    className={`flex-1 w-full min-w-0 p-4 md:p-7 ${
-                        isEmployeeRole ? 'pb-24 md:pb-7' : ''
-                    }`}
+                    className={`flex-1 w-full min-w-0 p-4 md:p-7 ${isEmployeeRole ? 'pb-24 md:pb-7' : ''
+                        }`}
                 >
                     {isCheckinPage ? (
                         children

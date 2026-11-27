@@ -1,8 +1,17 @@
 import { useState, useEffect } from 'react';
-
-import { formatDateTimeShortWIB } from '../../utils/timezone';
+import { RefreshCw, Clock, Info } from 'lucide-react';
 import toast from 'react-hot-toast';
+import { formatDateTimeShortWIB } from '../../utils/timezone';
 import { api } from '../../contexts/AuthContext';
+import {
+    PageHeader,
+    Button,
+    Card,
+    Badge,
+    Field,
+    Select,
+    Skeleton,
+} from '../../components/ui';
 
 interface NTPSettings {
     ntpEnabled: boolean;
@@ -39,8 +48,8 @@ export default function TimeSettingsPage() {
     const [loading, setLoading] = useState(true);
     const [saving, setSaving] = useState(false);
     const [syncing, setSyncing] = useState(false);
-    const [currentTime, setCurrentTime] = useState<string>('');
-    const [currentDate, setCurrentDate] = useState<string>('');
+    const [currentTime, setCurrentTime] = useState('');
+    const [currentDate, setCurrentDate] = useState('');
 
     const fetchData = async () => {
         try {
@@ -50,18 +59,13 @@ export default function TimeSettingsPage() {
                 api.get('/api/time/timezones'),
                 api.get('/api/time/ntp-servers'),
             ]);
-
             setSettings(settingsRes.data);
-            
-            const info = timeRes.data;
-            setTimeInfo(info);
-            setCurrentTime(info.formattedTime || '');
-            setCurrentDate(info.formattedDate || '');
-            
-            setTimezones(tzRes.data);
-            setNtpServers(serversRes.data);
-        } catch (error) {
-            console.error('Error fetching NTP data:', error);
+            setTimeInfo(timeRes.data);
+            setCurrentTime(timeRes.data.formattedTime || '');
+            setCurrentDate(timeRes.data.formattedDate || '');
+            setTimezones(tzRes.data || []);
+            setNtpServers(serversRes.data || []);
+        } catch {
             toast.error('Gagal memuat pengaturan NTP');
         } finally {
             setLoading(false);
@@ -72,47 +76,40 @@ export default function TimeSettingsPage() {
         fetchData();
     }, []);
 
+    // Ticking UI clock derived from fetched server time string
     useEffect(() => {
         const interval = setInterval(() => {
-            // Increment the time string by 1 second
-            if (currentTime) {
-                const parts = currentTime.split(':');
-                if (parts.length === 3) {
-                    let hours = parseInt(parts[0], 10);
-                    let minutes = parseInt(parts[1], 10);
-                    let seconds = parseInt(parts[2], 10);
-
-                    seconds++;
-                    if (seconds >= 60) {
-                        seconds = 0;
-                        minutes++;
-                    }
-                    if (minutes >= 60) {
-                        minutes = 0;
-                        hours++;
-                    }
-                    if (hours >= 24) {
-                        hours = 0;
-                    }
-
-                    setCurrentTime(
-                        `${hours.toString().padStart(2, '0')}:${minutes.toString().padStart(2, '0')}:${seconds.toString().padStart(2, '0')}`
-                    );
+            setCurrentTime((prev) => {
+                if (!prev) return prev;
+                const parts = prev.split(':');
+                if (parts.length !== 3) return prev;
+                let h = parseInt(parts[0], 10);
+                let m = parseInt(parts[1], 10);
+                let s = parseInt(parts[2], 10) + 1;
+                if (s >= 60) {
+                    s = 0;
+                    m++;
                 }
-            }
+                if (m >= 60) {
+                    m = 0;
+                    h++;
+                }
+                if (h >= 24) h = 0;
+                return `${String(h).padStart(2, '0')}:${String(m).padStart(2, '0')}:${String(s).padStart(2, '0')}`;
+            });
         }, 1000);
         return () => clearInterval(interval);
-    }, [currentTime]);
+    }, []);
 
     const updateSettings = async (updates: Partial<NTPSettings>) => {
         setSaving(true);
         try {
             const response = await api.put('/api/time/ntp', updates);
             setSettings(response.data);
-            toast.success('Pengaturan NTP berhasil disimpan');
+            toast.success('Pengaturan NTP disimpan');
             fetchData();
-        } catch (error: any) {
-            toast.error(error.response?.data?.error || 'Gagal menyimpan pengaturan');
+        } catch (error) {
+            toast.error((error as { response?: { data?: { error?: string } } })?.response?.data?.error || 'Gagal menyimpan pengaturan');
         } finally {
             setSaving(false);
         }
@@ -129,7 +126,7 @@ export default function TimeSettingsPage() {
             } else {
                 toast.error(result.error || 'Sinkronisasi gagal');
             }
-        } catch (error: any) {
+        } catch {
             toast.error('Gagal melakukan sinkronisasi');
         } finally {
             setSyncing(false);
@@ -138,123 +135,138 @@ export default function TimeSettingsPage() {
 
     if (loading) {
         return (
-            <div className="flex items-center justify-center min-h-[400px]">
-                <div className="animate-spin rounded-full h-12 w-12 border-t-2 border-b-2 border-cyan-500"></div>
+            <div className="space-y-4 max-w-4xl">
+                <Skeleton className="h-9 w-64" />
+                <Skeleton className="h-32 w-full" />
+                <Skeleton className="h-64 w-full" />
             </div>
         );
     }
 
     return (
-        <div className="space-y-6">
-            <div className="flex items-center justify-between">
-                <h1 className="text-2xl font-bold text-slate-100">Pengaturan Waktu & NTP</h1>
-            </div>
+        <div className="space-y-4 max-w-4xl">
+            <PageHeader
+                title="Pengaturan waktu & NTP"
+                subtitle="Sinkronisasi jam server catering dengan NTP untuk validasi cutoff & check-in"
+                actions={
+                    <Button
+                        variant="primary"
+                        size="sm"
+                        loading={syncing}
+                        disabled={!settings?.ntpEnabled}
+                        onClick={syncNow}
+                        leftIcon={<RefreshCw className="w-3.5 h-3.5" aria-hidden="true" />}
+                    >
+                        Sinkronisasi sekarang
+                    </Button>
+                }
+            />
 
-            {/* Current Time Display */}
-            <div className="bg-gradient-to-r from-cyan-900/50 to-blue-900/50 rounded-xl p-6 border border-cyan-500/30">
-                <div className="flex items-center justify-between">
-                    <div>
-                        <h2 className="text-lg font-semibold text-cyan-400 mb-2">Waktu Server Saat Ini</h2>
-                        <p className="text-4xl font-mono text-white">
-                            {currentTime || '--:--:--'}
-                        </p>
-                        <p className="text-lg text-slate-300 mt-1">
-                            {currentDate || '----/--/--'}
-                        </p>
-                        <p className="text-sm text-slate-400 mt-2">
-                            Timezone: {timeInfo?.timezone || 'Asia/Jakarta'}
-                        </p>
-                    </div>
-                    <div className="text-right">
-                        <div className={`inline-flex items-center px-3 py-1 rounded-full text-sm ${timeInfo?.isSynced
-                            ? 'bg-green-500/20 text-green-400 border border-green-500/30'
-                            : 'bg-yellow-500/20 text-yellow-400 border border-yellow-500/30'
-                            }`}>
-                            <span className={`w-2 h-2 rounded-full mr-2 ${timeInfo?.isSynced ? 'bg-green-400' : 'bg-yellow-400'
-                                }`}></span>
-                            {timeInfo?.isSynced ? 'Tersinkronisasi' : 'Belum Sync'}
+            {/* Server Clock Display */}
+            <Card>
+                <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+                    <div className="flex items-center gap-4">
+                        <div className="w-12 h-12 rounded-[12px] bg-[#fffbeb] border border-[#fde68a] text-[#b45309] flex items-center justify-center flex-shrink-0">
+                            <Clock className="w-6 h-6" aria-hidden="true" />
                         </div>
+                        <div>
+                            <div className="text-[12px] font-semibold uppercase tracking-wider text-[#78716c]">
+                                Waktu server saat ini
+                            </div>
+                            <div className="text-[32px] font-extrabold font-mono text-[#1c1917] tabular-nums leading-tight">
+                                {currentTime || '--:--:--'}
+                            </div>
+                            <div className="text-[13px] text-[#57534e]">
+                                {currentDate || '----/--/--'} · {timeInfo?.timezone || 'Asia/Jakarta'}
+                            </div>
+                        </div>
+                    </div>
+
+                    <div className="sm:text-right space-y-1">
+                        <Badge variant={timeInfo?.isSynced ? 'success' : 'warning'} dot>
+                            {timeInfo?.isSynced ? 'Tersinkronisasi' : 'Belum tersinkron'}
+                        </Badge>
                         {timeInfo?.lastSync && (
-                            <p className="text-xs text-slate-400 mt-2">
-                                Terakhir sync: {formatDateTimeShortWIB(timeInfo.lastSync)}
-                            </p>
+                            <div className="text-[12px] text-[#78716c]">
+                                Terakhir: {formatDateTimeShortWIB(timeInfo.lastSync)}
+                            </div>
                         )}
                         {timeInfo?.offset !== undefined && timeInfo.offset !== 0 && (
-                            <p className="text-xs text-slate-400 mt-1">
+                            <div className="text-[12px] font-mono text-[#57534e]">
                                 Offset: {timeInfo.offset}ms
-                            </p>
+                            </div>
                         )}
                     </div>
                 </div>
-            </div>
+            </Card>
 
-            {/* NTP Settings Card */}
-            <div className="bg-slate-800/50 rounded-xl border border-slate-700 overflow-hidden">
-                <div className="px-6 py-4 border-b border-slate-700">
-                    <h2 className="text-lg font-semibold text-slate-100">Pengaturan NTP</h2>
-                    <p className="text-sm text-slate-400">Konfigurasi sinkronisasi waktu dengan server NTP</p>
-                </div>
+            {/* NTP Configuration */}
+            <Card>
+                <h2 className="text-[15px] font-bold text-[#1c1917] mb-4">Konfigurasi NTP</h2>
 
-                <div className="p-6 space-y-6">
-                    {/* Enable NTP */}
-                    <div className="flex items-center justify-between">
+                <div className="space-y-4">
+                    <div className="flex items-center justify-between p-3.5 rounded-[12px] bg-[#fafaf9] border border-[#e7e5e4]">
                         <div>
-                            <label className="font-medium text-slate-200">Aktifkan NTP</label>
-                            <p className="text-sm text-slate-400">Sinkronisasi waktu server dengan NTP server</p>
+                            <div className="text-[13.5px] font-semibold text-[#1c1917]">Aktifkan NTP</div>
+                            <div className="text-[12px] text-[#78716c]">
+                                Sinkronkan waktu server otomatis dengan server NTP
+                            </div>
                         </div>
                         <button
-                            onClick={() => updateSettings({ ntpEnabled: !settings?.ntpEnabled })}
+                            type="button"
+                            role="switch"
+                            aria-checked={Boolean(settings?.ntpEnabled)}
                             disabled={saving}
-                            className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors ${settings?.ntpEnabled ? 'bg-cyan-600' : 'bg-slate-600'
-                                }`}
+                            onClick={() => updateSettings({ ntpEnabled: !settings?.ntpEnabled })}
+                            className={`relative inline-flex h-6 w-11 items-center rounded-full border-0 cursor-pointer transition-colors disabled:opacity-50 ${
+                                settings?.ntpEnabled ? 'bg-[#16a34a]' : 'bg-[#d6d3d1]'
+                            }`}
                         >
                             <span
-                                className={`inline-block h-4 w-4 transform rounded-full bg-white transition-transform ${settings?.ntpEnabled ? 'translate-x-6' : 'translate-x-1'
-                                    }`}
+                                className={`inline-block h-4 w-4 rounded-full bg-[#fff] transition-transform ${
+                                    settings?.ntpEnabled ? 'translate-x-6' : 'translate-x-1'
+                                }`}
                             />
                         </button>
                     </div>
 
-                    {/* NTP Server */}
-                    <div>
-                        <label className="block font-medium text-slate-200 mb-2">Server NTP</label>
-                        <select
-                            value={settings?.ntpServer || 'pool.ntp.org'}
-                            onChange={(e) => updateSettings({ ntpServer: e.target.value })}
-                            disabled={saving || !settings?.ntpEnabled}
-                            className="w-full px-4 py-2 bg-slate-700 border border-slate-600 rounded-lg text-slate-100 focus:outline-none focus:ring-2 focus:ring-cyan-500 disabled:opacity-50"
-                        >
-                            {ntpServers.map((server) => (
-                                <option key={server.address} value={server.address}>
-                                    {server.name} ({server.address})
-                                </option>
-                            ))}
-                        </select>
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                        <Field label="Server NTP">
+                            <Select
+                                value={settings?.ntpServer || 'pool.ntp.org'}
+                                onChange={(e) => updateSettings({ ntpServer: e.target.value })}
+                                disabled={saving || !settings?.ntpEnabled}
+                            >
+                                {ntpServers.map((s) => (
+                                    <option key={s.address} value={s.address}>
+                                        {s.name} ({s.address})
+                                    </option>
+                                ))}
+                            </Select>
+                        </Field>
+
+                        <Field label="Zona waktu">
+                            <Select
+                                value={settings?.ntpTimezone || 'Asia/Jakarta'}
+                                onChange={(e) => updateSettings({ ntpTimezone: e.target.value })}
+                                disabled={saving}
+                            >
+                                {timezones.map((tz) => (
+                                    <option key={tz} value={tz}>
+                                        {tz}
+                                    </option>
+                                ))}
+                            </Select>
+                        </Field>
                     </div>
 
-                    {/* Timezone */}
-                    <div>
-                        <label className="block font-medium text-slate-200 mb-2">Zona Waktu</label>
-                        <select
-                            value={settings?.ntpTimezone || 'Asia/Jakarta'}
-                            onChange={(e) => updateSettings({ ntpTimezone: e.target.value })}
-                            disabled={saving}
-                            className="w-full px-4 py-2 bg-slate-700 border border-slate-600 rounded-lg text-slate-100 focus:outline-none focus:ring-2 focus:ring-cyan-500 disabled:opacity-50"
-                        >
-                            {timezones.map((tz) => (
-                                <option key={tz} value={tz}>{tz}</option>
-                            ))}
-                        </select>
-                    </div>
-
-                    {/* Sync Interval */}
-                    <div>
-                        <label className="block font-medium text-slate-200 mb-2">Interval Sinkronisasi</label>
-                        <select
+                    <Field label="Interval sinkronisasi" className="max-w-xs">
+                        <Select
                             value={settings?.ntpSyncInterval || 3600}
-                            onChange={(e) => updateSettings({ ntpSyncInterval: parseInt(e.target.value) })}
+                            onChange={(e) =>
+                                updateSettings({ ntpSyncInterval: parseInt(e.target.value, 10) })
+                            }
                             disabled={saving || !settings?.ntpEnabled}
-                            className="w-full px-4 py-2 bg-slate-700 border border-slate-600 rounded-lg text-slate-100 focus:outline-none focus:ring-2 focus:ring-cyan-500 disabled:opacity-50"
                         >
                             <option value={60}>Setiap 1 menit</option>
                             <option value={300}>Setiap 5 menit</option>
@@ -266,58 +278,22 @@ export default function TimeSettingsPage() {
                             <option value={28800}>Setiap 8 jam</option>
                             <option value={43200}>Setiap 12 jam</option>
                             <option value={86400}>Setiap 24 jam</option>
-                        </select>
-                    </div>
-
-                    {/* Manual Sync Button */}
-                    <div className="pt-4 border-t border-slate-700">
-                        <button
-                            onClick={syncNow}
-                            disabled={syncing || !settings?.ntpEnabled}
-                            className="flex items-center justify-center gap-2 px-4 py-2 bg-cyan-600 hover:bg-cyan-700 disabled:bg-slate-600 disabled:cursor-not-allowed text-white rounded-lg transition-colors"
-                        >
-                            {syncing ? (
-                                <>
-                                    <svg className="animate-spin h-5 w-5" viewBox="0 0 24 24">
-                                        <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" fill="none" />
-                                        <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z" />
-                                    </svg>
-                                    Menyinkronkan...
-                                </>
-                            ) : (
-                                <>
-                                    <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
-                                    </svg>
-                                    Sinkronisasi Sekarang
-                                </>
-                            )}
-                        </button>
-                    </div>
+                        </Select>
+                    </Field>
                 </div>
-            </div>
+            </Card>
 
-            {/* Info Box */}
-            <div className="bg-blue-900/20 border border-blue-500/30 rounded-xl p-4">
-                <div className="flex gap-3">
-                    <svg className="w-6 h-6 text-blue-400 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
-                    </svg>
-                    <div>
-                        <h3 className="font-medium text-blue-400">Tentang Sinkronisasi Waktu</h3>
-                        <p className="text-sm text-slate-300 mt-1">
-                            Pengaturan NTP memastikan waktu server selalu akurat dan konsisten.
-                            Waktu yang tersinkronisasi digunakan untuk:
+            <Card padding="sm">
+                <div className="flex items-start gap-3">
+                    <Info className="w-4 h-4 text-[#2563eb] flex-shrink-0 mt-0.5" aria-hidden="true" />
+                    <div className="text-[12.5px] text-[#57534e] space-y-1">
+                        <div className="font-semibold text-[#1c1917]">Tentang sinkronisasi waktu</div>
+                        <p>
+                            Waktu yang tersinkronisasi digunakan untuk validasi cutoff pemesanan, penentuan hari transaksi, penandaan no-show otomatis, dan pencatatan audit log.
                         </p>
-                        <ul className="text-sm text-slate-400 mt-2 list-disc list-inside space-y-1">
-                            <li>Validasi cutoff time pemesanan makanan</li>
-                            <li>Penentuan tanggal order dan check-in</li>
-                            <li>Proses otomatis tidak diambil berdasarkan jadwal shift</li>
-                            <li>Pencatatan waktu transaksi dan log aktivitas</li>
-                        </ul>
                     </div>
                 </div>
-            </div>
+            </Card>
         </div>
     );
 }

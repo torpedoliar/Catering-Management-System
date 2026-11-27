@@ -33,17 +33,28 @@ if (!fs.existsSync(uploadDir)) {
 // Get all users (Admin only)
 router.get('/', authMiddleware, adminMiddleware, async (req: AuthRequest, res: Response) => {
     try {
-        const { search, company, division, department, page = '1', limit = '50', status } = req.query;
+        const { search, company, division, department, page = '1', limit = '50', status, role } = req.query;
 
         const where: UserWhereFilter = {};
 
-        // Filter by status: 'active', 'inactive', or 'all' (default: 'all' - show everyone)
+        // Filter by status: 'active', 'inactive', 'blacklisted', or 'all' (default: 'all' - show everyone)
         if (status === 'inactive') {
             where.isActive = false;
         } else if (status === 'active') {
             where.isActive = true;
+        } else if (status === 'blacklisted') {
+            where.blacklists = {
+                some: {
+                    isActive: true,
+                    OR: [{ endDate: null }, { endDate: { gt: getNow() } }],
+                },
+            };
         }
         // When status is 'all' or not specified, don't filter by isActive (show all users)
+
+        if (role && ['USER', 'ADMIN', 'CANTEEN', 'VENDOR'].includes(role as string)) {
+            where.role = role as import('@prisma/client').Role;
+        }
 
         if (search) {
             where.OR = [

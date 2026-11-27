@@ -1,11 +1,24 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
 import { useSearchParams } from 'react-router-dom';
+import { Ban, Unlock, UserPlus, Eye } from 'lucide-react';
+import toast from 'react-hot-toast';
 import { api } from '../../contexts/AuthContext';
-import { format } from 'date-fns';
 import { formatDateTimeShortWIB } from '../../utils/timezone';
 import { useSSERefresh, USER_EVENTS } from '../../contexts/SSEContext';
-import { Ban, Unlock, Loader2, ChevronLeft, ChevronRight, UserPlus, X, AlertTriangle, Eye, EyeOff, Shield } from 'lucide-react';
-import toast from 'react-hot-toast';
+import {
+    PageHeader,
+    Button,
+    Card,
+    Badge,
+    Pagination,
+    Modal,
+    Field,
+    Input,
+    Textarea,
+    EmptyState,
+    Skeleton,
+    SegmentedControl,
+} from '../../components/ui';
 
 interface Blacklist {
     id: string;
@@ -24,7 +37,7 @@ interface Blacklist {
     };
 }
 
-interface User {
+interface SearchUser {
     id: string;
     externalId: string;
     name: string;
@@ -32,525 +45,39 @@ interface User {
     department: string;
 }
 
-interface ConfirmModalProps {
-    isOpen: boolean;
-    onClose: () => void;
-    onConfirm: (password: string, reason: string, reduceBy?: string) => Promise<void>;
-    title: string;
-    description: string;
-    actionLabel: string;
-    actionColor: 'red' | 'green';
-    targetUser: string;
-    requireReason?: boolean;
-    reasonPlaceholder?: string;
-    requireStrikeReduction?: boolean;
-    currentStrikes?: number;
-}
-
-function ConfirmModal({
-    isOpen,
-    onClose,
-    onConfirm,
-    title,
-    description,
-    actionLabel,
-    actionColor,
-    targetUser,
-    requireReason = true,
-    reasonPlaceholder = 'Masukkan alasan (minimal 10 karakter)...',
-    requireStrikeReduction = false,
-    currentStrikes = 0,
-}: ConfirmModalProps) {
-    const [password, setPassword] = useState('');
-    const [reason, setReason] = useState('');
-    const [reduceBy, setReduceBy] = useState('');
-    const [showPassword, setShowPassword] = useState(false);
-    const [isSubmitting, setIsSubmitting] = useState(false);
-    const [error, setError] = useState('');
-
-    const handleSubmit = async (e: React.FormEvent) => {
-        e.preventDefault();
-        setError('');
-
-        if (requireStrikeReduction && currentStrikes > 0) {
-            const reduceNum = parseInt(reduceBy);
-            if (!reduceBy || isNaN(reduceNum) || reduceNum < 1 || reduceNum > currentStrikes) {
-                setError(`Wajib memasukkan jumlah penurunan strike (angka antara 1-${currentStrikes})`);
-                return;
-            }
-        }
-
-        if (!password) {
-            setError('Password admin harus diisi');
-            return;
-        }
-
-        if (requireReason && reason.trim().length < 10) {
-            setError('Alasan harus minimal 10 karakter');
-            return;
-        }
-
-        setIsSubmitting(true);
-        try {
-            await onConfirm(password, reason.trim(), reduceBy);
-            setPassword('');
-            setReason('');
-            setReduceBy('');
-            onClose();
-        } catch (err: any) {
-            setError(err.response?.data?.error || 'Terjadi kesalahan');
-        } finally {
-            setIsSubmitting(false);
-        }
-    };
-
-    const handleClose = () => {
-        setPassword('');
-        setReason('');
-        setReduceBy('');
-        setError('');
-        onClose();
-    };
-
-    if (!isOpen) return null;
-
-    return (
-        <div className="fixed inset-0 bg-black/60 flex items-center justify-center z-50 p-4">
-            <div className="bg-slate-800 rounded-xl border border-slate-700 max-w-md w-full shadow-2xl">
-                <div className="px-6 py-4 border-b border-slate-700 flex items-center justify-between">
-                    <div className="flex items-center gap-3">
-                        <div className={`p-2 rounded-lg ${actionColor === 'red' ? 'bg-red-500/20' : 'bg-green-500/20'}`}>
-                            <AlertTriangle className={`w-5 h-5 ${actionColor === 'red' ? 'text-red-400' : 'text-green-400'}`} />
-                        </div>
-                        <h3 className="text-lg font-semibold text-slate-100">{title}</h3>
-                    </div>
-                    <button
-                        onClick={handleClose}
-                        className="p-2 hover:bg-slate-700 rounded-lg transition-colors"
-                    >
-                        <X className="w-5 h-5 text-slate-400" />
-                    </button>
-                </div>
-
-                <form onSubmit={handleSubmit} className="p-6 space-y-4">
-                    <div className="bg-slate-700/50 rounded-lg p-4">
-                        <p className="text-slate-300">{description}</p>
-                        <p className="text-white font-medium mt-2">{targetUser}</p>
-                    </div>
-
-                    {error && (
-                        <div className="bg-red-500/20 border border-red-500/30 rounded-lg px-4 py-3">
-                            <p className="text-red-400 text-sm">{error}</p>
-                        </div>
-                    )}
-
-                    {requireReason && (
-                        <div>
-                            <label className="block text-sm font-medium text-slate-300 mb-2">
-                                Alasan <span className="text-red-400">*</span>
-                            </label>
-                            <textarea
-                                value={reason}
-                                onChange={(e) => setReason(e.target.value)}
-                                placeholder={reasonPlaceholder}
-                                rows={3}
-                                className="w-full px-4 py-2 bg-slate-700 border border-slate-600 rounded-lg text-slate-100 placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-cyan-500 resize-none"
-                            />
-                            <p className="text-xs text-slate-400 mt-1">
-                                {reason.length}/10 karakter minimum
-                            </p>
-                        </div>
-                    )}
-
-                    {requireStrikeReduction && currentStrikes > 0 && (
-                        <div>
-                            <label className="block text-sm font-medium text-slate-300 mb-2">
-                                Kurangi Strike (Total saat ini: {currentStrikes}) <span className="text-red-400">*</span>
-                            </label>
-                            <input
-                                type="number"
-                                value={reduceBy}
-                                onChange={(e) => setReduceBy(e.target.value)}
-                                min={1}
-                                max={currentStrikes}
-                                placeholder={`Masukkan angka (1-${currentStrikes})`}
-                                className="w-full px-4 py-2 bg-slate-700 border border-slate-600 rounded-lg text-slate-100 placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-cyan-500"
-                                required
-                            />
-                            <p className="text-xs text-slate-400 mt-1">
-                                Wajib menurunkan strike agar user tidak langsung melewati batas strike saat unblock.
-                            </p>
-                        </div>
-                    )}
-
-                    <div>
-                        <label className="block text-sm font-medium text-slate-300 mb-2">
-                            Konfirmasi Password Admin <span className="text-red-400">*</span>
-                        </label>
-                        <div className="relative">
-                            <input
-                                type={showPassword ? 'text' : 'password'}
-                                value={password}
-                                onChange={(e) => setPassword(e.target.value)}
-                                placeholder="Masukkan password Anda..."
-                                className="w-full px-4 py-2 pr-10 bg-slate-700 border border-slate-600 rounded-lg text-slate-100 placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-cyan-500"
-                            />
-                            <button
-                                type="button"
-                                onClick={() => setShowPassword(!showPassword)}
-                                className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-300"
-                            >
-                                {showPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
-                            </button>
-                        </div>
-                        <p className="text-xs text-slate-400 mt-1">
-                            Masukkan password akun admin Anda untuk konfirmasi
-                        </p>
-                    </div>
-
-                    <div className="flex gap-3 pt-2">
-                        <button
-                            type="button"
-                            onClick={handleClose}
-                            disabled={isSubmitting}
-                            className="flex-1 px-4 py-2 bg-slate-700 hover:bg-slate-600 text-slate-300 rounded-lg transition-colors disabled:opacity-50"
-                        >
-                            Batal
-                        </button>
-                        <button
-                            type="submit"
-                            disabled={isSubmitting}
-                            className={`flex-1 px-4 py-2 rounded-lg transition-colors disabled:opacity-50 flex items-center justify-center gap-2 ${actionColor === 'red'
-                                ? 'bg-red-600 hover:bg-red-700 text-white'
-                                : 'bg-green-600 hover:bg-green-700 text-white'
-                                }`}
-                        >
-                            {isSubmitting ? (
-                                <>
-                                    <Loader2 className="w-4 h-4 animate-spin" />
-                                    Memproses...
-                                </>
-                            ) : (
-                                actionLabel
-                            )}
-                        </button>
-                    </div>
-                </form>
-            </div>
-        </div>
-    );
-}
-
-interface BlacklistUserModalProps {
-    isOpen: boolean;
-    onClose: () => void;
-    onConfirm: (userId: string, reason: string, durationDays: number | null, password: string) => Promise<void>;
-}
-
-function BlacklistUserModal({ isOpen, onClose, onConfirm }: BlacklistUserModalProps) {
-    const [users, setUsers] = useState<User[]>([]);
-    const [searchTerm, setSearchTerm] = useState('');
-    const [selectedUser, setSelectedUser] = useState<User | null>(null);
-    const [reason, setReason] = useState('');
-    const [durationType, setDurationType] = useState<'permanent' | 'temporary'>('temporary');
-    const [durationDays, setDurationDays] = useState(7);
-    const [password, setPassword] = useState('');
-    const [showPassword, setShowPassword] = useState(false);
-    const [isSubmitting, setIsSubmitting] = useState(false);
-    const [isSearching, setIsSearching] = useState(false);
-    const [error, setError] = useState('');
-
-    const searchUsers = async (term: string) => {
-        if (term.length < 2) {
-            setUsers([]);
-            return;
-        }
-
-        setIsSearching(true);
-        try {
-            const res = await api.get(`/api/users?search=${encodeURIComponent(term)}&limit=10`);
-            setUsers(res.data.users.filter((u: any) => u.role === 'USER'));
-        } catch (error) {
-            console.error('Search error:', error);
-        } finally {
-            setIsSearching(false);
-        }
-    };
-
-    useEffect(() => {
-        const timer = setTimeout(() => {
-            searchUsers(searchTerm);
-        }, 300);
-        return () => clearTimeout(timer);
-    }, [searchTerm]);
-
-    const handleSubmit = async (e: React.FormEvent) => {
-        e.preventDefault();
-        setError('');
-
-        if (!selectedUser) {
-            setError('Pilih user yang akan di-blacklist');
-            return;
-        }
-
-        if (reason.trim().length < 10) {
-            setError('Alasan harus minimal 10 karakter');
-            return;
-        }
-
-        if (!password) {
-            setError('Password admin harus diisi');
-            return;
-        }
-
-        setIsSubmitting(true);
-        try {
-            await onConfirm(
-                selectedUser.id,
-                reason.trim(),
-                durationType === 'permanent' ? null : durationDays,
-                password
-            );
-            handleClose();
-        } catch (err: any) {
-            setError(err.response?.data?.error || 'Terjadi kesalahan');
-        } finally {
-            setIsSubmitting(false);
-        }
-    };
-
-    const handleClose = () => {
-        setSelectedUser(null);
-        setSearchTerm('');
-        setUsers([]);
-        setReason('');
-        setDurationType('temporary');
-        setDurationDays(7);
-        setPassword('');
-        setError('');
-        onClose();
-    };
-
-    if (!isOpen) return null;
-
-    return (
-        <div className="fixed inset-0 bg-black/60 flex items-center justify-center z-50 p-4">
-            <div className="bg-slate-800 rounded-xl border border-slate-700 max-w-lg w-full shadow-2xl max-h-[90vh] overflow-y-auto">
-                <div className="px-6 py-4 border-b border-slate-700 flex items-center justify-between sticky top-0 bg-slate-800">
-                    <div className="flex items-center gap-3">
-                        <div className="p-2 rounded-lg bg-red-500/20">
-                            <Ban className="w-5 h-5 text-red-400" />
-                        </div>
-                        <h3 className="text-lg font-semibold text-slate-100">Blacklist User</h3>
-                    </div>
-                    <button
-                        onClick={handleClose}
-                        className="p-2 hover:bg-slate-700 rounded-lg transition-colors"
-                    >
-                        <X className="w-5 h-5 text-slate-400" />
-                    </button>
-                </div>
-
-                <form onSubmit={handleSubmit} className="p-6 space-y-4">
-                    {error && (
-                        <div className="bg-red-500/20 border border-red-500/30 rounded-lg px-4 py-3">
-                            <p className="text-red-400 text-sm">{error}</p>
-                        </div>
-                    )}
-
-                    {/* User Selection */}
-                    <div>
-                        <label className="block text-sm font-medium text-slate-300 mb-2">
-                            Pilih User <span className="text-red-400">*</span>
-                        </label>
-                        {selectedUser ? (
-                            <div className="bg-slate-700/50 rounded-lg p-3 flex items-center justify-between">
-                                <div>
-                                    <p className="text-white font-medium">{selectedUser.name}</p>
-                                    <p className="text-sm text-slate-400">{selectedUser.externalId} - {selectedUser.department}</p>
-                                </div>
-                                <button
-                                    type="button"
-                                    onClick={() => setSelectedUser(null)}
-                                    className="text-slate-400 hover:text-white"
-                                >
-                                    <X className="w-4 h-4" />
-                                </button>
-                            </div>
-                        ) : (
-                            <div className="space-y-2">
-                                <div className="relative">
-                                    <input
-                                        type="text"
-                                        value={searchTerm}
-                                        onChange={(e) => setSearchTerm(e.target.value)}
-                                        placeholder="Cari berdasarkan nama atau ID..."
-                                        className="w-full px-4 py-2 bg-slate-700 border border-slate-600 rounded-lg text-slate-100 placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-cyan-500"
-                                    />
-                                    {isSearching && (
-                                        <Loader2 className="absolute right-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400 animate-spin" />
-                                    )}
-                                </div>
-                                {users.length > 0 && (
-                                    <div className="bg-slate-700 rounded-lg border border-slate-600 max-h-40 overflow-y-auto">
-                                        {users.map((user) => (
-                                            <button
-                                                key={user.id}
-                                                type="button"
-                                                onClick={() => {
-                                                    setSelectedUser(user);
-                                                    setSearchTerm('');
-                                                    setUsers([]);
-                                                }}
-                                                className="w-full px-4 py-2 text-left hover:bg-slate-600 transition-colors"
-                                            >
-                                                <p className="text-white">{user.name}</p>
-                                                <p className="text-sm text-slate-400">{user.externalId} - {user.department}</p>
-                                            </button>
-                                        ))}
-                                    </div>
-                                )}
-                            </div>
-                        )}
-                    </div>
-
-                    {/* Reason */}
-                    <div>
-                        <label className="block text-sm font-medium text-slate-300 mb-2">
-                            Alasan Blacklist <span className="text-red-400">*</span>
-                        </label>
-                        <textarea
-                            value={reason}
-                            onChange={(e) => setReason(e.target.value)}
-                            placeholder="Jelaskan alasan user di-blacklist (minimal 10 karakter)..."
-                            rows={3}
-                            className="w-full px-4 py-2 bg-slate-700 border border-slate-600 rounded-lg text-slate-100 placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-cyan-500 resize-none"
-                        />
-                        <p className="text-xs text-slate-400 mt-1">
-                            {reason.length}/10 karakter minimum
-                        </p>
-                    </div>
-
-                    {/* Duration */}
-                    <div>
-                        <label className="block text-sm font-medium text-slate-300 mb-2">
-                            Durasi Blacklist
-                        </label>
-                        <div className="flex gap-4 mb-3">
-                            <label className="flex items-center gap-2 cursor-pointer">
-                                <input
-                                    type="radio"
-                                    checked={durationType === 'temporary'}
-                                    onChange={() => setDurationType('temporary')}
-                                    className="w-4 h-4 text-cyan-500 focus:ring-cyan-500"
-                                />
-                                <span className="text-slate-300">Sementara</span>
-                            </label>
-                            <label className="flex items-center gap-2 cursor-pointer">
-                                <input
-                                    type="radio"
-                                    checked={durationType === 'permanent'}
-                                    onChange={() => setDurationType('permanent')}
-                                    className="w-4 h-4 text-cyan-500 focus:ring-cyan-500"
-                                />
-                                <span className="text-slate-300">Permanen</span>
-                            </label>
-                        </div>
-                        {durationType === 'temporary' && (
-                            <div className="flex items-center gap-2">
-                                <input
-                                    type="number"
-                                    value={durationDays}
-                                    onChange={(e) => setDurationDays(Math.max(1, parseInt(e.target.value) || 1))}
-                                    min={1}
-                                    max={365}
-                                    className="w-24 px-3 py-2 bg-slate-700 border border-slate-600 rounded-lg text-slate-100 focus:outline-none focus:ring-2 focus:ring-cyan-500"
-                                />
-                                <span className="text-slate-400">hari</span>
-                            </div>
-                        )}
-                    </div>
-
-                    {/* Password Confirmation */}
-                    <div>
-                        <label className="block text-sm font-medium text-slate-300 mb-2">
-                            Konfirmasi Password Admin <span className="text-red-400">*</span>
-                        </label>
-                        <div className="relative">
-                            <input
-                                type={showPassword ? 'text' : 'password'}
-                                value={password}
-                                onChange={(e) => setPassword(e.target.value)}
-                                placeholder="Masukkan password Anda..."
-                                className="w-full px-4 py-2 pr-10 bg-slate-700 border border-slate-600 rounded-lg text-slate-100 placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-cyan-500"
-                            />
-                            <button
-                                type="button"
-                                onClick={() => setShowPassword(!showPassword)}
-                                className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-300"
-                            >
-                                {showPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
-                            </button>
-                        </div>
-                    </div>
-
-                    {/* Warning */}
-                    <div className="bg-amber-500/10 border border-amber-500/30 rounded-lg px-4 py-3">
-                        <p className="text-amber-400 text-sm">
-                            <strong>Perhatian:</strong> User yang di-blacklist tidak akan bisa memesan makanan sampai di-unblock.
-                        </p>
-                    </div>
-
-                    <div className="flex gap-3 pt-2">
-                        <button
-                            type="button"
-                            onClick={handleClose}
-                            disabled={isSubmitting}
-                            className="flex-1 px-4 py-2 bg-slate-700 hover:bg-slate-600 text-slate-300 rounded-lg transition-colors disabled:opacity-50"
-                        >
-                            Batal
-                        </button>
-                        <button
-                            type="submit"
-                            disabled={isSubmitting}
-                            className="flex-1 px-4 py-2 bg-red-600 hover:bg-red-700 text-white rounded-lg transition-colors disabled:opacity-50 flex items-center justify-center gap-2"
-                        >
-                            {isSubmitting ? (
-                                <>
-                                    <Loader2 className="w-4 h-4 animate-spin" />
-                                    Memproses...
-                                </>
-                            ) : (
-                                <>
-                                    <Ban className="w-4 h-4" />
-                                    Blacklist User
-                                </>
-                            )}
-                        </button>
-                    </div>
-                </form>
-            </div>
-        </div>
-    );
-}
-
 export default function BlacklistPage() {
     const [blacklists, setBlacklists] = useState<Blacklist[]>([]);
     const [isLoading, setIsLoading] = useState(true);
     const [page, setPage] = useState(1);
     const [totalPages, setTotalPages] = useState(1);
+    const [total, setTotal] = useState(0);
     const [showAll, setShowAll] = useState(false);
 
-    // Modal states
+    // Modals
     const [showBlacklistModal, setShowBlacklistModal] = useState(false);
     const [unblockTarget, setUnblockTarget] = useState<Blacklist | null>(null);
+    const [detailEntry, setDetailEntry] = useState<Blacklist | null>(null);
 
-    // FE-NOTIF-NAV: deep-link detail modal. `?id=<blacklistId>` opens the
-    // matching row's full record.
+    // Deep-link `?id=<blacklistId>`
     const [searchParams, setSearchParams] = useSearchParams();
     const deepLinkId = searchParams.get('id');
     const deepLinkConsumed = useRef(false);
-    const [detailEntry, setDetailEntry] = useState<Blacklist | null>(null);
+
+    // Blacklist form state
+    const [searchTerm, setSearchTerm] = useState('');
+    const [foundUsers, setFoundUsers] = useState<SearchUser[]>([]);
+    const [selectedUser, setSelectedUser] = useState<SearchUser | null>(null);
+    const [blReason, setBlReason] = useState('');
+    const [durationType, setDurationType] = useState<'temporary' | 'permanent'>('temporary');
+    const [durationDays, setDurationDays] = useState(7);
+    const [blPassword, setBlPassword] = useState('');
+    const [blSubmitting, setBlSubmitting] = useState(false);
+
+    // Unblock form state
+    const [unblockReason, setUnblockReason] = useState('');
+    const [unblockReduceBy, setUnblockReduceBy] = useState('');
+    const [unblockPassword, setUnblockPassword] = useState('');
+    const [unblockSubmitting, setUnblockSubmitting] = useState(false);
 
     const loadBlacklists = useCallback(async () => {
         setIsLoading(true);
@@ -560,12 +87,13 @@ export default function BlacklistPage() {
                 limit: '20',
                 active: (!showAll).toString(),
             });
-
             const res = await api.get(`/api/blacklist?${params}`);
-            setBlacklists(res.data.blacklists);
-            setTotalPages(res.data.pagination.totalPages);
+            setBlacklists(res.data.blacklists || []);
+            setTotalPages(res.data.pagination?.totalPages || 1);
+            setTotal(res.data.pagination?.total || (res.data.blacklists || []).length);
         } catch (error) {
             console.error('Failed to load blacklist:', error);
+            toast.error('Gagal memuat daftar blacklist');
         } finally {
             setIsLoading(false);
         }
@@ -575,147 +103,255 @@ export default function BlacklistPage() {
         loadBlacklists();
     }, [loadBlacklists]);
 
-    // Auto-refresh on blacklist events (SSE)
     useSSERefresh(USER_EVENTS, loadBlacklists);
 
-    // FE-NOTIF-NAV: deep-link handling. Open the modal if `?id=` matches
-    // a row in the loaded list; paginate a few pages forward otherwise.
     useEffect(() => {
-        if (deepLinkConsumed.current) return;
-        if (!deepLinkId || isLoading) return;
-        const match = blacklists.find(b => b.id === deepLinkId);
+        if (deepLinkConsumed.current || !deepLinkId || isLoading) return;
+        const match = blacklists.find((b) => b.id === deepLinkId);
         if (match) {
             setDetailEntry(match);
             deepLinkConsumed.current = true;
             const next = new URLSearchParams(searchParams);
             next.delete('id');
             setSearchParams(next, { replace: true });
+        } else if (page < totalPages && page < 5) {
+            setPage((p) => p + 1);
         }
-    }, [deepLinkId, isLoading, blacklists, searchParams, setSearchParams]);
+    }, [deepLinkId, isLoading, blacklists, page, totalPages, searchParams, setSearchParams]);
 
+    // Debounced search for user in Blacklist modal
     useEffect(() => {
-        if (deepLinkConsumed.current) return;
-        if (!deepLinkId || isLoading) return;
-        const onPage = blacklists.some(b => b.id === deepLinkId);
-        if (!onPage && page < totalPages && page < 5) {
-            setPage(p => p + 1);
+        if (!showBlacklistModal || searchTerm.trim().length < 2) {
+            setFoundUsers([]);
+            return;
         }
-    }, [deepLinkId, isLoading, blacklists, page, totalPages]);
+        const timer = setTimeout(async () => {
+            try {
+                const res = await api.get(`/api/users?search=${encodeURIComponent(searchTerm)}&role=USER&limit=10`);
+                setFoundUsers(res.data.users || []);
+            } catch {
+                setFoundUsers([]);
+            }
+        }, 300);
+        return () => clearTimeout(timer);
+    }, [searchTerm, showBlacklistModal]);
 
-    const handleBlacklistUser = async (userId: string, reason: string, durationDays: number | null, adminPassword: string) => {
-        await api.post('/api/blacklist', {
-            userId,
-            reason,
-            durationDays,
-            adminPassword,
-        });
-        toast.success('User berhasil di-blacklist');
-        loadBlacklists();
+    const closeBlacklistModal = () => {
+        setShowBlacklistModal(false);
+        setSearchTerm('');
+        setFoundUsers([]);
+        setSelectedUser(null);
+        setBlReason('');
+        setDurationType('temporary');
+        setDurationDays(7);
+        setBlPassword('');
     };
 
-    const handleUnblockUser = async (password: string, reason: string, reduceBy?: string) => {
-        if (!unblockTarget) return;
+    const submitBlacklist = async (e: React.FormEvent) => {
+        e.preventDefault();
+        if (!selectedUser) {
+            toast.error('Pilih karyawan terlebih dahulu');
+            return;
+        }
+        if (blReason.trim().length < 10) {
+            toast.error('Alasan minimal 10 karakter');
+            return;
+        }
+        if (!blPassword) {
+            toast.error('Password admin wajib diisi');
+            return;
+        }
+        setBlSubmitting(true);
+        try {
+            await api.post('/api/blacklist', {
+                userId: selectedUser.id,
+                reason: blReason.trim(),
+                durationDays: durationType === 'permanent' ? null : durationDays,
+                adminPassword: blPassword,
+            });
+            toast.success(`${selectedUser.name} berhasil diblacklist`);
+            closeBlacklistModal();
+            loadBlacklists();
+        } catch (error) {
+            toast.error((error as { response?: { data?: { error?: string } } })?.response?.data?.error || 'Gagal memblacklist pengguna');
+        } finally {
+            setBlSubmitting(false);
+        }
+    };
 
-        await api.post(`/api/blacklist/${unblockTarget.id}/unblock`, {
-            adminPassword: password,
-            reason,
-            reduceBy: reduceBy || undefined,
-        });
-        toast.success('User berhasil di-unblock');
-        loadBlacklists();
+    const submitUnblock = async (e: React.FormEvent) => {
+        e.preventDefault();
+        if (!unblockTarget) return;
+        const currentStrikes = unblockTarget.user.noShowCount;
+        if (currentStrikes > 0) {
+            const num = parseInt(unblockReduceBy, 10);
+            if (!unblockReduceBy || isNaN(num) || num < 1 || num > currentStrikes) {
+                toast.error(`Masukkan jumlah penurunan strike (1–${currentStrikes})`);
+                return;
+            }
+        }
+        if (unblockReason.trim().length < 10) {
+            toast.error('Alasan minimal 10 karakter');
+            return;
+        }
+        if (!unblockPassword) {
+            toast.error('Password admin wajib diisi');
+            return;
+        }
+
+        setUnblockSubmitting(true);
+        try {
+            await api.post(`/api/blacklist/${unblockTarget.id}/unblock`, {
+                adminPassword: unblockPassword,
+                reason: unblockReason.trim(),
+                reduceBy: unblockReduceBy || undefined,
+            });
+            toast.success(`${unblockTarget.user.name} berhasil di-unblock`);
+            setUnblockTarget(null);
+            setUnblockReason('');
+            setUnblockReduceBy('');
+            setUnblockPassword('');
+            loadBlacklists();
+        } catch (error) {
+            toast.error((error as { response?: { data?: { error?: string } } })?.response?.data?.error || 'Gagal meng-unblock pengguna');
+        } finally {
+            setUnblockSubmitting(false);
+        }
     };
 
     return (
-        <div className="space-y-6 animate-fade-in">
-            <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
-                <div>
-                    <h1 className="text-2xl font-bold text-white">Blacklist Management</h1>
-                    <p className="text-slate-400">Manage restricted users • Real-time sync enabled</p>
-                </div>
-
-                <div className="flex items-center gap-4">
-                    <label className="flex items-center gap-2 cursor-pointer">
-                        <input
-                            type="checkbox"
-                            checked={showAll}
-                            onChange={(e) => { setShowAll(e.target.checked); setPage(1); }}
-                            className="w-4 h-4 rounded border-slate-600 text-cyan-500 focus:ring-cyan-500 focus:ring-offset-slate-800"
+        <div className="space-y-4">
+            <PageHeader
+                title="Blacklist pengguna"
+                subtitle="Kelola pemblokiran akibat akumulasi no-show atau pelanggaran"
+                actions={
+                    <>
+                        <SegmentedControl
+                            ariaLabel="Filter status blacklist"
+                            layoutId="blacklist-filter"
+                            value={showAll ? 'all' : 'active'}
+                            onChange={(v) => {
+                                setShowAll(v === 'all');
+                                setPage(1);
+                            }}
+                            options={[
+                                { value: 'active', label: 'Aktif saja' },
+                                { value: 'all', label: 'Semua riwayat' },
+                            ]}
                         />
-                        <span className="text-slate-300">Show inactive</span>
-                    </label>
-                    <button
-                        onClick={() => setShowBlacklistModal(true)}
-                        className="flex items-center gap-2 px-4 py-2 bg-red-600 hover:bg-red-700 text-white rounded-lg transition-colors"
-                    >
-                        <UserPlus className="w-4 h-4" />
-                        Blacklist User
-                    </button>
-                </div>
-            </div>
+                        <Button
+                            variant="danger"
+                            size="sm"
+                            onClick={() => setShowBlacklistModal(true)}
+                            leftIcon={<UserPlus className="w-3.5 h-3.5" aria-hidden="true" />}
+                        >
+                            Blacklist manual
+                        </Button>
+                    </>
+                }
+            />
 
-            <div className="glass-dark rounded-xl overflow-hidden">
+            <Card padding="none">
                 {isLoading ? (
-                    <div className="flex items-center justify-center py-20">
-                        <Loader2 className="w-8 h-8 animate-spin text-cyan-500" />
+                    <div className="p-4 space-y-2.5">
+                        {Array.from({ length: 5 }).map((_, i) => (
+                            <Skeleton key={i} className="h-12 w-full" />
+                        ))}
                     </div>
                 ) : blacklists.length === 0 ? (
-                    <div className="text-center py-20">
-                        <Ban className="w-12 h-12 mx-auto text-slate-600 mb-4" />
-                        <p className="text-slate-400">No blacklisted users</p>
-                    </div>
+                    <EmptyState
+                        icon={<Ban className="w-6 h-6" />}
+                        title={showAll ? 'Belum ada riwayat blacklist' : 'Tidak ada blacklist aktif'}
+                        description="Pengguna yang mencapai batas strike otomatis akan tampil di sini."
+                    />
                 ) : (
                     <>
                         <div className="overflow-x-auto">
-                            <table className="w-full">
+                            <table className="w-full text-[13px]">
                                 <thead>
-                                    <tr className="border-b border-slate-700/50">
-                                        <th className="px-6 py-4 text-left text-xs font-semibold text-slate-400 uppercase">User</th>
-                                        <th className="px-6 py-4 text-left text-xs font-semibold text-slate-400 uppercase">Reason</th>
-                                        <th className="px-6 py-4 text-left text-xs font-semibold text-slate-400 uppercase">Start Date</th>
-                                        <th className="px-6 py-4 text-left text-xs font-semibold text-slate-400 uppercase">End Date</th>
-                                        <th className="px-6 py-4 text-left text-xs font-semibold text-slate-400 uppercase">Tidak Diambil</th>
-                                        <th className="px-6 py-4 text-left text-xs font-semibold text-slate-400 uppercase">Action</th>
+                                    <tr className="bg-[#fafaf9] border-b border-[#f5f5f4]">
+                                        <th className="text-left px-4 py-2.5 text-[11.5px] font-semibold uppercase tracking-wider text-[#78716c]">
+                                            Karyawan
+                                        </th>
+                                        <th className="text-left px-3 py-2.5 text-[11.5px] font-semibold uppercase tracking-wider text-[#78716c]">
+                                            Perusahaan / Dept
+                                        </th>
+                                        <th className="text-left px-3 py-2.5 text-[11.5px] font-semibold uppercase tracking-wider text-[#78716c]">
+                                            Alasan
+                                        </th>
+                                        <th className="text-right px-3 py-2.5 text-[11.5px] font-semibold uppercase tracking-wider text-[#78716c]">
+                                            Strike
+                                        </th>
+                                        <th className="text-left px-3 py-2.5 text-[11.5px] font-semibold uppercase tracking-wider text-[#78716c]">
+                                            Berakhir
+                                        </th>
+                                        <th className="text-left px-3 py-2.5 text-[11.5px] font-semibold uppercase tracking-wider text-[#78716c]">
+                                            Status
+                                        </th>
+                                        <th className="text-right px-4 py-2.5 text-[11.5px] font-semibold uppercase tracking-wider text-[#78716c]">
+                                            Aksi
+                                        </th>
                                     </tr>
                                 </thead>
-                                <tbody className="divide-y divide-slate-700/30">
+                                <tbody className="divide-y divide-[#f5f5f4]">
                                     {blacklists.map((entry) => (
-                                        <tr key={entry.id} className="hover:bg-slate-800/30 transition-colors">
-                                            <td className="px-6 py-4">
-                                                <p className="text-white font-medium">{entry.user.name}</p>
-                                                <p className="text-sm text-slate-400">{entry.user.externalId}</p>
+                                        <tr key={entry.id} className="hover:bg-[#fafaf9]">
+                                            <td className="px-4 py-3">
+                                                <div className="font-semibold text-[#1c1917]">{entry.user.name}</div>
+                                                <div className="text-[11.5px] font-mono text-[#78716c]">
+                                                    {entry.user.externalId}
+                                                </div>
                                             </td>
-                                            <td className="px-6 py-4 text-slate-300 max-w-xs">
-                                                <p className="truncate" title={entry.reason}>{entry.reason}</p>
+                                            <td className="px-3 py-3 text-[#57534e]">
+                                                <div>{entry.user.company || '-'}</div>
+                                                <div className="text-[11.5px] text-[#78716c]">
+                                                    {entry.user.department || '-'}
+                                                </div>
                                             </td>
-                                            <td className="px-6 py-4 text-slate-300">
-                                                {format(new Date(entry.startDate), 'MMM dd, yyyy')}
+                                            <td className="px-3 py-3 max-w-xs text-[#1c1917]">
+                                                <div className="line-clamp-2">{entry.reason}</div>
                                             </td>
-                                            <td className="px-6 py-4 text-slate-300">
-                                                {entry.endDate
-                                                    ? format(new Date(entry.endDate), 'MMM dd, yyyy')
-                                                    : <span className="text-amber-400">Indefinite</span>
-                                                }
+                                            <td className="px-3 py-3 text-right font-bold tabular-nums text-[#b91c1c]">
+                                                {entry.user.noShowCount}
                                             </td>
-                                            <td className="px-6 py-4">
-                                                <span className="text-red-400 font-medium">{entry.user.noShowCount}</span>
+                                            <td className="px-3 py-3 text-[#57534e] whitespace-nowrap text-[12px]">
+                                                {entry.endDate ? (
+                                                    formatDateTimeShortWIB(entry.endDate)
+                                                ) : (
+                                                    <Badge variant="warning">Permanen</Badge>
+                                                )}
                                             </td>
-                                            <td className="px-6 py-4">
-                                                <div className="flex items-center gap-2">
-                                                    <button
+                                            <td className="px-3 py-3 whitespace-nowrap">
+                                                <Badge variant={entry.isActive ? 'danger' : 'neutral'} dot={entry.isActive}>
+                                                    {entry.isActive ? 'Diblokir' : 'Selesai'}
+                                                </Badge>
+                                            </td>
+                                            <td className="px-4 py-3 text-right whitespace-nowrap">
+                                                <div className="inline-flex items-center gap-1.5">
+                                                    <Button
+                                                        variant="ghost"
+                                                        size="sm"
                                                         onClick={() => setDetailEntry(entry)}
-                                                        className="p-2 rounded-lg bg-cyan-600/20 hover:bg-cyan-600/30 text-cyan-300 transition-colors"
-                                                        title="Lihat detail"
+                                                        aria-label={`Detail ${entry.user.name}`}
                                                     >
-                                                        <Eye className="w-4 h-4" />
-                                                    </button>
+                                                        <Eye className="w-3.5 h-3.5" />
+                                                    </Button>
                                                     {entry.isActive && (
-                                                        <button
-                                                            onClick={() => setUnblockTarget(entry)}
-                                                            className="flex items-center gap-2 text-sm py-2 px-3 bg-green-600 hover:bg-green-700 text-white rounded-lg transition-colors"
+                                                        <Button
+                                                            variant="secondary"
+                                                            size="sm"
+                                                            onClick={() => {
+                                                                setUnblockTarget(entry);
+                                                                setUnblockReduceBy(
+                                                                    entry.user.noShowCount > 0
+                                                                        ? String(entry.user.noShowCount)
+                                                                        : ''
+                                                                );
+                                                            }}
+                                                            leftIcon={<Unlock className="w-3.5 h-3.5 text-[#15803d]" />}
                                                         >
-                                                            <Unlock className="w-4 h-4" />
                                                             Unblock
-                                                        </button>
+                                                        </Button>
                                                     )}
                                                 </div>
                                             </td>
@@ -725,174 +361,264 @@ export default function BlacklistPage() {
                             </table>
                         </div>
 
-                        {totalPages > 1 && (
-                            <div className="flex items-center justify-between px-6 py-4 border-t border-slate-700/50">
-                                <p className="text-sm text-slate-400">Page {page} of {totalPages}</p>
-                                <div className="flex items-center gap-2">
-                                    <button
-                                        onClick={() => setPage(p => Math.max(1, p - 1))}
-                                        disabled={page === 1}
-                                        className="p-2 rounded-lg hover:bg-slate-700/50 disabled:opacity-50 disabled:cursor-not-allowed"
-                                    >
-                                        <ChevronLeft className="w-5 h-5 text-slate-400" />
-                                    </button>
-                                    <button
-                                        onClick={() => setPage(p => Math.min(totalPages, p + 1))}
-                                        disabled={page === totalPages}
-                                        className="p-2 rounded-lg hover:bg-slate-700/50 disabled:opacity-50 disabled:cursor-not-allowed"
-                                    >
-                                        <ChevronRight className="w-5 h-5 text-slate-400" />
-                                    </button>
-                                </div>
-                            </div>
-                        )}
+                        <Pagination
+                            page={page}
+                            limit={20}
+                            total={total}
+                            onPageChange={setPage}
+                            variant="admin"
+                        />
                     </>
                 )}
-            </div>
+            </Card>
 
-            {/* Blacklist User Modal */}
-            <BlacklistUserModal
-                isOpen={showBlacklistModal}
-                onClose={() => setShowBlacklistModal(false)}
-                onConfirm={handleBlacklistUser}
-            />
-
-            {/* Unblock Confirmation Modal */}
-            <ConfirmModal
-                isOpen={!!unblockTarget}
-                onClose={() => setUnblockTarget(null)}
-                onConfirm={handleUnblockUser}
-                title="Unblock User"
-                description="Anda akan menghapus blacklist untuk user:"
-                targetUser={unblockTarget ? `${unblockTarget.user.name} (${unblockTarget.user.externalId})` : ''}
-                actionLabel="Unblock User"
-                actionColor="green"
-                requireReason={true}
-                reasonPlaceholder="Jelaskan alasan unblock user ini..."
-                requireStrikeReduction={true}
-                currentStrikes={unblockTarget?.user.noShowCount || 0}
-            />
-
-            {/* FE-NOTIF-NAV: detail modal. Opened by `?id=` deep-link
-                or by clicking the eye icon on a row. Read-only. */}
-            {detailEntry && (
-                <div
-                    className="fixed inset-0 z-[55] flex items-center justify-center p-4"
-                    onClick={() => setDetailEntry(null)}
-                >
-                    <div
-                        className="absolute inset-0 bg-black/60 backdrop-blur-sm"
-                    />
-                    <div
-                        className="relative bg-slate-800 rounded-xl border border-slate-700 w-full max-w-2xl max-h-[85vh] overflow-y-auto shadow-2xl"
-                        onClick={e => e.stopPropagation()}
-                    >
-                        <div className="px-6 py-4 border-b border-slate-700 flex items-center justify-between sticky top-0 bg-slate-800 z-10">
-                            <div className="flex items-center gap-3">
-                                <div className="p-2 rounded-lg bg-red-500/20">
-                                    <Ban className="w-5 h-5 text-red-400" />
-                                </div>
-                                <div>
-                                    <h3 className="text-lg font-semibold text-slate-100">Detail Blacklist</h3>
-                                    <p className="text-xs text-slate-400">{detailEntry.user.name} ({detailEntry.user.externalId})</p>
-                                </div>
+            {/* Manual Blacklist Modal */}
+            <Modal
+                open={showBlacklistModal}
+                onClose={closeBlacklistModal}
+                title="Blacklist pengguna manual"
+                size="md"
+                footer={
+                    <>
+                        <Button variant="secondary" onClick={closeBlacklistModal}>
+                            Batal
+                        </Button>
+                        <Button variant="danger" loading={blSubmitting} onClick={submitBlacklist}>
+                            Blacklist pengguna
+                        </Button>
+                    </>
+                }
+            >
+                <form onSubmit={submitBlacklist} className="space-y-4">
+                    <Field label="Cari karyawan" required>
+                        <Input
+                            value={selectedUser ? `${selectedUser.name} (${selectedUser.externalId})` : searchTerm}
+                            onChange={(e) => {
+                                setSelectedUser(null);
+                                setSearchTerm(e.target.value);
+                            }}
+                            placeholder="Ketik nama atau ID karyawan (min. 2 huruf)..."
+                        />
+                        {!selectedUser && foundUsers.length > 0 && (
+                            <div className="mt-1.5 max-h-40 overflow-y-auto rounded-[10px] border border-[#e7e5e4] bg-[#fff] divide-y divide-[#f5f5f4]">
+                                {foundUsers.map((u) => (
+                                    <button
+                                        key={u.id}
+                                        type="button"
+                                        onClick={() => setSelectedUser(u)}
+                                        className="w-full px-3 py-2 text-left hover:bg-[#fafaf9] border-0 bg-transparent cursor-pointer"
+                                    >
+                                        <div className="text-[13px] font-semibold text-[#1c1917]">{u.name}</div>
+                                        <div className="text-[11.5px] text-[#78716c]">
+                                            {u.externalId} · {u.department || u.company}
+                                        </div>
+                                    </button>
+                                ))}
                             </div>
-                            <button
-                                onClick={() => setDetailEntry(null)}
-                                className="p-2 hover:bg-slate-700 rounded-lg transition-colors"
-                            >
-                                <X className="w-5 h-5 text-slate-400" />
-                            </button>
+                        )}
+                    </Field>
+
+                    <Field label="Alasan pemblokiran" required hint={`${blReason.length}/10 karakter minimum`}>
+                        <Textarea
+                            rows={3}
+                            value={blReason}
+                            onChange={(e) => setBlReason(e.target.value)}
+                            placeholder="Masukkan alasan yang jelas..."
+                        />
+                    </Field>
+
+                    <div className="space-y-2">
+                        <div className="text-[12.5px] font-semibold text-[#44403c]">Durasi</div>
+                        <div className="flex items-center gap-4 text-[13px]">
+                            <label className="flex items-center gap-2 cursor-pointer">
+                                <input
+                                    type="radio"
+                                    checked={durationType === 'temporary'}
+                                    onChange={() => setDurationType('temporary')}
+                                />
+                                Sementara
+                            </label>
+                            <label className="flex items-center gap-2 cursor-pointer">
+                                <input
+                                    type="radio"
+                                    checked={durationType === 'permanent'}
+                                    onChange={() => setDurationType('permanent')}
+                                />
+                                Permanen
+                            </label>
+                        </div>
+                        {durationType === 'temporary' && (
+                            <div className="flex items-center gap-2">
+                                <Input
+                                    type="number"
+                                    min={1}
+                                    max={365}
+                                    value={durationDays}
+                                    onChange={(e) =>
+                                        setDurationDays(Math.max(1, parseInt(e.target.value, 10) || 1))
+                                    }
+                                    className="w-24"
+                                />
+                                <span className="text-[13px] text-[#78716c]">hari</span>
+                            </div>
+                        )}
+                    </div>
+
+                    <Field label="Konfirmasi password admin" required>
+                        <Input
+                            type="password"
+                            value={blPassword}
+                            onChange={(e) => setBlPassword(e.target.value)}
+                            placeholder="Masukkan password Anda..."
+                        />
+                    </Field>
+                </form>
+            </Modal>
+
+            {/* Unblock Modal */}
+            <Modal
+                open={Boolean(unblockTarget)}
+                onClose={() => {
+                    setUnblockTarget(null);
+                    setUnblockReason('');
+                    setUnblockReduceBy('');
+                    setUnblockPassword('');
+                }}
+                title={`Unblock — ${unblockTarget?.user.name || ''}`}
+                size="md"
+                footer={
+                    <>
+                        <Button variant="secondary" onClick={() => setUnblockTarget(null)}>
+                            Batal
+                        </Button>
+                        <Button variant="primary" loading={unblockSubmitting} onClick={submitUnblock}>
+                            Konfirmasi unblock
+                        </Button>
+                    </>
+                }
+            >
+                {unblockTarget && (
+                    <form onSubmit={submitUnblock} className="space-y-3">
+                        <div className="p-3 rounded-[10px] bg-[#fafaf9] border border-[#e7e5e4] text-[13px]">
+                            <div className="font-semibold text-[#1c1917]">{unblockTarget.user.name}</div>
+                            <div className="text-[12px] text-[#78716c]">
+                                {unblockTarget.user.externalId} · Strike saat ini: {unblockTarget.user.noShowCount}
+                            </div>
                         </div>
 
-                        <div className="p-6 space-y-4">
-                            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                                <div className="bg-slate-700/40 rounded-lg p-3">
-                                    <p className="text-xs text-slate-400 uppercase tracking-wide">Status</p>
-                                    <p className="mt-1">
-                                        {detailEntry.isActive ? (
-                                            <span className="badge badge-danger">Aktif</span>
-                                        ) : (
-                                            <span className="badge badge-neutral">Tidak Aktif</span>
-                                        )}
-                                    </p>
-                                </div>
-                                <div className="bg-slate-700/40 rounded-lg p-3">
-                                    <p className="text-xs text-slate-400 uppercase tracking-wide">Strike (Tidak Diambil)</p>
-                                    <p className="text-2xl font-bold text-red-400 mt-1">{detailEntry.user.noShowCount}</p>
-                                </div>
-                                <div className="bg-slate-700/40 rounded-lg p-3">
-                                    <p className="text-xs text-slate-400 uppercase tracking-wide">Mulai</p>
-                                    <p className="text-slate-100 font-medium mt-1">
-                                        {formatDateTimeShortWIB(detailEntry.startDate)}
-                                    </p>
-                                </div>
-                                <div className="bg-slate-700/40 rounded-lg p-3">
-                                    <p className="text-xs text-slate-400 uppercase tracking-wide">Berakhir</p>
-                                    <p className="text-slate-100 font-medium mt-1">
-                                        {detailEntry.endDate
-                                            ? formatDateTimeShortWIB(detailEntry.endDate)
-                                            : <span className="text-amber-400">Permanen</span>}
-                                    </p>
+                        {unblockTarget.user.noShowCount > 0 && (
+                            <Field
+                                label={`Kurangi strike (1–${unblockTarget.user.noShowCount})`}
+                                required
+                                hint="Wajib menurunkan strike agar tidak langsung terkena blokir otomatis ulang."
+                            >
+                                <Input
+                                    type="number"
+                                    min={1}
+                                    max={unblockTarget.user.noShowCount}
+                                    value={unblockReduceBy}
+                                    onChange={(e) => setUnblockReduceBy(e.target.value)}
+                                />
+                            </Field>
+                        )}
+
+                        <Field label="Alasan unblock" required hint={`${unblockReason.length}/10 karakter minimum`}>
+                            <Textarea
+                                rows={2}
+                                value={unblockReason}
+                                onChange={(e) => setUnblockReason(e.target.value)}
+                                placeholder="Contoh: Sanggahan diterima dengan bukti lembur..."
+                            />
+                        </Field>
+
+                        <Field label="Konfirmasi password admin" required>
+                            <Input
+                                type="password"
+                                value={unblockPassword}
+                                onChange={(e) => setUnblockPassword(e.target.value)}
+                            />
+                        </Field>
+                    </form>
+                )}
+            </Modal>
+
+            {/* Detail Modal */}
+            <Modal
+                open={Boolean(detailEntry)}
+                onClose={() => setDetailEntry(null)}
+                title="Detail blacklist"
+                size="md"
+                footer={
+                    <>
+                        {detailEntry?.isActive && (
+                            <Button
+                                variant="primary"
+                                onClick={() => {
+                                    const target = detailEntry;
+                                    setDetailEntry(null);
+                                    setUnblockTarget(target);
+                                }}
+                                leftIcon={<Unlock className="w-3.5 h-3.5" />}
+                            >
+                                Unblock pengguna
+                            </Button>
+                        )}
+                        <Button variant="secondary" onClick={() => setDetailEntry(null)}>
+                            Tutup
+                        </Button>
+                    </>
+                }
+            >
+                {detailEntry && (
+                    <div className="space-y-4">
+                        <div className="grid grid-cols-2 gap-3">
+                            <div className="p-3 rounded-[10px] bg-[#fafaf9] border border-[#e7e5e4]">
+                                <div className="text-[11px] font-semibold uppercase text-[#78716c]">Status</div>
+                                <div className="mt-1">
+                                    <Badge variant={detailEntry.isActive ? 'danger' : 'neutral'}>
+                                        {detailEntry.isActive ? 'Aktif' : 'Selesai'}
+                                    </Badge>
                                 </div>
                             </div>
-
-                            <div>
-                                <p className="text-xs text-slate-400 uppercase tracking-wide mb-2">Alasan</p>
-                                <div className="bg-slate-700/40 rounded-lg p-4">
-                                    <p className="text-slate-100 whitespace-pre-wrap leading-relaxed">{detailEntry.reason}</p>
+                            <div className="p-3 rounded-[10px] bg-[#fafaf9] border border-[#e7e5e4]">
+                                <div className="text-[11px] font-semibold uppercase text-[#78716c]">Strike no-show</div>
+                                <div className="text-[20px] font-extrabold text-[#b91c1c] mt-0.5 tabular-nums">
+                                    {detailEntry.user.noShowCount}
                                 </div>
                             </div>
-
-                            <div className="bg-slate-700/40 rounded-lg p-4 space-y-2">
-                                <p className="text-xs text-slate-400 uppercase tracking-wide">Informasi User</p>
-                                <div className="grid grid-cols-2 gap-2 text-sm">
-                                    <div>
-                                        <p className="text-slate-400">Nama</p>
-                                        <p className="text-slate-100">{detailEntry.user.name}</p>
-                                    </div>
-                                    <div>
-                                        <p className="text-slate-400">ID</p>
-                                        <p className="text-slate-100">{detailEntry.user.externalId}</p>
-                                    </div>
-                                    <div>
-                                        <p className="text-slate-400">Perusahaan</p>
-                                        <p className="text-slate-100">{detailEntry.user.company || '-'}</p>
-                                    </div>
-                                    <div>
-                                        <p className="text-slate-400">Divisi</p>
-                                        <p className="text-slate-100">{detailEntry.user.division || '-'}</p>
-                                    </div>
-                                    <div className="col-span-2">
-                                        <p className="text-slate-400">Departemen</p>
-                                        <p className="text-slate-100">{detailEntry.user.department || '-'}</p>
-                                    </div>
+                            <div className="p-3 rounded-[10px] bg-[#fafaf9] border border-[#e7e5e4]">
+                                <div className="text-[11px] font-semibold uppercase text-[#78716c]">Mulai</div>
+                                <div className="text-[13px] font-medium text-[#1c1917] mt-0.5">
+                                    {formatDateTimeShortWIB(detailEntry.startDate)}
+                                </div>
+                            </div>
+                            <div className="p-3 rounded-[10px] bg-[#fafaf9] border border-[#e7e5e4]">
+                                <div className="text-[11px] font-semibold uppercase text-[#78716c]">Berakhir</div>
+                                <div className="text-[13px] font-medium text-[#1c1917] mt-0.5">
+                                    {detailEntry.endDate ? formatDateTimeShortWIB(detailEntry.endDate) : 'Permanen'}
                                 </div>
                             </div>
                         </div>
 
-                        <div className="px-6 py-4 border-t border-slate-700 flex items-center justify-end gap-2">
-                            {detailEntry.isActive && (
-                                <button
-                                    onClick={() => {
-                                        setUnblockTarget(detailEntry);
-                                        setDetailEntry(null);
-                                    }}
-                                    className="px-4 py-2 rounded-lg bg-green-600 hover:bg-green-700 text-white text-sm font-medium transition-colors flex items-center gap-1.5"
-                                >
-                                    <Unlock className="w-4 h-4" /> Unblock User
-                                </button>
-                            )}
-                            <button
-                                onClick={() => setDetailEntry(null)}
-                                className="px-4 py-2 rounded-lg bg-slate-700 hover:bg-slate-600 text-slate-300 text-sm font-medium transition-colors"
-                            >
-                                Tutup
-                            </button>
+                        <div>
+                            <div className="text-[11.5px] font-semibold uppercase text-[#78716c] mb-1">Alasan</div>
+                            <div className="p-3 rounded-[10px] bg-[#fafaf9] border border-[#e7e5e4] text-[13px] text-[#1c1917] whitespace-pre-wrap">
+                                {detailEntry.reason}
+                            </div>
+                        </div>
+
+                        <div className="p-3 rounded-[10px] bg-[#fafaf9] border border-[#e7e5e4] text-[13px] space-y-1">
+                            <div className="font-semibold text-[#1c1917]">
+                                {detailEntry.user.name} ({detailEntry.user.externalId})
+                            </div>
+                            <div className="text-[#57534e]">
+                                {detailEntry.user.company || '-'} · {detailEntry.user.division || '-'} ·{' '}
+                                {detailEntry.user.department || '-'}
+                            </div>
                         </div>
                     </div>
-                </div>
-            )}
+                )}
+            </Modal>
         </div>
     );
 }

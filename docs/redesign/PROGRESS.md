@@ -28,9 +28,19 @@ Acuan utama: `docs/redesign/SPEC.md` dan `docs/redesign/mockups/*.dc.html`.
 
 - **Fase 1:** Selesai (`done`) — commit `fbee36f`
 - **Fase 2:** Selesai (`done`) — commit `eb287a4`
-- **Fase 3:** Selesai (`done`) — 27 November 2026
-- **Fase 4:** Sedang dikerjakan (`in_progress`)
-- **Fase 5:** Menunggu
+- **Fase 3:** Selesai (`done`) — commit `5680f3e`
+- **Fase 4:** Selesai (`done`) — 27 November 2026
+- **Fase 5:** Sedang dikerjakan (`in_progress`)
+
+### Ringkasan Hasil Fase 4
+- **Backend (kompatibel ke belakang):**
+  - `backend/src/routes/user.routes.ts` & `backend/src/types/index.ts`: menambah filter opsional `role` (`USER | ADMIN | CANTEEN | VENDOR`) dan `status=blacklisted` pada `GET /api/users`.
+  - `backend/src/routes/message.routes.ts`: menambah filter opsional `status` (`PENDING | APPROVED | REJECTED`) pada `GET /api/messages` untuk filter admin dan badge pending di sidebar (`Layout.tsx`).
+- **Frontend — Halaman Admin & Shell:**
+  - 4 halaman dengan mockup: `DashboardPage.tsx` (`Main.dc.html`: 5 `StatTile`, kartu istirahat + `ProgressBar`, order per kantin, rekap departemen/perusahaan, order terbaru/besok, user berisiko), `CostAnalysisPage.tsx` (`DashAnalitik.dc.html`: 4 `StatTile`, banner peringatan otomatis jika waste > 15%, `BarChart` 7 hari, porsi no-show per shift, tabel biaya), `UserManagementPage.tsx` (`Pengguna.dc.html`: `DataTable` search/4 filter/sort/selection/bulk actions/row actions `⋯`, `Pagination variant="admin"` `[10,25,50,100]` + "Ke hal."), `WeeklyMenuPage.tsx` (`MenuMingguan.dc.html`: jadwal 7 hari × jam istirahat + panel samping "Atur menu", salin minggu lalu, katalog berpaginasi).
+  - 20 halaman tabel/ringkasan/form lainnya: `OrderListPage`, `MessagesPage`, `AuditLogPage`, `BlacklistPage`, `CompanyManagementPage`, `CanteenManagementPage`, `VendorManagementPage`, `ShiftConfigPage`, `CalendarPage`, `AnnouncementPage`, `ExportPage`, `TimeSettingsPage`, `SecurityPage`, `EmailSettingsPage`, `BrandingSettingsPage`, `UserAgreementPage`, `PerformancePage`, `BackupRestorePage`, `UptimeHistoryPage`, `UpdatePage` (mengganti dialog `confirm()` bawaan browser dengan `Modal` v2 serta helper tanggal Fake-UTC `dateHelpers.ts`).
+  - `EmptyState.tsx` mendukung prop opsional `icon`, dan `Layout.tsx` terhubung ke badge jumlah sanggahan `PENDING`.
+- **Verifikasi:** `backend` build lolos, `frontend` build lolos, `eslint --max-warnings 0` pada seluruh 26 file Fase 4 (0 error, 0 warning), audit Playwright (`1366×768` & `390×844`) melintasi 24 rute admin (48 pengecekan) lolos tanpa redirect/error/overflow horizontal.
 
 ### Ringkasan Hasil Fase 3
 - **Backend (`backend/src/routes/order/stats.ts`):** Endpoint baru `GET /api/orders/stats/canteen-live?canteenId=` (`authMiddleware, canteenMiddleware`), memakai Fake-UTC (`getNow()`, `getToday()`, `getTomorrow()`), cache Redis 3 detik, jendela istirahat aktif/mendatang, bucket 10 menit, agregat per `checkedInBy`, dan jadwal istirahat hari ini.

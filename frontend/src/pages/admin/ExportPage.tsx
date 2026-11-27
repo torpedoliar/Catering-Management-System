@@ -1,16 +1,22 @@
 import { useState } from 'react';
-import { format, subDays } from 'date-fns';
-import { FileDown, Calendar, Filter, Loader2 } from 'lucide-react';
+import { FileDown, Calendar } from 'lucide-react';
 import toast from 'react-hot-toast';
 import { api } from '../../contexts/AuthContext';
-
+import { getLocalDateString, addDays } from '../../utils/dateHelpers';
+import {
+    PageHeader,
+    Button,
+    Card,
+    Field,
+    Input,
+    Select,
+} from '../../components/ui';
 
 export default function ExportPage() {
-    const [startDate, setStartDate] = useState(format(subDays(new Date(), 30), 'yyyy-MM-dd'));
-    const [endDate, setEndDate] = useState(format(new Date(), 'yyyy-MM-dd'));
+    const [startDate, setStartDate] = useState(() => addDays(getLocalDateString(), -30));
+    const [endDate, setEndDate] = useState(() => getLocalDateString());
     const [status, setStatus] = useState('');
     const [isExporting, setIsExporting] = useState(false);
-
 
     const handleExport = async () => {
         setIsExporting(true);
@@ -21,13 +27,11 @@ export default function ExportPage() {
             if (status) params.append('status', status);
 
             const response = await api.get(`/api/orders/export?${params}`, {
-                responseType: 'blob'
+                responseType: 'blob',
             });
 
-            const blob = response.data;
-            const filename = `transactions_${startDate}_to_${endDate}.xlsx`;
-
-            const url = URL.createObjectURL(blob);
+            const filename = `transaksi_${startDate}_${endDate}.xlsx`;
+            const url = URL.createObjectURL(response.data);
             const a = document.createElement('a');
             a.href = url;
             a.download = filename;
@@ -35,124 +39,90 @@ export default function ExportPage() {
             a.click();
             document.body.removeChild(a);
             URL.revokeObjectURL(url);
-
-            toast.success('Export downloaded successfully');
+            toast.success('Ekspor berhasil diunduh');
         } catch (error) {
             console.error('Export error:', error);
-            toast.error('Failed to export transactions');
+            toast.error('Gagal mengekspor transaksi');
         } finally {
             setIsExporting(false);
         }
     };
 
+    const setPreset = (days: number) => {
+        const today = getLocalDateString();
+        setStartDate(days === 0 ? today : addDays(today, -days));
+        setEndDate(today);
+    };
+
     return (
-        <div className="w-full max-w-7xl mx-auto space-y-6 animate-fade-in">
-            <div>
-                <h1 className="text-2xl font-bold text-white">Export Transactions</h1>
-                <p className="text-slate-400">Download order history as Excel file</p>
-            </div>
+        <div className="space-y-4 max-w-4xl">
+            <PageHeader
+                title="Ekspor transaksi"
+                subtitle="Unduh riwayat pemesanan makanan dalam format Excel (.xlsx)"
+            />
 
-            <div className="glass-dark rounded-xl p-6">
-                <div className="flex items-center gap-3 mb-6">
-                    <div className="w-12 h-12 rounded-xl bg-cyan-500/20 flex items-center justify-center">
-                        <Filter className="w-6 h-6 text-cyan-400" />
+            <Card>
+                <div className="space-y-5">
+                    <div className="flex flex-wrap items-center gap-2">
+                        <span className="text-[12.5px] font-semibold text-[#57534e] mr-1">Preset cepat:</span>
+                        {[
+                            { label: 'Hari ini', days: 0 },
+                            { label: '7 hari terakhir', days: 6 },
+                            { label: '30 hari terakhir', days: 30 },
+                        ].map((p) => (
+                            <Button
+                                key={p.label}
+                                variant="secondary"
+                                size="sm"
+                                onClick={() => setPreset(p.days)}
+                            >
+                                {p.label}
+                            </Button>
+                        ))}
                     </div>
-                    <div>
-                        <h2 className="text-lg font-semibold text-white">Transaction Export</h2>
-                        <p className="text-sm text-slate-400">Select date range and filters</p>
-                    </div>
-                </div>
 
-                <div className="space-y-6">
-                    {/* Date Range */}
                     <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                        <div>
-                            <label className="block text-sm text-slate-400 mb-2 flex items-center gap-2">
-                                <Calendar className="w-4 h-4" />
-                                Start Date
-                            </label>
-                            <input
+                        <Field label="Tanggal mulai" required>
+                            <Input
                                 type="date"
                                 value={startDate}
                                 onChange={(e) => setStartDate(e.target.value)}
-                                className="input-field"
+                                leftIcon={<Calendar className="w-4 h-4" aria-hidden="true" />}
                             />
-                        </div>
-                        <div>
-                            <label className="block text-sm text-slate-400 mb-2 flex items-center gap-2">
-                                <Calendar className="w-4 h-4" />
-                                End Date
-                            </label>
-                            <input
+                        </Field>
+                        <Field label="Tanggal selesai" required>
+                            <Input
                                 type="date"
                                 value={endDate}
                                 onChange={(e) => setEndDate(e.target.value)}
-                                className="input-field"
+                                leftIcon={<Calendar className="w-4 h-4" aria-hidden="true" />}
                             />
-                        </div>
+                        </Field>
                     </div>
 
-                    {/* Status Filter */}
-                    <div>
-                        <label className="block text-sm text-slate-400 mb-2">Status Filter</label>
-                        <select
-                            value={status}
-                            onChange={(e) => setStatus(e.target.value)}
-                            className="input-field"
-                        >
-                            <option value="">Semua Status</option>
-                            <option value="PICKED_UP">Sudah Diambil</option>
-                            <option value="ORDERED">Menunggu Diambil</option>
-                            <option value="NO_SHOW">Tidak Diambil</option>
-                            <option value="CANCELLED">Dibatalkan</option>
-                        </select>
-                    </div>
+                    <Field label="Filter status">
+                        <Select value={status} onChange={(e) => setStatus(e.target.value)}>
+                            <option value="">Semua status</option>
+                            <option value="PICKED_UP">Sudah diambil (PICKED_UP)</option>
+                            <option value="ORDERED">Menunggu (ORDERED)</option>
+                            <option value="NO_SHOW">Tidak diambil (NO_SHOW)</option>
+                            <option value="CANCELLED">Dibatalkan (CANCELLED)</option>
+                        </Select>
+                    </Field>
 
-                    {/* Export Columns Info */}
-                    <div className="p-4 rounded-xl bg-slate-800/50 border border-slate-700/50">
-                        <h3 className="text-sm font-medium text-white mb-3">Kolom Export (Detail)</h3>
-                        <div className="grid grid-cols-2 gap-2 text-sm text-slate-400">
-                            <span>• ID Karyawan</span>
-                            <span>• Nama Karyawan</span>
-                            <span>• Perusahaan</span>
-                            <span>• Divisi</span>
-                            <span>• Departemen</span>
-                            <span>• Shift & Jam Shift</span>
-                            <span>• Tanggal & Jam Order</span>
-                            <span>• Status Pesanan</span>
-                            <span>• Tanggal & Jam Ambil</span>
-                            <span>• Diambil di Canteen</span>
-                            <span>• Diproses Oleh (Admin)</span>
-                            <span>• Alasan Batal</span>
-                            <span>• Keterangan</span>
-                        </div>
-                        <p className="text-xs text-slate-500 mt-3">
-                            * Laporan mencakup lokasi canteen, siapa yang memproses check-in, dan waktu detail pengambilan
-                        </p>
-                    </div>
-
-                    {/* Export Buttons */}
-                    <div className="flex flex-col sm:flex-row gap-3">
-                        <button
+                    <div className="flex justify-end pt-2 border-t border-[#f5f5f4]">
+                        <Button
+                            variant="primary"
+                            loading={isExporting}
+                            loadingText="Menyiapkan file..."
                             onClick={handleExport}
-                            disabled={isExporting}
-                            className="btn-primary flex items-center justify-center gap-2 flex-1"
+                            leftIcon={<FileDown className="w-4 h-4" aria-hidden="true" />}
                         >
-                            {isExporting ? (
-                                <>
-                                    <Loader2 className="w-5 h-5 animate-spin" />
-                                    Generating Excel...
-                                </>
-                            ) : (
-                                <>
-                                    <FileDown className="w-5 h-5" />
-                                    Export to Excel
-                                </>
-                            )}
-                        </button>
+                            Unduh laporan Excel
+                        </Button>
                     </div>
                 </div>
-            </div>
+            </Card>
         </div>
     );
 }

@@ -1,8 +1,30 @@
 import { useState, useEffect, useCallback } from 'react';
+import {
+    Building2,
+    ChevronDown,
+    ChevronRight,
+    Plus,
+    Edit2,
+    Trash2,
+    Save,
+    Clock,
+    Calendar,
+    FileSpreadsheet,
+    Upload,
+} from 'lucide-react';
+import toast from 'react-hot-toast';
 import { api } from '../../contexts/AuthContext';
 import { useSSERefresh, SHIFT_EVENTS } from '../../contexts/SSEContext';
-import { Building2, ChevronDown, ChevronRight, Plus, Edit2, Trash2, Save, X, Loader2, Clock, Calendar, FileSpreadsheet, Upload } from 'lucide-react';
-import toast from 'react-hot-toast';
+import {
+    PageHeader,
+    Button,
+    Card,
+    Badge,
+    Modal,
+    Input,
+    EmptyState,
+    Skeleton,
+} from '../../components/ui';
 
 interface Shift {
     id: string;
@@ -39,13 +61,13 @@ interface Company {
 }
 
 const DAYS = [
-    { value: '0', label: 'Min', fullLabel: 'Minggu' },
-    { value: '1', label: 'Sen', fullLabel: 'Senin' },
-    { value: '2', label: 'Sel', fullLabel: 'Selasa' },
-    { value: '3', label: 'Rab', fullLabel: 'Rabu' },
-    { value: '4', label: 'Kam', fullLabel: 'Kamis' },
-    { value: '5', label: 'Jum', fullLabel: 'Jumat' },
-    { value: '6', label: 'Sab', fullLabel: 'Sabtu' },
+    { value: '0', label: 'Min' },
+    { value: '1', label: 'Sen' },
+    { value: '2', label: 'Sel' },
+    { value: '3', label: 'Rab' },
+    { value: '4', label: 'Kam' },
+    { value: '5', label: 'Jum' },
+    { value: '6', label: 'Sab' },
 ];
 
 export default function CompanyManagementPage() {
@@ -55,13 +77,17 @@ export default function CompanyManagementPage() {
     const [expandedCompanies, setExpandedCompanies] = useState<Set<string>>(new Set());
     const [expandedDivisions, setExpandedDivisions] = useState<Set<string>>(new Set());
 
-    // Modal states
     const [showAddCompany, setShowAddCompany] = useState(false);
     const [showAddDivision, setShowAddDivision] = useState<string | null>(null);
     const [showAddDepartment, setShowAddDepartment] = useState<string | null>(null);
     const [editingDepartment, setEditingDepartment] = useState<Department | null>(null);
+    const [deleteConfirm, setDeleteConfirm] = useState<{
+        type: 'company' | 'division' | 'department';
+        id: string;
+        name: string;
+    } | null>(null);
+    const [showMigrateConfirm, setShowMigrateConfirm] = useState(false);
 
-    // Form states
     const [newName, setNewName] = useState('');
     const [editWorkDays, setEditWorkDays] = useState<string[]>([]);
     const [editShiftIds, setEditShiftIds] = useState<string[]>([]);
@@ -70,13 +96,13 @@ export default function CompanyManagementPage() {
         try {
             const [companiesRes, shiftsRes] = await Promise.all([
                 api.get('/api/companies'),
-                api.get('/api/shifts')
+                api.get('/api/shifts'),
             ]);
-            setCompanies(companiesRes.data.companies);
-            setShifts(shiftsRes.data.shifts.filter((s: Shift) => s));
+            setCompanies(companiesRes.data.companies || []);
+            setShifts((shiftsRes.data.shifts || []).filter(Boolean));
         } catch (error) {
             console.error('Failed to load data:', error);
-            toast.error('Failed to load data');
+            toast.error('Gagal memuat data struktur organisasi');
         } finally {
             setIsLoading(false);
         }
@@ -86,107 +112,92 @@ export default function CompanyManagementPage() {
         loadData();
     }, [loadData]);
 
-    // Auto-refresh when shift data changes (SSE)
     useSSERefresh(SHIFT_EVENTS, loadData);
 
     const toggleCompany = (id: string) => {
-        const newSet = new Set(expandedCompanies);
-        if (newSet.has(id)) newSet.delete(id);
-        else newSet.add(id);
-        setExpandedCompanies(newSet);
+        setExpandedCompanies((prev) => {
+            const next = new Set(prev);
+            if (next.has(id)) next.delete(id);
+            else next.add(id);
+            return next;
+        });
     };
 
     const toggleDivision = (id: string) => {
-        const newSet = new Set(expandedDivisions);
-        if (newSet.has(id)) newSet.delete(id);
-        else newSet.add(id);
-        setExpandedDivisions(newSet);
+        setExpandedDivisions((prev) => {
+            const next = new Set(prev);
+            if (next.has(id)) next.delete(id);
+            else next.add(id);
+            return next;
+        });
     };
 
-    // Company CRUD
     const createCompany = async () => {
         if (!newName.trim()) return;
         try {
             await api.post('/api/companies', { name: newName.trim() });
-            toast.success('Company created');
+            toast.success('Perusahaan ditambahkan');
             setNewName('');
             setShowAddCompany(false);
             loadData();
         } catch (error: any) {
-            toast.error(error.response?.data?.error || 'Failed to create company');
+            toast.error(error.response?.data?.error || 'Gagal membuat perusahaan');
         }
     };
 
-    const deleteCompany = async (id: string) => {
-        if (!confirm('Delete this company and all its divisions/departments?')) return;
-        try {
-            await api.delete(`/api/companies/${id}`);
-            toast.success('Company deleted');
-            loadData();
-        } catch (error: any) {
-            toast.error(error.response?.data?.error || 'Failed to delete');
-        }
-    };
-
-    // Division CRUD
     const createDivision = async (companyId: string) => {
         if (!newName.trim()) return;
         try {
             await api.post(`/api/companies/${companyId}/divisions`, { name: newName.trim() });
-            toast.success('Division created');
+            toast.success('Divisi ditambahkan');
             setNewName('');
             setShowAddDivision(null);
             loadData();
         } catch (error: any) {
-            toast.error(error.response?.data?.error || 'Failed to create division');
+            toast.error(error.response?.data?.error || 'Gagal membuat divisi');
         }
     };
 
-    const deleteDivision = async (id: string) => {
-        if (!confirm('Delete this division and all its departments?')) return;
-        try {
-            await api.delete(`/api/companies/divisions/${id}`);
-            toast.success('Division deleted');
-            loadData();
-        } catch (error: any) {
-            toast.error(error.response?.data?.error || 'Failed to delete');
-        }
-    };
-
-    // Department CRUD
     const createDepartment = async (divisionId: string) => {
         if (!newName.trim()) return;
         try {
             await api.post(`/api/companies/divisions/${divisionId}/departments`, {
                 name: newName.trim(),
-                workDays: '1,2,3,4,5'
+                workDays: '1,2,3,4,5',
             });
-            toast.success('Department created');
+            toast.success('Departemen ditambahkan');
             setNewName('');
             setShowAddDepartment(null);
             loadData();
         } catch (error: any) {
-            toast.error(error.response?.data?.error || 'Failed to create department');
+            toast.error(error.response?.data?.error || 'Gagal membuat departemen');
         }
     };
 
-    const deleteDepartment = async (id: string) => {
-        if (!confirm('Delete this department?')) return;
+    const executeDelete = async () => {
+        if (!deleteConfirm) return;
         try {
-            await api.delete(`/api/companies/departments/${id}`);
-            toast.success('Department deleted');
+            if (deleteConfirm.type === 'company') {
+                await api.delete(`/api/companies/${deleteConfirm.id}`);
+                toast.success('Perusahaan dihapus');
+            } else if (deleteConfirm.type === 'division') {
+                await api.delete(`/api/companies/divisions/${deleteConfirm.id}`);
+                toast.success('Divisi dihapus');
+            } else {
+                await api.delete(`/api/companies/departments/${deleteConfirm.id}`);
+                toast.success('Departemen dihapus');
+            }
+            setDeleteConfirm(null);
             loadData();
         } catch (error: any) {
-            toast.error(error.response?.data?.error || 'Failed to delete');
+            toast.error(error.response?.data?.error || 'Gagal menghapus');
         }
     };
 
     const startEditDepartment = (dept: Department) => {
         setEditingDepartment(dept);
-        setEditWorkDays(dept.workDays.split(',').filter(d => d));
-        // Extract shift IDs from allowedShifts
-        const shiftIds = dept.allowedShifts?.map(ds => ds.shift.id) || [];
-        setEditShiftIds(shiftIds);
+        setEditWorkDays(dept.workDays.split(',').filter(Boolean));
+        setEditShiftIds(dept.allowedShifts?.map((ds) => ds.shift.id) || []);
     };
 
     const saveDepartment = async () => {
@@ -194,42 +205,39 @@ export default function CompanyManagementPage() {
         try {
             await api.put(`/api/companies/departments/${editingDepartment.id}`, {
                 workDays: editWorkDays.join(','),
-                shiftIds: editShiftIds
+                shiftIds: editShiftIds,
             });
-            toast.success('Department updated');
+            toast.success('Departemen diperbarui');
             setEditingDepartment(null);
             loadData();
         } catch (error: any) {
-            toast.error(error.response?.data?.error || 'Failed to update');
+            toast.error(error.response?.data?.error || 'Gagal memperbarui departemen');
         }
     };
 
     const toggleWorkDay = (day: string) => {
-        setEditWorkDays(prev =>
-            prev.includes(day)
-                ? prev.filter(d => d !== day)
-                : [...prev, day].sort()
+        setEditWorkDays((prev) =>
+            prev.includes(day) ? prev.filter((d) => d !== day) : [...prev, day].sort()
         );
     };
 
     const migrateFromUsers = async () => {
-        if (!confirm('Create Company/Division/Department structure from existing user data?')) return;
         try {
             const res = await api.post('/api/companies/migrate-from-users');
-            toast.success(`Migration complete: ${res.data.results.companiesCreated} companies, ${res.data.results.divisionsCreated} divisions, ${res.data.results.departmentsCreated} departments created`);
+            toast.success(
+                `Sinkronisasi selesai: ${res.data.results.companiesCreated} perusahaan, ${res.data.results.divisionsCreated} divisi, ${res.data.results.departmentsCreated} departemen`
+            );
+            setShowMigrateConfirm(false);
             loadData();
         } catch (error: any) {
-            toast.error(error.response?.data?.error || 'Migration failed');
+            toast.error(error.response?.data?.error || 'Gagal menyinkronkan dari data pengguna');
         }
     };
 
     const downloadTemplate = async () => {
         try {
-            const response = await api.get('/api/companies/export/template', {
-                responseType: 'blob'
-            });
-            const blob = response.data;
-            const url = window.URL.createObjectURL(blob);
+            const response = await api.get('/api/companies/export/template', { responseType: 'blob' });
+            const url = window.URL.createObjectURL(response.data);
             const a = document.createElement('a');
             a.href = url;
             a.download = 'company_migration_template.xlsx';
@@ -237,387 +245,485 @@ export default function CompanyManagementPage() {
             a.click();
             document.body.removeChild(a);
             window.URL.revokeObjectURL(url);
-            toast.success('Template downloaded');
-        } catch (error) {
-            toast.error('Gagal download template');
+            toast.success('Template diunduh');
+        } catch {
+            toast.error('Gagal mengunduh template');
         }
     };
 
     if (isLoading) {
         return (
-            <div className="flex items-center justify-center h-[60vh]">
-                <Loader2 className="w-8 h-8 animate-spin text-orange-500" />
+            <div className="space-y-4">
+                <Skeleton className="h-9 w-64" />
+                <Skeleton className="h-28 w-full" />
+                <Skeleton className="h-28 w-full" />
             </div>
         );
     }
 
     return (
-        <div className="space-y-6 animate-fade-in">
-            <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
-                <div>
-                    <h1 className="text-2xl font-bold text-[#1a1f37]">Company Management</h1>
-                    <p className="text-slate-500">Manage organizational structure and department settings</p>
-                </div>
-                <div className="flex gap-3">
-                    <button
-                        onClick={migrateFromUsers}
-                        className="btn-secondary flex items-center gap-2"
-                        title="Create structure from existing users match"
-                    >
-                        <Building2 className="w-4 h-4" />
-                        <span className="hidden sm:inline">From All Users</span>
-                    </button>
-
-                    {/* Template & Import */}
-                    <button
-                        onClick={downloadTemplate}
-                        className="btn-secondary flex items-center gap-2"
-                    >
-                        <FileSpreadsheet className="w-4 h-4" />
-                        <span className="hidden sm:inline">Template</span>
-                    </button>
-
-                    <label className="btn-secondary flex items-center gap-2 cursor-pointer">
-                        <Upload className="w-4 h-4" />
-                        <span className="hidden sm:inline">Import Excel</span>
-                        <input
-                            type="file"
-                            accept=".xlsx"
-                            className="hidden"
-                            onChange={async (e) => {
-                                const file = e.target.files?.[0];
-                                if (!file) return;
-
-                                const formData = new FormData();
-                                formData.append('file', file);
-
-                                const toastId = toast.loading('Importing...');
-                                try {
-                                    const res = await api.post('/api/companies/import', formData);
-                                    toast.success(
-                                        `Imported: ${res.data.results.companiesCreated} companies, ` +
-                                        `${res.data.results.divisionsCreated} divisions, ` +
-                                        `${res.data.results.departmentsCreated} depts`,
-                                        { id: toastId }
-                                    );
-                                    loadData();
-                                } catch (error: any) {
-                                    toast.error(error.response?.data?.error || 'Import failed', { id: toastId });
-                                }
-                                // Reset input
-                                e.target.value = '';
+        <div className="space-y-4">
+            <PageHeader
+                title="Perusahaan & departemen"
+                subtitle="Kelola hierarki perusahaan, divisi, departemen, hari kerja, dan shift yang diizinkan"
+                actions={
+                    <>
+                        <Button
+                            variant="ghost"
+                            size="sm"
+                            onClick={() => setShowMigrateConfirm(true)}
+                            leftIcon={<Building2 className="w-3.5 h-3.5" aria-hidden="true" />}
+                        >
+                            Tarik dari pengguna
+                        </Button>
+                        <Button
+                            variant="secondary"
+                            size="sm"
+                            onClick={downloadTemplate}
+                            leftIcon={<FileSpreadsheet className="w-3.5 h-3.5" aria-hidden="true" />}
+                        >
+                            Template
+                        </Button>
+                        <label className="inline-flex items-center gap-1.5 h-[34px] px-3 rounded-[9px] text-[13px] font-semibold bg-[#fff] hover:bg-[#fafaf9] text-[#1c1917] border border-[#e7e5e4] cursor-pointer">
+                            <Upload className="w-3.5 h-3.5" aria-hidden="true" />
+                            <span>Impor Excel</span>
+                            <input
+                                type="file"
+                                accept=".xlsx"
+                                className="hidden"
+                                onChange={async (e) => {
+                                    const file = e.target.files?.[0];
+                                    if (!file) return;
+                                    const fd = new FormData();
+                                    fd.append('file', file);
+                                    const toastId = toast.loading('Mengimpor...');
+                                    try {
+                                        const res = await api.post('/api/companies/import', fd);
+                                        toast.success(
+                                            `Terimpor: ${res.data.results.companiesCreated} perusahaan, ${res.data.results.divisionsCreated} divisi, ${res.data.results.departmentsCreated} departemen`,
+                                            { id: toastId }
+                                        );
+                                        loadData();
+                                    } catch (error: any) {
+                                        toast.error(error.response?.data?.error || 'Gagal mengimpor', { id: toastId });
+                                    }
+                                    e.target.value = '';
+                                }}
+                            />
+                        </label>
+                        <Button
+                            variant="primary"
+                            size="sm"
+                            onClick={() => {
+                                setNewName('');
+                                setShowAddCompany(true);
                             }}
-                        />
-                    </label>
+                            leftIcon={<Plus className="w-3.5 h-3.5" aria-hidden="true" />}
+                        >
+                            Tambah perusahaan
+                        </Button>
+                    </>
+                }
+            />
 
-                    <button
-                        onClick={() => setShowAddCompany(true)}
-                        className="bg-orange-500 hover:bg-orange-600 text-white px-4 py-2 rounded-xl flex items-center gap-2 font-medium transition-colors"
-                    >
-                        <Plus className="w-4 h-4" />
-                        Add Company
-                    </button>
-                </div>
-            </div>
-
-            {/* Add Company Modal */}
             {showAddCompany && (
-                <div className="card p-4">
-                    <div className="flex items-center gap-3">
-                        <input
-                            type="text"
-                            placeholder="Company name..."
+                <Card padding="sm">
+                    <div className="flex flex-wrap items-center gap-2.5">
+                        <Input
+                            placeholder="Nama perusahaan baru..."
                             value={newName}
                             onChange={(e) => setNewName(e.target.value)}
-                            onKeyPress={(e) => e.key === 'Enter' && createCompany()}
-                            className="input-field flex-1"
+                            onKeyDown={(e) => e.key === 'Enter' && createCompany()}
+                            className="flex-1 min-w-[200px]"
                             autoFocus
                         />
-                        <button onClick={createCompany} className="bg-emerald-500 hover:bg-emerald-600 text-white p-2 rounded-xl transition-colors">
-                            <Save className="w-4 h-4" />
-                        </button>
-                        <button onClick={() => { setShowAddCompany(false); setNewName(''); }} className="btn-secondary p-2">
-                            <X className="w-4 h-4" />
-                        </button>
+                        <Button variant="primary" size="sm" onClick={createCompany} leftIcon={<Save className="w-3.5 h-3.5" />}>
+                            Simpan
+                        </Button>
+                        <Button
+                            variant="secondary"
+                            size="sm"
+                            onClick={() => {
+                                setShowAddCompany(false);
+                                setNewName('');
+                            }}
+                        >
+                            Batal
+                        </Button>
                     </div>
+                </Card>
+            )}
+
+            {companies.length === 0 ? (
+                <Card>
+                    <EmptyState
+                        icon={<Building2 className="w-6 h-6" />}
+                        title="Belum ada data perusahaan"
+                        description="Buat perusahaan baru atau tarik otomatis dari data pengguna yang sudah terdaftar."
+                    />
+                </Card>
+            ) : (
+                <div className="space-y-3">
+                    {companies.map((company) => {
+                        const expanded = expandedCompanies.has(company.id);
+                        return (
+                            <Card key={company.id} padding="none">
+                                <div className="flex items-center justify-between px-4 py-3 bg-[#fafaf9]">
+                                    <button
+                                        type="button"
+                                        onClick={() => toggleCompany(company.id)}
+                                        className="flex items-center gap-2.5 flex-1 text-left bg-transparent border-0 cursor-pointer p-0"
+                                    >
+                                        {expanded ? (
+                                            <ChevronDown className="w-4 h-4 text-[#b45309]" />
+                                        ) : (
+                                            <ChevronRight className="w-4 h-4 text-[#78716c]" />
+                                        )}
+                                        <Building2 className="w-4 h-4 text-[#b45309]" />
+                                        <span className="text-[14.5px] font-bold text-[#1c1917]">{company.name}</span>
+                                        <Badge variant="neutral">{company.divisions.length} divisi</Badge>
+                                    </button>
+                                    <div className="flex items-center gap-1">
+                                        <Button
+                                            variant="ghost"
+                                            size="sm"
+                                            onClick={() => {
+                                                setNewName('');
+                                                setShowAddDivision(company.id);
+                                                if (!expanded) toggleCompany(company.id);
+                                            }}
+                                            leftIcon={<Plus className="w-3.5 h-3.5" />}
+                                        >
+                                            Divisi
+                                        </Button>
+                                        <Button
+                                            variant="ghost"
+                                            size="sm"
+                                            aria-label={`Hapus ${company.name}`}
+                                            onClick={() =>
+                                                setDeleteConfirm({ type: 'company', id: company.id, name: company.name })
+                                            }
+                                        >
+                                            <Trash2 className="w-3.5 h-3.5 text-[#b91c1c]" />
+                                        </Button>
+                                    </div>
+                                </div>
+
+                                {expanded && (
+                                    <div className="border-t border-[#e7e5e4]">
+                                        {showAddDivision === company.id && (
+                                            <div className="px-4 py-3 pl-10 bg-[#fffbeb]/50 border-b border-[#f5f5f4] flex flex-wrap items-center gap-2">
+                                                <Input
+                                                    placeholder="Nama divisi baru..."
+                                                    value={newName}
+                                                    onChange={(e) => setNewName(e.target.value)}
+                                                    onKeyDown={(e) => e.key === 'Enter' && createDivision(company.id)}
+                                                    className="flex-1 min-w-[200px]"
+                                                    autoFocus
+                                                />
+                                                <Button variant="primary" size="sm" onClick={() => createDivision(company.id)}>
+                                                    Simpan
+                                                </Button>
+                                                <Button
+                                                    variant="secondary"
+                                                    size="sm"
+                                                    onClick={() => {
+                                                        setShowAddDivision(null);
+                                                        setNewName('');
+                                                    }}
+                                                >
+                                                    Batal
+                                                </Button>
+                                            </div>
+                                        )}
+
+                                        {company.divisions.length === 0 ? (
+                                            <div className="px-4 py-4 pl-10 text-[13px] text-[#78716c]">
+                                                Belum ada divisi
+                                            </div>
+                                        ) : (
+                                            company.divisions.map((division) => {
+                                                const divExpanded = expandedDivisions.has(division.id);
+                                                return (
+                                                    <div key={division.id} className="border-b border-[#f5f5f4] last:border-b-0">
+                                                        <div className="flex items-center justify-between px-4 py-2.5 pl-9 hover:bg-[#fafaf9]">
+                                                            <button
+                                                                type="button"
+                                                                onClick={() => toggleDivision(division.id)}
+                                                                className="flex items-center gap-2 flex-1 text-left bg-transparent border-0 cursor-pointer p-0"
+                                                            >
+                                                                {divExpanded ? (
+                                                                    <ChevronDown className="w-4 h-4 text-[#b45309]" />
+                                                                ) : (
+                                                                    <ChevronRight className="w-4 h-4 text-[#78716c]" />
+                                                                )}
+                                                                <span className="text-[13.5px] font-semibold text-[#1c1917]">
+                                                                    {division.name}
+                                                                </span>
+                                                                <span className="text-[12px] text-[#78716c]">
+                                                                    ({division.departments.length} departemen)
+                                                                </span>
+                                                            </button>
+                                                            <div className="flex items-center gap-1">
+                                                                <Button
+                                                                    variant="ghost"
+                                                                    size="sm"
+                                                                    onClick={() => {
+                                                                        setNewName('');
+                                                                        setShowAddDepartment(division.id);
+                                                                        if (!divExpanded) toggleDivision(division.id);
+                                                                    }}
+                                                                    leftIcon={<Plus className="w-3.5 h-3.5" />}
+                                                                >
+                                                                    Dept
+                                                                </Button>
+                                                                <Button
+                                                                    variant="ghost"
+                                                                    size="sm"
+                                                                    aria-label={`Hapus divisi ${division.name}`}
+                                                                    onClick={() =>
+                                                                        setDeleteConfirm({
+                                                                            type: 'division',
+                                                                            id: division.id,
+                                                                            name: division.name,
+                                                                        })
+                                                                    }
+                                                                >
+                                                                    <Trash2 className="w-3.5 h-3.5 text-[#b91c1c]" />
+                                                                </Button>
+                                                            </div>
+                                                        </div>
+
+                                                        {divExpanded && (
+                                                            <div className="bg-[#fafaf9]/70 border-t border-[#f5f5f4]">
+                                                                {showAddDepartment === division.id && (
+                                                                    <div className="px-4 py-2.5 pl-14 border-b border-[#f5f5f4] flex flex-wrap items-center gap-2">
+                                                                        <Input
+                                                                            placeholder="Nama departemen baru..."
+                                                                            value={newName}
+                                                                            onChange={(e) => setNewName(e.target.value)}
+                                                                            onKeyDown={(e) =>
+                                                                                e.key === 'Enter' && createDepartment(division.id)
+                                                                            }
+                                                                            className="flex-1 min-w-[200px]"
+                                                                            autoFocus
+                                                                        />
+                                                                        <Button
+                                                                            variant="primary"
+                                                                            size="sm"
+                                                                            onClick={() => createDepartment(division.id)}
+                                                                        >
+                                                                            Simpan
+                                                                        </Button>
+                                                                        <Button
+                                                                            variant="secondary"
+                                                                            size="sm"
+                                                                            onClick={() => {
+                                                                                setShowAddDepartment(null);
+                                                                                setNewName('');
+                                                                            }}
+                                                                        >
+                                                                            Batal
+                                                                        </Button>
+                                                                    </div>
+                                                                )}
+
+                                                                {division.departments.length === 0 ? (
+                                                                    <div className="px-4 py-3 pl-14 text-[12.5px] text-[#78716c]">
+                                                                        Belum ada departemen
+                                                                    </div>
+                                                                ) : (
+                                                                    division.departments.map((dept) => (
+                                                                        <div
+                                                                            key={dept.id}
+                                                                            className="px-4 py-3 pl-14 border-b border-[#f5f5f4] last:border-b-0"
+                                                                        >
+                                                                            {editingDepartment?.id === dept.id ? (
+                                                                                <div className="space-y-3 bg-[#fff] p-3 rounded-[10px] border border-[#e7e5e4]">
+                                                                                    <div className="font-semibold text-[13.5px] text-[#1c1917]">
+                                                                                        {dept.name} ({dept._count.users} pengguna)
+                                                                                    </div>
+                                                                                    <div>
+                                                                                        <div className="text-[12px] font-semibold text-[#57534e] mb-1.5">
+                                                                                            Hari kerja
+                                                                                        </div>
+                                                                                        <div className="flex flex-wrap gap-1.5">
+                                                                                            {DAYS.map((day) => {
+                                                                                                const on = editWorkDays.includes(day.value);
+                                                                                                return (
+                                                                                                    <button
+                                                                                                        key={day.value}
+                                                                                                        type="button"
+                                                                                                        onClick={() => toggleWorkDay(day.value)}
+                                                                                                        className={`h-8 px-3 rounded-[8px] text-[12px] font-semibold border cursor-pointer ${
+                                                                                                            on
+                                                                                                                ? 'bg-[#f59e0b] text-[#1c1917] border-[#f59e0b]'
+                                                                                                                : 'bg-[#fff] text-[#57534e] border-[#e7e5e4]'
+                                                                                                        }`}
+                                                                                                    >
+                                                                                                        {day.label}
+                                                                                                    </button>
+                                                                                                );
+                                                                                            })}
+                                                                                        </div>
+                                                                                    </div>
+
+                                                                                    <div>
+                                                                                        <div className="text-[12px] font-semibold text-[#57534e] mb-1.5">
+                                                                                            Shift yang diizinkan (kosong = semua aktif)
+                                                                                        </div>
+                                                                                        <div className="flex flex-wrap gap-1.5">
+                                                                                            {shifts
+                                                                                                .filter((s) => s.isActive !== false)
+                                                                                                .map((shift) => {
+                                                                                                    const on = editShiftIds.includes(shift.id);
+                                                                                                    return (
+                                                                                                        <button
+                                                                                                            key={shift.id}
+                                                                                                            type="button"
+                                                                                                            onClick={() =>
+                                                                                                                setEditShiftIds((prev) =>
+                                                                                                                    prev.includes(shift.id)
+                                                                                                                        ? prev.filter((id) => id !== shift.id)
+                                                                                                                        : [...prev, shift.id]
+                                                                                                                )
+                                                                                                            }
+                                                                                                            className={`h-8 px-3 rounded-[8px] text-[12px] font-semibold border cursor-pointer ${
+                                                                                                                on
+                                                                                                                    ? 'bg-[#f59e0b] text-[#1c1917] border-[#f59e0b]'
+                                                                                                                    : 'bg-[#fff] text-[#57534e] border-[#e7e5e4]'
+                                                                                                            }`}
+                                                                                                        >
+                                                                                                            {shift.name} ({shift.startTime}–{shift.endTime})
+                                                                                                        </button>
+                                                                                                    );
+                                                                                                })}
+                                                                                        </div>
+                                                                                    </div>
+
+                                                                                    <div className="flex gap-2">
+                                                                                        <Button variant="primary" size="sm" onClick={saveDepartment}>
+                                                                                            Simpan
+                                                                                        </Button>
+                                                                                        <Button
+                                                                                            variant="secondary"
+                                                                                            size="sm"
+                                                                                            onClick={() => setEditingDepartment(null)}
+                                                                                        >
+                                                                                            Batal
+                                                                                        </Button>
+                                                                                    </div>
+                                                                                </div>
+                                                                            ) : (
+                                                                                <div className="flex flex-wrap items-center justify-between gap-2">
+                                                                                    <div>
+                                                                                        <div className="text-[13px] font-semibold text-[#1c1917]">
+                                                                                            {dept.name}
+                                                                                        </div>
+                                                                                        <div className="flex flex-wrap items-center gap-3 mt-1 text-[11.5px] text-[#78716c]">
+                                                                                            <span>{dept._count.users} pengguna</span>
+                                                                                            {dept.allowedShifts && dept.allowedShifts.length > 0 && (
+                                                                                                <span className="inline-flex items-center gap-1 text-[#b45309] font-medium">
+                                                                                                    <Clock className="w-3 h-3" aria-hidden="true" />
+                                                                                                    {dept.allowedShifts.map((ds) => ds.shift.name).join(', ')}
+                                                                                                </span>
+                                                                                            )}
+                                                                                            <span className="inline-flex items-center gap-1">
+                                                                                                <Calendar className="w-3 h-3" aria-hidden="true" />
+                                                                                                {dept.workDays
+                                                                                                    .split(',')
+                                                                                                    .map((d) => DAYS.find((x) => x.value === d)?.label)
+                                                                                                    .filter(Boolean)
+                                                                                                    .join(', ')}
+                                                                                            </span>
+                                                                                        </div>
+                                                                                    </div>
+                                                                                    <div className="flex items-center gap-1">
+                                                                                        <Button
+                                                                                            variant="ghost"
+                                                                                            size="sm"
+                                                                                            aria-label={`Edit ${dept.name}`}
+                                                                                            onClick={() => startEditDepartment(dept)}
+                                                                                        >
+                                                                                            <Edit2 className="w-3.5 h-3.5" />
+                                                                                        </Button>
+                                                                                        <Button
+                                                                                            variant="ghost"
+                                                                                            size="sm"
+                                                                                            aria-label={`Hapus ${dept.name}`}
+                                                                                            onClick={() =>
+                                                                                                setDeleteConfirm({
+                                                                                                    type: 'department',
+                                                                                                    id: dept.id,
+                                                                                                    name: dept.name,
+                                                                                                })
+                                                                                            }
+                                                                                        >
+                                                                                            <Trash2 className="w-3.5 h-3.5 text-[#b91c1c]" />
+                                                                                        </Button>
+                                                                                    </div>
+                                                                                </div>
+                                                                            )}
+                                                                        </div>
+                                                                    ))
+                                                                )}
+                                                            </div>
+                                                        )}
+                                                    </div>
+                                                );
+                                            })
+                                        )}
+                                    </div>
+                                )}
+                            </Card>
+                        );
+                    })}
                 </div>
             )}
 
-            {/* Companies Tree */}
-            <div className="space-y-4">
-                {companies.length === 0 ? (
-                    <div className="card p-12 text-center">
-                        <Building2 className="w-12 h-12 mx-auto text-slate-300 mb-4" />
-                        <p className="text-slate-500">No companies yet. Create one or import from existing users.</p>
-                    </div>
-                ) : (
-                    companies.map((company) => (
-                        <div key={company.id} className="card overflow-hidden">
-                            {/* Company Header */}
-                            <div className="flex items-center justify-between p-4 bg-slate-50">
-                                <button
-                                    onClick={() => toggleCompany(company.id)}
-                                    className="flex items-center gap-3 flex-1 text-left"
-                                >
-                                    {expandedCompanies.has(company.id) ? (
-                                        <ChevronDown className="w-5 h-5 text-orange-500" />
-                                    ) : (
-                                        <ChevronRight className="w-5 h-5 text-slate-400" />
-                                    )}
-                                    <Building2 className="w-5 h-5 text-orange-500" />
-                                    <span className="text-lg font-semibold text-[#1a1f37]">{company.name}</span>
-                                    <span className="text-sm text-slate-500">
-                                        ({company.divisions.length} divisions)
-                                    </span>
-                                </button>
-                                <div className="flex items-center gap-2">
-                                    <button
-                                        onClick={() => setShowAddDivision(company.id)}
-                                        className="p-2 hover:bg-slate-200 rounded-lg transition-colors"
-                                        title="Add Division"
-                                    >
-                                        <Plus className="w-4 h-4 text-slate-400 hover:text-orange-500" />
-                                    </button>
-                                    <button
-                                        onClick={() => deleteCompany(company.id)}
-                                        className="p-2 hover:bg-red-100 rounded-lg transition-colors"
-                                        title="Delete Company"
-                                    >
-                                        <Trash2 className="w-4 h-4 text-slate-400 hover:text-red-500" />
-                                    </button>
-                                </div>
-                            </div>
+            {/* Delete Confirm Modal */}
+            <Modal
+                open={Boolean(deleteConfirm)}
+                onClose={() => setDeleteConfirm(null)}
+                title="Hapus struktur organisasi?"
+                size="sm"
+                footer={
+                    <>
+                        <Button variant="secondary" onClick={() => setDeleteConfirm(null)}>
+                            Batal
+                        </Button>
+                        <Button variant="danger" onClick={executeDelete}>
+                            Hapus
+                        </Button>
+                    </>
+                }
+            >
+                <p className="text-[13.5px] text-[#57534e]">
+                    Hapus <b>{deleteConfirm?.name}</b> beserta seluruh sub-unit di bawahnya?
+                </p>
+            </Modal>
 
-                            {/* Divisions */}
-                            {expandedCompanies.has(company.id) && (
-                                <div className="border-t border-slate-100">
-                                    {/* Add Division Form */}
-                                    {showAddDivision === company.id && (
-                                        <div className="p-4 bg-slate-50 border-b border-slate-100">
-                                            <div className="flex items-center gap-3 ml-8">
-                                                <input
-                                                    type="text"
-                                                    placeholder="Division name..."
-                                                    value={newName}
-                                                    onChange={(e) => setNewName(e.target.value)}
-                                                    onKeyPress={(e) => e.key === 'Enter' && createDivision(company.id)}
-                                                    className="input-field flex-1"
-                                                    autoFocus
-                                                />
-                                                <button onClick={() => createDivision(company.id)} className="bg-emerald-500 hover:bg-emerald-600 text-white p-2 rounded-xl transition-colors">
-                                                    <Save className="w-4 h-4" />
-                                                </button>
-                                                <button onClick={() => { setShowAddDivision(null); setNewName(''); }} className="btn-secondary p-2">
-                                                    <X className="w-4 h-4" />
-                                                </button>
-                                            </div>
-                                        </div>
-                                    )}
-
-                                    {company.divisions.map((division) => (
-                                        <div key={division.id}>
-                                            {/* Division Header */}
-                                            <div className="flex items-center justify-between p-3 pl-8 hover:bg-slate-50">
-                                                <button
-                                                    onClick={() => toggleDivision(division.id)}
-                                                    className="flex items-center gap-3 flex-1 text-left"
-                                                >
-                                                    {expandedDivisions.has(division.id) ? (
-                                                        <ChevronDown className="w-4 h-4 text-orange-500" />
-                                                    ) : (
-                                                        <ChevronRight className="w-4 h-4 text-slate-400" />
-                                                    )}
-                                                    <span className="text-[#1a1f37]">{division.name}</span>
-                                                    <span className="text-sm text-slate-500">
-                                                        ({division.departments.length} departments)
-                                                    </span>
-                                                </button>
-                                                <div className="flex items-center gap-2">
-                                                    <button
-                                                        onClick={() => setShowAddDepartment(division.id)}
-                                                        className="p-1.5 hover:bg-slate-200 rounded transition-colors"
-                                                        title="Add Department"
-                                                    >
-                                                        <Plus className="w-4 h-4 text-slate-400 hover:text-orange-500" />
-                                                    </button>
-                                                    <button
-                                                        onClick={() => deleteDivision(division.id)}
-                                                        className="p-1.5 hover:bg-red-100 rounded transition-colors"
-                                                        title="Delete Division"
-                                                    >
-                                                        <Trash2 className="w-4 h-4 text-slate-400 hover:text-red-500" />
-                                                    </button>
-                                                </div>
-                                            </div>
-
-                                            {/* Departments */}
-                                            {expandedDivisions.has(division.id) && (
-                                                <div className="bg-slate-50/50">
-                                                    {/* Add Department Form */}
-                                                    {showAddDepartment === division.id && (
-                                                        <div className="p-3 pl-16 border-b border-slate-100">
-                                                            <div className="flex items-center gap-3">
-                                                                <input
-                                                                    type="text"
-                                                                    placeholder="Department name..."
-                                                                    value={newName}
-                                                                    onChange={(e) => setNewName(e.target.value)}
-                                                                    onKeyPress={(e) => e.key === 'Enter' && createDepartment(division.id)}
-                                                                    className="input-field flex-1"
-                                                                    autoFocus
-                                                                />
-                                                                <button onClick={() => createDepartment(division.id)} className="bg-emerald-500 hover:bg-emerald-600 text-white p-2 rounded-xl transition-colors">
-                                                                    <Save className="w-4 h-4" />
-                                                                </button>
-                                                                <button onClick={() => { setShowAddDepartment(null); setNewName(''); }} className="btn-secondary p-2">
-                                                                    <X className="w-4 h-4" />
-                                                                </button>
-                                                            </div>
-                                                        </div>
-                                                    )}
-
-                                                    {division.departments.map((dept) => (
-                                                        <div key={dept.id} className="p-3 pl-16 border-b border-slate-100 last:border-b-0">
-                                                            {editingDepartment?.id === dept.id ? (
-                                                                /* Edit Mode */
-                                                                <div className="space-y-4">
-                                                                    <div className="flex items-center gap-2">
-                                                                        <span className="text-[#1a1f37] font-medium">{dept.name}</span>
-                                                                        <span className="text-xs text-slate-500">({dept._count.users} users)</span>
-                                                                    </div>
-
-                                                                    {/* Work Days */}
-                                                                    <div>
-                                                                        <label className="text-sm text-slate-500 mb-2 flex items-center gap-2">
-                                                                            <Calendar className="w-4 h-4" />
-                                                                            Work Days
-                                                                        </label>
-                                                                        <div className="flex flex-wrap gap-2 mt-2">
-                                                                            {DAYS.map((day) => (
-                                                                                <button
-                                                                                    key={day.value}
-                                                                                    onClick={() => toggleWorkDay(day.value)}
-                                                                                    className={`px-3 py-1.5 rounded-lg text-sm font-medium transition-colors ${editWorkDays.includes(day.value)
-                                                                                        ? 'bg-orange-500 text-white'
-                                                                                        : 'bg-slate-100 text-slate-600 hover:bg-slate-200'
-                                                                                        }`}
-                                                                                >
-                                                                                    {day.label}
-                                                                                </button>
-                                                                            ))}
-                                                                        </div>
-                                                                    </div>
-
-                                                                    {/* Allowed Shifts */}
-                                                                    <div>
-                                                                        <label className="text-sm text-slate-500 mb-2 flex items-center gap-2">
-                                                                            <Clock className="w-4 h-4" />
-                                                                            Allowed Shifts
-                                                                        </label>
-                                                                        <div className="flex flex-wrap gap-2 mt-2">
-                                                                            {shifts.filter(s => s.isActive !== false).map((shift) => (
-                                                                                <button
-                                                                                    key={shift.id}
-                                                                                    type="button"
-                                                                                    onClick={() => {
-                                                                                        setEditShiftIds((prev: string[]) =>
-                                                                                            prev.includes(shift.id)
-                                                                                                ? prev.filter((id: string) => id !== shift.id)
-                                                                                                : [...prev, shift.id]
-                                                                                        );
-                                                                                    }}
-                                                                                    className={`px-3 py-1.5 rounded-lg text-sm font-medium transition-colors ${editShiftIds.includes(shift.id)
-                                                                                        ? 'bg-orange-500 text-white'
-                                                                                        : 'bg-slate-100 text-slate-600 hover:bg-slate-200'
-                                                                                        }`}
-                                                                                >
-                                                                                    {shift.name} ({shift.startTime} - {shift.endTime})
-                                                                                </button>
-                                                                            ))}
-                                                                        </div>
-                                                                        {editShiftIds.length === 0 && (
-                                                                            <p className="text-xs text-slate-500 mt-1">
-                                                                                No shifts selected - users will see all active shifts
-                                                                            </p>
-                                                                        )}
-                                                                    </div>
-
-                                                                    {/* Actions */}
-                                                                    <div className="flex gap-2">
-                                                                        <button onClick={saveDepartment} className="bg-emerald-500 hover:bg-emerald-600 text-white px-4 py-2 rounded-xl flex items-center gap-2 font-medium transition-colors">
-                                                                            <Save className="w-4 h-4" />
-                                                                            Save
-                                                                        </button>
-                                                                        <button onClick={() => setEditingDepartment(null)} className="btn-secondary">
-                                                                            Cancel
-                                                                        </button>
-                                                                    </div>
-                                                                </div>
-                                                            ) : (
-                                                                /* View Mode */
-                                                                <div className="flex items-center justify-between">
-                                                                    <div>
-                                                                        <span className="text-[#1a1f37]">{dept.name}</span>
-                                                                        <div className="flex items-center gap-4 mt-1">
-                                                                            <span className="text-xs text-slate-500">
-                                                                                {dept._count.users} users
-                                                                            </span>
-                                                                            {dept.allowedShifts && dept.allowedShifts.length > 0 && (
-                                                                                <span className="text-xs text-orange-500 flex items-center gap-1">
-                                                                                    <Clock className="w-3 h-3" />
-                                                                                    {dept.allowedShifts.map(ds => ds.shift.name).join(', ')}
-                                                                                </span>
-                                                                            )}
-                                                                            <span className="text-xs text-slate-500 flex items-center gap-1">
-                                                                                <Calendar className="w-3 h-3" />
-                                                                                {dept.workDays.split(',').map(d =>
-                                                                                    DAYS.find(day => day.value === d)?.label
-                                                                                ).filter(Boolean).join(', ')}
-                                                                            </span>
-                                                                        </div>
-                                                                    </div>
-                                                                    <div className="flex items-center gap-2">
-                                                                        <button
-                                                                            onClick={() => startEditDepartment(dept)}
-                                                                            className="p-1.5 hover:bg-slate-200 rounded transition-colors"
-                                                                            title="Edit"
-                                                                        >
-                                                                            <Edit2 className="w-4 h-4 text-slate-400 hover:text-orange-500" />
-                                                                        </button>
-                                                                        <button
-                                                                            onClick={() => deleteDepartment(dept.id)}
-                                                                            className="p-1.5 hover:bg-red-100 rounded transition-colors"
-                                                                            title="Delete"
-                                                                        >
-                                                                            <Trash2 className="w-4 h-4 text-slate-400 hover:text-red-500" />
-                                                                        </button>
-                                                                    </div>
-                                                                </div>
-                                                            )}
-                                                        </div>
-                                                    ))}
-
-                                                    {division.departments.length === 0 && (
-                                                        <div className="p-4 pl-16 text-sm text-slate-500">
-                                                            No departments yet
-                                                        </div>
-                                                    )}
-                                                </div>
-                                            )}
-                                        </div>
-                                    ))}
-
-                                    {company.divisions.length === 0 && (
-                                        <div className="p-4 pl-12 text-sm text-slate-500">
-                                            No divisions yet
-                                        </div>
-                                    )}
-                                </div>
-                            )}
-                        </div>
-                    ))
-                )}
-            </div>
+            {/* Migrate from users Modal */}
+            <Modal
+                open={showMigrateConfirm}
+                onClose={() => setShowMigrateConfirm(false)}
+                title="Tarik struktur dari data pengguna?"
+                size="sm"
+                footer={
+                    <>
+                        <Button variant="secondary" onClick={() => setShowMigrateConfirm(false)}>
+                            Batal
+                        </Button>
+                        <Button variant="primary" onClick={migrateFromUsers}>
+                            Sinkronkan
+                        </Button>
+                    </>
+                }
+            >
+                <p className="text-[13.5px] text-[#57534e]">
+                    Sistem akan membuat entri perusahaan, divisi, dan departemen otomatis dari profil pengguna yang sudah ada.
+                </p>
+            </Modal>
         </div>
     );
 }

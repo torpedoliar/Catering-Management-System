@@ -1,9 +1,30 @@
-import { useState, useEffect, useRef, useCallback } from 'react';
-import { api } from '../../contexts/AuthContext';
-import { useSSERefresh, USER_EVENTS } from '../../contexts/SSEContext';
-import { Users, Search, Upload, Download, Loader2, ChevronLeft, ChevronRight, AlertCircle, Edit2, Trash2, Save, X, Plus, RotateCcw, Key, Filter, Camera, Power } from 'lucide-react';
+import { useState, useEffect, useRef, useCallback, useMemo } from 'react';
+import {
+    Upload,
+    Download,
+    FileDown,
+    Plus,
+    Camera,
+    X,
+    Users,
+} from 'lucide-react';
 import toast from 'react-hot-toast';
 import Webcam from 'react-webcam';
+import { api } from '../../contexts/AuthContext';
+import { useSSERefresh, USER_EVENTS } from '../../contexts/SSEContext';
+import {
+    PageHeader,
+    Button,
+    DataTable,
+    Pagination,
+    Modal,
+    Field,
+    Input,
+    Select,
+    RoleBadge,
+    Card,
+} from '../../components/ui';
+import type { DataTableColumn, DataTableFilter, DataTableBulkAction, DataTableRowAction } from '../../components/ui';
 
 interface User {
     id: string;
@@ -21,6 +42,7 @@ interface User {
     isActive: boolean;
     photo?: string;
     preferredCanteenId?: string | null;
+    vendorId?: string | null;
     preferredCanteen?: {
         id: string;
         name: string;
@@ -52,30 +74,41 @@ interface Company {
     divisions: Division[];
 }
 
+function getInitials(name: string): string {
+    const parts = name.trim().split(/\s+/);
+    if (parts.length === 1) return parts[0].charAt(0).toUpperCase();
+    return (parts[0].charAt(0) + parts[1].charAt(0)).toUpperCase();
+}
+
 export default function UserManagementPage() {
     const [users, setUsers] = useState<User[]>([]);
+    const [total, setTotal] = useState(0);
     const [isLoading, setIsLoading] = useState(true);
     const [search, setSearch] = useState('');
     const [page, setPage] = useState(1);
-    const [totalPages, setTotalPages] = useState(1);
+    const [limit, setLimit] = useState(25);
     const [isUploading, setIsUploading] = useState(false);
     const fileInputRef = useRef<HTMLInputElement>(null);
 
-    // Company structure for dropdowns
     const [companies, setCompanies] = useState<Company[]>([]);
-
-    // Canteens for preferred canteen dropdown
     const [canteens, setCanteens] = useState<Canteen[]>([]);
-
-    // Vendors for VENDOR role dropdown
     const [vendors, setVendors] = useState<{ id: string; name: string }[]>([]);
 
     // Filter state
     const [filterCompany, setFilterCompany] = useState('');
-    const [filterDivision, setFilterDivision] = useState('');
     const [filterDepartment, setFilterDepartment] = useState('');
-    const [filterStatus, setFilterStatus] = useState('all'); // 'all', 'active', 'inactive'
-    const [showFilters, setShowFilters] = useState(false);
+    const [filterRole, setFilterRole] = useState('');
+    const [filterStatus, setFilterStatus] = useState('all');
+
+    // Selection & bulk modals
+    const [selectedIds, setSelectedIds] = useState<string[]>([]);
+    const [sortKey, setSortKey] = useState<string>('name');
+    const [sortDir, setSortDir] = useState<'asc' | 'desc'>('asc');
+    const [bulkActionModal, setBulkActionModal] = useState<'deactivate' | 'reset-strike' | 'reset-password' | null>(null);
+    const [bulkPassword, setBulkPassword] = useState('');
+    const [bulkReason, setBulkReason] = useState('');
+    const [bulkNewPassword, setBulkNewPassword] = useState('');
+    const [bulkSubmitting, setBulkSubmitting] = useState(false);
 
     // Edit/Add modal
     const [editingUser, setEditingUser] = useState<User | null>(null);
@@ -83,11 +116,17 @@ export default function UserManagementPage() {
     const [photoPreview, setPhotoPreview] = useState<string | null>(null);
     const [photoFile, setPhotoFile] = useState<File | null>(null);
     const [showCamera, setShowCamera] = useState(false);
+    const [savingUser, setSavingUser] = useState(false);
     const webcamRef = useRef<Webcam>(null);
 
-    // Delete confirmation
-    const [deleteTarget, setDeleteTarget] = useState<{ id: string, name: string } | null>(null);
+    // Confirm modals
+    const [deleteTarget, setDeleteTarget] = useState<{ id: string; name: string } | null>(null);
     const [deletePassword, setDeletePassword] = useState('');
+    const [strikeResetTarget, setStrikeResetTarget] = useState<{ id: string; name: string; count: number } | null>(null);
+    const [strikeResetForm, setStrikeResetForm] = useState({ password: '', reason: '', reduceBy: '' });
+    const [passwordResetTarget, setPasswordResetTarget] = useState<{ id: string; name: string } | null>(null);
+    const [newPasswordInput, setNewPasswordInput] = useState('');
+
     const [formData, setFormData] = useState({
         externalId: '',
         nik: '',
@@ -97,85 +136,64 @@ export default function UserManagementPage() {
         role: 'USER',
         password: '',
         preferredCanteenId: '',
-        vendorId: ''
+        vendorId: '',
     });
     const [selectedCompany, setSelectedCompany] = useState('');
     const [selectedDivision, setSelectedDivision] = useState('');
 
-    // Strike reset modal
-    const [strikeResetTarget, setStrikeResetTarget] = useState<{ id: string, name: string, count: number } | null>(null);
-    const [strikeResetForm, setStrikeResetForm] = useState({ password: '', reason: '', reduceBy: '' });
-
-    // Password reset modal
-    const [passwordResetTarget, setPasswordResetTarget] = useState<{ id: string, name: string } | null>(null);
-    const [newPasswordInput, setNewPasswordInput] = useState('');
-
     const loadUsers = useCallback(async () => {
         setIsLoading(true);
         try {
-            const params = new URLSearchParams({ page: page.toString(), limit: '20' });
+            const params = new URLSearchParams({
+                page: page.toString(),
+                limit: limit.toString(),
+                status: filterStatus,
+            });
             if (search) params.append('search', search);
             if (filterCompany) params.append('company', filterCompany);
-            if (filterDivision) params.append('division', filterDivision);
             if (filterDepartment) params.append('department', filterDepartment);
-            params.append('status', filterStatus);
+            if (filterRole) params.append('role', filterRole);
 
             const res = await api.get(`/api/users?${params}`);
-            setUsers(res.data.users);
-            setTotalPages(res.data.pagination.totalPages);
+            setUsers(res.data.users || []);
+            setTotal(res.data.pagination?.total || 0);
         } catch (error) {
             console.error('Failed to load users:', error);
+            toast.error('Gagal memuat daftar pengguna');
         } finally {
             setIsLoading(false);
         }
-    }, [page, search, filterCompany, filterDivision, filterDepartment, filterStatus]);
+    }, [page, limit, search, filterCompany, filterDepartment, filterRole, filterStatus]);
 
-    const loadCompanies = async () => {
+    const loadMeta = useCallback(async () => {
         try {
-            const res = await api.get('/api/companies');
-            setCompanies(res.data.companies);
+            const [cRes, canRes, vRes] = await Promise.all([
+                api.get('/api/companies'),
+                api.get('/api/canteens'),
+                api.get('/api/vendors'),
+            ]);
+            setCompanies(cRes.data.companies || []);
+            setCanteens(canRes.data.canteens || []);
+            setVendors(vRes.data || []);
         } catch (error) {
-            console.error('Failed to load companies:', error);
+            console.error('Failed to load metadata:', error);
         }
-    };
-
-    const loadCanteens = async () => {
-        try {
-            const res = await api.get('/api/canteens');
-            setCanteens(res.data.canteens || []);
-        } catch (error) {
-            console.error('Failed to load canteens:', error);
-        }
-    };
-
-    const loadVendors = async () => {
-        try {
-            const res = await api.get('/api/vendors');
-            setVendors(res.data || []);
-        } catch (error) {
-            console.error('Failed to load vendors:', error);
-        }
-    };
+    }, []);
 
     useEffect(() => {
         loadUsers();
-        loadCompanies();
-        loadCanteens();
-        loadVendors();
     }, [loadUsers]);
 
-    // Auto-refresh on blacklist events (SSE)
+    useEffect(() => {
+        loadMeta();
+    }, [loadMeta]);
+
     useSSERefresh(USER_EVENTS, loadUsers);
 
     const downloadTemplate = async () => {
         try {
-            const response = await api.get('/api/users/export/template', {
-                responseType: 'blob'
-            });
-
-            const blob = response.data;
-            const url = URL.createObjectURL(blob);
-
+            const response = await api.get('/api/users/export/template', { responseType: 'blob' });
+            const url = URL.createObjectURL(response.data);
             const a = document.createElement('a');
             a.href = url;
             a.download = 'user_import_template.xlsx';
@@ -183,21 +201,46 @@ export default function UserManagementPage() {
             a.click();
             document.body.removeChild(a);
             URL.revokeObjectURL(url);
-
-            toast.success('Template downloaded');
-        } catch (error) {
-            console.error('Download error:', error);
-            toast.error('Failed to download template');
+            toast.success('Template diunduh');
+        } catch {
+            toast.error('Gagal mengunduh template');
         }
+    };
+
+    const handleExportCsv = () => {
+        const headers = ['ID HRIS', 'NIK', 'Nama', 'Email', 'Perusahaan', 'Divisi', 'Departemen', 'Role', 'Strike', 'Status'];
+        const lines = users.map((u) => [
+            u.externalId,
+            u.nik || '',
+            u.name,
+            u.email || '',
+            u.company || '',
+            u.division || '',
+            u.department || '',
+            u.role,
+            u.noShowCount,
+            u.isBlacklisted ? 'Diblokir' : u.isActive ? 'Aktif' : 'Nonaktif',
+        ]);
+        const csv = [headers, ...lines]
+            .map((row) => row.map((v) => `"${String(v ?? '').replace(/"/g, '""')}"`).join(','))
+            .join('\n');
+        const blob = new Blob(['\uFEFF' + csv], { type: 'text/csv;charset=utf-8;' });
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = `pengguna-halaman-${page}.csv`;
+        document.body.appendChild(a);
+        a.click();
+        document.body.removeChild(a);
+        URL.revokeObjectURL(url);
+        toast.success('Daftar pengguna diekspor');
     };
 
     const handleFileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
         const file = e.target.files?.[0];
         if (!file) return;
-
         const uploadData = new FormData();
         uploadData.append('file', file);
-
         setIsUploading(true);
         try {
             const res = await api.post('/api/users/import', uploadData, {
@@ -205,155 +248,11 @@ export default function UserManagementPage() {
             });
             toast.success(res.data.message);
             loadUsers();
-        } catch (error: any) {
-            toast.error(error.response?.data?.error || 'Failed to import users');
+        } catch (error) {
+            toast.error((error as { response?: { data?: { error?: string } } })?.response?.data?.error || 'Gagal mengimpor pengguna');
         } finally {
             setIsUploading(false);
             if (fileInputRef.current) fileInputRef.current.value = '';
-        }
-    };
-
-    // Edit user
-    const startEdit = (user: User) => {
-        setEditingUser(user);
-        setFormData({
-            externalId: user.externalId,
-            nik: user.nik || '',
-            name: user.name,
-            email: user.email || '',
-            departmentId: user.departmentId || '',
-            role: user.role,
-            password: '',
-            preferredCanteenId: user.preferredCanteenId || '',
-            vendorId: (user as any).vendorId || ''
-        });
-        const apiUrl = import.meta.env.VITE_API_URL || '';
-        setPhotoPreview(user.photo ? `${apiUrl}${user.photo}` : null);
-        setPhotoFile(null);
-
-        // Find company/division for dropdowns
-        if (user.departmentId) {
-            for (const company of companies) {
-                for (const division of company.divisions) {
-                    const dept = division.departments.find(d => d.id === user.departmentId);
-                    if (dept) {
-                        setSelectedCompany(company.id);
-                        setSelectedDivision(division.id);
-                        break;
-                    }
-                }
-            }
-        } else {
-            setSelectedCompany('');
-            setSelectedDivision('');
-        }
-    };
-
-    const saveUser = async () => {
-        try {
-            // Validate NIK format (numeric only)
-            if (formData.nik && !/^\d+$/.test(formData.nik)) {
-                toast.error('NIK harus berupa angka');
-                return;
-            }
-
-            // Validate VENDOR role must have vendorId
-            if (formData.role === 'VENDOR' && !formData.vendorId) {
-                toast.error('Vendor wajib dipilih untuk role Vendor');
-                return;
-            }
-
-            const data = new FormData();
-            data.append('name', formData.name);
-            if (formData.nik) data.append('nik', formData.nik);
-            if (formData.email) data.append('email', formData.email);
-            data.append('role', formData.role);
-
-            // For VENDOR role, set default placeholders for org hierarchy, send vendorId
-            if (formData.role === 'VENDOR') {
-                data.append('company', 'VENDOR');
-                data.append('division', 'VENDOR');
-                data.append('department', 'VENDOR');
-                data.append('vendorId', formData.vendorId);
-            } else {
-                // For other roles, use departmentId and preferredCanteenId
-                if (formData.departmentId) data.append('departmentId', formData.departmentId);
-                data.append('preferredCanteenId', formData.preferredCanteenId || '');
-            }
-
-            if (photoFile) {
-                data.append('photo', photoFile);
-            }
-
-            if (editingUser) {
-                // Update existing user
-                await api.put(`/api/users/${editingUser.id}`, data, {
-                    headers: { 'Content-Type': 'multipart/form-data' }
-                });
-                toast.success('User updated');
-            } else {
-                // Create new user
-                if (!formData.externalId || !formData.name) {
-                    toast.error('User ID and Name are required');
-                    return;
-                }
-                data.append('externalId', formData.externalId);
-                data.append('password', formData.password || 'default123');
-
-                await api.post('/api/users', data, {
-                    headers: { 'Content-Type': 'multipart/form-data' }
-                });
-                toast.success('User created');
-            }
-            closeModal();
-            loadUsers();
-        } catch (error: any) {
-            toast.error(error.response?.data?.error || 'Failed to save user');
-        }
-    };
-
-    const handlePhotoUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
-        const file = e.target.files?.[0];
-        if (file) {
-            setPhotoFile(file);
-            setPhotoPreview(URL.createObjectURL(file));
-        }
-    };
-
-    const capturePhoto = useCallback(() => {
-        const imageSrc = webcamRef.current?.getScreenshot();
-        if (imageSrc) {
-            setPhotoPreview(imageSrc);
-            // Convert base64 to file
-            fetch(imageSrc)
-                .then(res => res.blob())
-                .then(blob => {
-                    const file = new File([blob], "camera-capture.webp", { type: "image/webp" });
-                    setPhotoFile(file);
-                });
-            setShowCamera(false);
-        }
-    }, [webcamRef]);
-
-    const confirmDelete = async () => {
-        if (!deleteTarget) return;
-
-        if (!deletePassword) {
-            toast.error('Masukkan password untuk konfirmasi');
-            return;
-        }
-
-        try {
-            await api.delete(`/api/users/${deleteTarget.id}`, {
-                data: { password: deletePassword }
-            });
-            toast.success('User berhasil dihapus permanen');
-            setDeleteTarget(null);
-            setDeletePassword('');
-            loadUsers();
-        } catch (error: any) {
-            console.error('Delete user error:', error);
-            toast.error(error.response?.data?.error || 'Gagal menghapus user');
         }
     };
 
@@ -369,11 +268,44 @@ export default function UserManagementPage() {
             role: 'USER',
             password: '',
             preferredCanteenId: '',
-            vendorId: ''
+            vendorId: '',
         });
         setPhotoPreview(null);
         setPhotoFile(null);
         setShowCamera(false);
+        setSelectedCompany('');
+        setSelectedDivision('');
+    };
+
+    const startEdit = (user: User) => {
+        setEditingUser(user);
+        setFormData({
+            externalId: user.externalId,
+            nik: user.nik || '',
+            name: user.name,
+            email: user.email || '',
+            departmentId: user.departmentId || '',
+            role: user.role,
+            password: '',
+            preferredCanteenId: user.preferredCanteenId || '',
+            vendorId: user.vendorId || '',
+        });
+        const apiUrl = import.meta.env.VITE_API_URL || '';
+        setPhotoPreview(user.photo ? `${apiUrl}${user.photo}` : null);
+        setPhotoFile(null);
+
+        if (user.departmentId) {
+            for (const company of companies) {
+                for (const division of company.divisions) {
+                    const dept = division.departments.find((d) => d.id === user.departmentId);
+                    if (dept) {
+                        setSelectedCompany(company.id);
+                        setSelectedDivision(division.id);
+                        return;
+                    }
+                }
+            }
+        }
         setSelectedCompany('');
         setSelectedDivision('');
     };
@@ -383,797 +315,933 @@ export default function UserManagementPage() {
         setShowAddModal(true);
     };
 
-    // Toggle user active status
+    const saveUser = async () => {
+        if (formData.nik && !/^\d+$/.test(formData.nik)) {
+            toast.error('NIK harus berupa angka');
+            return;
+        }
+        if (formData.role === 'VENDOR' && !formData.vendorId) {
+            toast.error('Vendor wajib dipilih untuk role Vendor');
+            return;
+        }
+        if (!editingUser && (!formData.externalId.trim() || !formData.name.trim())) {
+            toast.error('ID Pengguna dan Nama wajib diisi');
+            return;
+        }
+
+        setSavingUser(true);
+        try {
+            const data = new FormData();
+            data.append('name', formData.name.trim());
+            if (formData.nik) data.append('nik', formData.nik);
+            if (formData.email) data.append('email', formData.email.trim());
+            data.append('role', formData.role);
+
+            if (formData.role === 'VENDOR') {
+                data.append('company', 'VENDOR');
+                data.append('division', 'VENDOR');
+                data.append('department', 'VENDOR');
+                data.append('vendorId', formData.vendorId);
+            } else {
+                if (formData.departmentId) data.append('departmentId', formData.departmentId);
+                data.append('preferredCanteenId', formData.preferredCanteenId || '');
+            }
+
+            if (photoFile) data.append('photo', photoFile);
+
+            if (editingUser) {
+                await api.put(`/api/users/${editingUser.id}`, data, {
+                    headers: { 'Content-Type': 'multipart/form-data' },
+                });
+                toast.success('Pengguna diperbarui');
+            } else {
+                data.append('externalId', formData.externalId.trim());
+                data.append('password', formData.password || 'default123');
+                await api.post('/api/users', data, {
+                    headers: { 'Content-Type': 'multipart/form-data' },
+                });
+                toast.success('Pengguna ditambahkan');
+            }
+            closeModal();
+            loadUsers();
+        } catch (error) {
+            toast.error((error as { response?: { data?: { error?: string } } })?.response?.data?.error || 'Gagal menyimpan pengguna');
+        } finally {
+            setSavingUser(false);
+        }
+    };
+
+    const capturePhoto = useCallback(() => {
+        const imageSrc = webcamRef.current?.getScreenshot();
+        if (imageSrc) {
+            setPhotoPreview(imageSrc);
+            fetch(imageSrc)
+                .then((res) => res.blob())
+                .then((blob) => {
+                    setPhotoFile(new File([blob], 'camera-capture.webp', { type: 'image/webp' }));
+                });
+            setShowCamera(false);
+        }
+    }, []);
+
     const toggleUserActive = async (user: User) => {
         const newStatus = !user.isActive;
         try {
             await api.put(`/api/users/${user.id}`, { isActive: newStatus });
             toast.success(newStatus ? `${user.name} diaktifkan` : `${user.name} dinonaktifkan`);
             loadUsers();
-        } catch (error: any) {
-            toast.error(error.response?.data?.error || 'Gagal mengubah status user');
+        } catch (error) {
+            toast.error((error as { response?: { data?: { error?: string } } })?.response?.data?.error || 'Gagal mengubah status');
         }
     };
 
-    // Get divisions for selected company
-    const currentCompany = companies.find(c => c.id === selectedCompany);
-    const currentDivision = currentCompany?.divisions.find(d => d.id === selectedDivision);
+    const confirmDelete = async () => {
+        if (!deleteTarget) return;
+        if (!deletePassword) {
+            toast.error('Masukkan password admin untuk konfirmasi');
+            return;
+        }
+        try {
+            await api.delete(`/api/users/${deleteTarget.id}`, { data: { password: deletePassword } });
+            toast.success('Pengguna dihapus permanen');
+            setDeleteTarget(null);
+            setDeletePassword('');
+            loadUsers();
+        } catch (error) {
+            toast.error((error as { response?: { data?: { error?: string } } })?.response?.data?.error || 'Gagal menghapus pengguna');
+        }
+    };
+
+    const handleBulkExecute = async () => {
+        const ids = selectedIds;
+        if (ids.length === 0) return;
+
+        if (bulkActionModal === 'reset-strike' && (!bulkPassword || bulkReason.trim().length < 5)) {
+            toast.error('Password admin dan alasan wajib diisi');
+            return;
+        }
+        if (bulkActionModal === 'reset-password' && !bulkNewPassword) {
+            toast.error('Password baru wajib diisi');
+            return;
+        }
+
+        setBulkSubmitting(true);
+        let ok = 0;
+        let fail = 0;
+        for (const id of ids) {
+            try {
+                if (bulkActionModal === 'deactivate') {
+                    await api.put(`/api/users/${id}`, { isActive: false });
+                } else if (bulkActionModal === 'reset-strike') {
+                    await api.post(`/api/blacklist/reset-strikes/${id}`, {
+                        adminPassword: bulkPassword,
+                        reason: bulkReason.trim(),
+                    });
+                } else if (bulkActionModal === 'reset-password') {
+                    await api.post(`/api/users/${id}/reset-password`, {
+                        newPassword: bulkNewPassword,
+                    });
+                }
+                ok++;
+            } catch {
+                fail++;
+            }
+        }
+        setBulkSubmitting(false);
+        setBulkActionModal(null);
+        setBulkPassword('');
+        setBulkReason('');
+        setBulkNewPassword('');
+        setSelectedIds([]);
+        toast.success(`${ok} berhasil diproses${fail > 0 ? `, ${fail} gagal` : ''}`);
+        loadUsers();
+    };
+
+    const departmentOptions = useMemo(() => {
+        const set = new Set<string>();
+        const targetCompanies = filterCompany
+            ? companies.filter((c) => c.name === filterCompany)
+            : companies;
+        targetCompanies.forEach((c) =>
+            c.divisions.forEach((d) => d.departments.forEach((dept) => set.add(dept.name)))
+        );
+        return Array.from(set).sort().map((name) => ({ value: name, label: name }));
+    }, [companies, filterCompany]);
+
+    const filters: DataTableFilter[] = [
+        {
+            key: 'company',
+            label: 'Semua perusahaan',
+            value: filterCompany,
+            onChange: (v) => {
+                setFilterCompany(v);
+                setFilterDepartment('');
+                setPage(1);
+            },
+            options: companies.map((c) => ({ value: c.name, label: c.name })),
+        },
+        {
+            key: 'department',
+            label: 'Semua departemen',
+            value: filterDepartment,
+            onChange: (v) => {
+                setFilterDepartment(v);
+                setPage(1);
+            },
+            options: departmentOptions,
+        },
+        {
+            key: 'role',
+            label: 'Semua role',
+            value: filterRole,
+            onChange: (v) => {
+                setFilterRole(v);
+                setPage(1);
+            },
+            options: [
+                { value: 'USER', label: 'Karyawan' },
+                { value: 'CANTEEN', label: 'Operator Kantin' },
+                { value: 'VENDOR', label: 'Vendor' },
+                { value: 'ADMIN', label: 'Admin' },
+            ],
+        },
+        {
+            key: 'status',
+            label: 'Semua status',
+            value: filterStatus === 'all' ? '' : filterStatus,
+            onChange: (v) => {
+                setFilterStatus(v || 'all');
+                setPage(1);
+            },
+            options: [
+                { value: 'active', label: 'Aktif' },
+                { value: 'inactive', label: 'Nonaktif' },
+                { value: 'blacklisted', label: 'Diblokir' },
+            ],
+        },
+    ];
+
+    const bulkActions: DataTableBulkAction[] = [
+        {
+            label: 'Nonaktifkan',
+            onClick: () => setBulkActionModal('deactivate'),
+        },
+        {
+            label: 'Reset strike',
+            onClick: () => setBulkActionModal('reset-strike'),
+        },
+        {
+            label: 'Reset password',
+            variant: 'danger',
+            onClick: () => setBulkActionModal('reset-password'),
+        },
+    ];
+
+    const sortedUsers = useMemo(() => {
+        const copy = [...users];
+        copy.sort((a, b) => {
+            let cmp = 0;
+            if (sortKey === 'name') cmp = a.name.localeCompare(b.name);
+            else if (sortKey === 'company') cmp = (a.company || '').localeCompare(b.company || '');
+            else if (sortKey === 'department') cmp = (a.department || '').localeCompare(b.department || '');
+            else if (sortKey === 'strike') cmp = a.noShowCount - b.noShowCount;
+            return sortDir === 'asc' ? cmp : -cmp;
+        });
+        return copy;
+    }, [users, sortKey, sortDir]);
+
+    const columns: DataTableColumn<User>[] = [
+        {
+            key: 'name',
+            header: 'Nama',
+            sortable: true,
+            render: (u) => {
+                const apiUrl = import.meta.env.VITE_API_URL || '';
+                return (
+                    <div className="flex items-center gap-2.5">
+                        {u.photo ? (
+                            <img
+                                src={`${apiUrl}${u.photo}`}
+                                alt=""
+                                className="w-8 h-8 rounded-full object-cover border border-[#e7e5e4] flex-shrink-0"
+                            />
+                        ) : (
+                            <div className="w-8 h-8 rounded-full bg-[#f5f5f4] text-[#57534e] text-[11px] font-bold flex items-center justify-center flex-shrink-0">
+                                {getInitials(u.name)}
+                            </div>
+                        )}
+                        <div className="min-w-0">
+                            <div className="font-semibold text-[#1c1917] truncate">{u.name}</div>
+                            <div className="text-[11.5px] font-mono text-[#78716c]">
+                                {u.externalId}
+                                {u.nik ? ` · ${u.nik}` : ''}
+                            </div>
+                        </div>
+                    </div>
+                );
+            },
+        },
+        {
+            key: 'company',
+            header: 'Perusahaan',
+            sortable: true,
+            render: (u) => <span className="text-[#57534e]">{u.company || '-'}</span>,
+        },
+        {
+            key: 'department',
+            header: 'Departemen',
+            sortable: true,
+            render: (u) => <span className="text-[#57534e]">{u.department || '-'}</span>,
+        },
+        {
+            key: 'role',
+            header: 'Role',
+            render: (u) => <RoleBadge role={u.role} />,
+        },
+        {
+            key: 'strike',
+            header: 'Strike',
+            align: 'right',
+            sortable: true,
+            render: (u) => {
+                const color =
+                    u.noShowCount >= 3
+                        ? 'text-[#b91c1c]'
+                        : u.noShowCount >= 1
+                            ? 'text-[#b45309]'
+                            : 'text-[#a8a29e]';
+                return <span className={`font-bold tabular-nums ${color}`}>{u.noShowCount}</span>;
+            },
+        },
+        {
+            key: 'status',
+            header: 'Status',
+            render: (u) => {
+                if (u.isBlacklisted) {
+                    return (
+                        <span className="inline-flex items-center gap-1.5 text-[12.5px] font-semibold text-[#b91c1c]">
+                            <span className="w-1.5 h-1.5 rounded-full bg-[#dc2626]" aria-hidden="true" />
+                            Diblokir
+                        </span>
+                    );
+                }
+                if (!u.isActive) {
+                    return (
+                        <span className="inline-flex items-center gap-1.5 text-[12.5px] font-medium text-[#78716c]">
+                            <span className="w-1.5 h-1.5 rounded-full bg-[#a8a29e]" aria-hidden="true" />
+                            Nonaktif
+                        </span>
+                    );
+                }
+                return (
+                    <span className="inline-flex items-center gap-1.5 text-[12.5px] font-semibold text-[#15803d]">
+                        <span className="w-1.5 h-1.5 rounded-full bg-[#16a34a]" aria-hidden="true" />
+                        Aktif
+                    </span>
+                );
+            },
+        },
+    ];
+
+    const rowActions: DataTableRowAction<User>[] = [
+        { label: 'Edit', onClick: (u) => startEdit(u) },
+        {
+            label: 'Aktifkan',
+            onClick: (u) => toggleUserActive(u),
+            hidden: (u) => u.isActive,
+        },
+        {
+            label: 'Nonaktifkan',
+            onClick: (u) => toggleUserActive(u),
+            hidden: (u) => !u.isActive,
+        },
+        {
+            label: 'Reset strike',
+            onClick: (u) => setStrikeResetTarget({ id: u.id, name: u.name, count: u.noShowCount }),
+            hidden: (u) => u.noShowCount <= 0,
+        },
+        {
+            label: 'Reset password',
+            onClick: (u) => setPasswordResetTarget({ id: u.id, name: u.name }),
+        },
+        {
+            label: 'Hapus permanen',
+            danger: true,
+            onClick: (u) => setDeleteTarget({ id: u.id, name: u.name }),
+        },
+    ];
+
+    const currentCompany = companies.find((c) => c.id === selectedCompany);
+    const currentDivision = currentCompany?.divisions.find((d) => d.id === selectedDivision);
 
     return (
-        <div className="space-y-6 animate-fade-in">
-            <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
-                <div>
-                    <h1 className="text-2xl font-bold text-[#1a1f37]">User Management</h1>
-                    <p className="text-slate-500">Kelola pengguna dan import dari Excel</p>
-                </div>
-
-                <div className="flex gap-3">
-                    <button onClick={openAddModal} className="bg-emerald-500 hover:bg-emerald-600 text-white px-4 py-2 rounded-xl flex items-center gap-2 font-medium transition-colors">
-                        <Plus className="w-4 h-4" />
-                        Tambah User
-                    </button>
-                    <button onClick={downloadTemplate} className="btn-secondary flex items-center gap-2">
-                        <Download className="w-4 h-4" />
-                        Template
-                    </button>
-                    <label className="bg-orange-500 hover:bg-orange-600 text-white px-4 py-2 rounded-xl flex items-center gap-2 font-medium cursor-pointer transition-colors">
-                        {isUploading ? <Loader2 className="w-4 h-4 animate-spin" /> : <Upload className="w-4 h-4" />}
-                        Import XLSX
-                        <input
-                            ref={fileInputRef}
-                            type="file"
-                            accept=".xlsx"
-                            onChange={handleFileUpload}
-                            className="hidden"
-                        />
-                    </label>
-                </div>
-            </div>
-
-            {/* Search and Filters */}
-            <div className="space-y-4">
-                <div className="flex flex-col sm:flex-row gap-3">
-                    <div className="relative flex-1 max-w-md">
-                        <Search className="absolute left-4 top-1/2 -translate-y-1/2 w-5 h-5 text-slate-400" />
-                        <input
-                            type="text"
-                            placeholder="Cari nama, ID, email, perusahaan, divisi, departemen..."
-                            value={search}
-                            onChange={(e) => { setSearch(e.target.value); setPage(1); }}
-                            className="input-field pl-12"
-                            autoComplete="off"
-                        />
-                    </div>
-                    <button
-                        onClick={() => setShowFilters(!showFilters)}
-                        className={`btn-secondary flex items-center gap-2 ${showFilters ? 'bg-orange-50 border-orange-300 text-orange-600' : ''}`}
-                    >
-                        <Filter className="w-4 h-4" />
-                        Filter
-                        {(filterCompany || filterDivision || filterDepartment) && (
-                            <span className="bg-orange-500 text-white text-xs px-1.5 py-0.5 rounded-full">
-                                {[filterCompany, filterDivision, filterDepartment].filter(Boolean).length}
-                            </span>
-                        )}
-                    </button>
-                </div>
-
-                {/* Filter Panel */}
-                {showFilters && (
-                    <div className="card p-4 animate-fade-in">
-                        <div className="flex flex-col sm:flex-row gap-4">
-                            {/* Company Filter */}
-                            <div className="flex-1">
-                                <label className="block text-sm text-slate-500 mb-2">Perusahaan</label>
-                                <select
-                                    value={filterCompany}
-                                    onChange={(e) => {
-                                        setFilterCompany(e.target.value);
-                                        setFilterDivision('');
-                                        setFilterDepartment('');
-                                        setPage(1);
-                                    }}
-                                    className="input-field"
-                                >
-                                    <option value="">Semua Perusahaan</option>
-                                    {companies.map(c => (
-                                        <option key={c.id} value={c.name}>{c.name}</option>
-                                    ))}
-                                </select>
-                            </div>
-
-                            {/* Division Filter */}
-                            <div className="flex-1">
-                                <label className="block text-sm text-slate-500 mb-2">Divisi</label>
-                                <select
-                                    value={filterDivision}
-                                    onChange={(e) => {
-                                        setFilterDivision(e.target.value);
-                                        setFilterDepartment('');
-                                        setPage(1);
-                                    }}
-                                    className="input-field disabled:opacity-50"
-                                    disabled={!filterCompany}
-                                >
-                                    <option value="">Semua Divisi</option>
-                                    {filterCompany && companies
-                                        .find(c => c.name === filterCompany)
-                                        ?.divisions.map(d => (
-                                            <option key={d.id} value={d.name}>{d.name}</option>
-                                        ))}
-                                </select>
-                            </div>
-
-                            {/* Department Filter */}
-                            <div className="flex-1">
-                                <label className="block text-sm text-slate-500 mb-2">Departemen</label>
-                                <select
-                                    value={filterDepartment}
-                                    onChange={(e) => {
-                                        setFilterDepartment(e.target.value);
-                                        setPage(1);
-                                    }}
-                                    className="input-field disabled:opacity-50"
-                                    disabled={!filterDivision}
-                                >
-                                    <option value="">Semua Departemen</option>
-                                    {filterDivision && companies
-                                        .find(c => c.name === filterCompany)
-                                        ?.divisions.find(d => d.name === filterDivision)
-                                        ?.departments.map(dept => (
-                                            <option key={dept.id} value={dept.name}>{dept.name}</option>
-                                        ))}
-                                </select>
-                            </div>
-
-                            {/* Status Filter */}
-                            <div className="flex-1">
-                                <label className="block text-sm text-slate-500 mb-2">Status User</label>
-                                <select
-                                    value={filterStatus}
-                                    onChange={(e) => {
-                                        setFilterStatus(e.target.value);
-                                        setPage(1);
-                                    }}
-                                    className="input-field"
-                                >
-                                    <option value="all">Semua Status</option>
-                                    <option value="active">Aktif</option>
-                                    <option value="inactive">Non-Aktif</option>
-                                </select>
-                            </div>
-
-                            {/* Clear Filters */}
-                            <div className="flex items-end">
-                                <button
-                                    onClick={() => {
-                                        setFilterCompany('');
-                                        setFilterDivision('');
-                                        setFilterDepartment('');
-                                        setFilterStatus('all');
-                                        setPage(1);
-                                    }}
-                                    className="btn-secondary text-sm"
-                                    disabled={!filterCompany && !filterDivision && !filterDepartment && filterStatus === 'all'}
-                                >
-                                    Reset Filter
-                                </button>
-                            </div>
-                        </div>
-                    </div>
-                )}
-            </div>
-
-            {/* Edit/Add Modal */}
-            {(editingUser || showAddModal) && (
-                <div className="fixed inset-0 bg-black/40 z-50 flex items-start sm:items-center justify-center p-4 overflow-y-auto">
-                    <div className="bg-white rounded-2xl p-6 w-full max-w-lg shadow-2xl animate-scale-in my-4 sm:my-0 max-h-[95vh] overflow-y-auto">
-                        <div className="flex items-center justify-between mb-6">
-                            <h2 className="text-xl font-bold text-[#1a1f37]">
-                                {editingUser ? 'Edit Pengguna' : 'Tambah Pengguna Baru'}
-                            </h2>
-                            <button onClick={closeModal} className="p-2 hover:bg-slate-100 rounded-lg transition-colors">
-                                <X className="w-5 h-5 text-slate-400" />
-                            </button>
-                        </div>
-
-                        <div className="space-y-4">
-                            {/* Photo Upload Section */}
-                            <div className="flex flex-col items-center justify-center mb-6 gap-4">
-                                <div className="relative w-32 h-32 rounded-full overflow-hidden bg-slate-100 border-2 border-slate-200">
-                                    {photoPreview ? (
-                                        <img src={photoPreview} alt="Preview" className="w-full h-full object-cover" />
-                                    ) : (
-                                        <div className="flex items-center justify-center w-full h-full text-slate-400">
-                                            <Users className="w-12 h-12" />
-                                        </div>
-                                    )}
-                                </div>
-                                <div className="flex gap-2">
-                                    <label className="btn-secondary text-sm cursor-pointer">
-                                        <Upload className="w-4 h-4 mr-2" />
-                                        Upload
-                                        <input type="file" accept="image/*" onChange={handlePhotoUpload} className="hidden" />
-                                    </label>
-                                    <button onClick={() => setShowCamera(true)} className="btn-secondary text-sm">
-                                        <Camera className="w-4 h-4 mr-2" />
-                                        Ambil Foto
-                                    </button>
-                                </div>
-                            </div>
-
-                            {/* Camera Modal */}
-                            {showCamera && (
-                                <div className="fixed inset-0 bg-black z-[60] flex flex-col items-center justify-center p-4">
-                                    <div className="relative w-full max-w-md bg-black rounded-2xl overflow-hidden aspect-[3/4]">
-                                        <Webcam
-                                            audio={false}
-                                            ref={webcamRef}
-                                            screenshotFormat="image/webp"
-                                            className="w-full h-full object-cover"
-                                            videoConstraints={{ facingMode: "user" }}
-                                        />
-                                        <button
-                                            onClick={() => setShowCamera(false)}
-                                            className="absolute top-4 right-4 p-2 bg-black/50 text-white rounded-full"
-                                        >
-                                            <X className="w-6 h-6" />
-                                        </button>
-                                        <button
-                                            onClick={capturePhoto}
-                                            className="absolute bottom-6 left-1/2 -translate-x-1/2 w-16 h-16 bg-white rounded-full border-4 border-slate-300 shadow-lg active:scale-95 transition-transform"
-                                        />
-                                    </div>
-                                </div>
-                            )}
-
-                            {/* User ID - only editable when adding */}
-                            <div>
-                                <label className="block text-sm text-slate-500 mb-1">ID Pengguna *</label>
-                                <input
-                                    type="text"
-                                    value={formData.externalId}
-                                    onChange={(e) => setFormData(f => ({ ...f, externalId: e.target.value }))}
-                                    className="input-field"
-                                    disabled={!!editingUser}
-                                />
-                            </div>
-
-                            {/* NIK */}
-                            <div>
-                                <label className="block text-sm text-slate-500 mb-1">NIK <span className="text-xs text-slate-400">(opsional, angka saja)</span></label>
-                                <input
-                                    type="text"
-                                    value={formData.nik}
-                                    onChange={(e) => {
-                                        const val = e.target.value.replace(/\D/g, ''); // Only allow numbers
-                                        setFormData(f => ({ ...f, nik: val }));
-                                    }}
-                                    className="input-field"
-                                    placeholder="NIK Perusahaan"
-                                />
-                            </div>
-
-                            {/* Name */}
-                            <div>
-                                <label className="block text-sm text-slate-500 mb-1">Nama *</label>
-                                <input
-                                    type="text"
-                                    value={formData.name}
-                                    onChange={(e) => setFormData(f => ({ ...f, name: e.target.value }))}
-                                    className="input-field"
-                                />
-                            </div>
-
-                            {/* Email */}
-                            <div>
-                                <label className="block text-sm text-slate-500 mb-1">Email</label>
-                                <input
-                                    type="email"
-                                    value={formData.email}
-                                    onChange={(e) => setFormData(f => ({ ...f, email: e.target.value }))}
-                                    className="input-field"
-                                />
-                            </div>
-
-                            {/* Company, Division, Department - hidden for VENDOR role */}
-                            {formData.role !== 'VENDOR' && (
-                                <>
-                                    {/* Company Dropdown */}
-                                    <div>
-                                        <label className="block text-sm text-slate-500 mb-1">Perusahaan</label>
-                                        <select
-                                            value={selectedCompany}
-                                            onChange={(e) => {
-                                                setSelectedCompany(e.target.value);
-                                                setSelectedDivision('');
-                                                setFormData(f => ({ ...f, departmentId: '' }));
-                                            }}
-                                            className="input-field"
-                                        >
-                                            <option value="">Pilih Perusahaan...</option>
-                                            {companies.map(c => (
-                                                <option key={c.id} value={c.id}>{c.name}</option>
-                                            ))}
-                                        </select>
-                                    </div>
-
-                                    {/* Division Dropdown */}
-                                    {selectedCompany && (
-                                        <div>
-                                            <label className="block text-sm text-slate-500 mb-1">Divisi</label>
-                                            <select
-                                                value={selectedDivision}
-                                                onChange={(e) => {
-                                                    setSelectedDivision(e.target.value);
-                                                    setFormData(f => ({ ...f, departmentId: '' }));
-                                                }}
-                                                className="input-field"
-                                            >
-                                                <option value="">Pilih Divisi...</option>
-                                                {currentCompany?.divisions.map(d => (
-                                                    <option key={d.id} value={d.id}>{d.name}</option>
-                                                ))}
-                                            </select>
-                                        </div>
-                                    )}
-
-                                    {/* Department Dropdown */}
-                                    {selectedDivision && (
-                                        <div>
-                                            <label className="block text-sm text-slate-500 mb-1">Departemen</label>
-                                            <select
-                                                value={formData.departmentId}
-                                                onChange={(e) => setFormData(f => ({ ...f, departmentId: e.target.value }))}
-                                                className="input-field"
-                                            >
-                                                <option value="">Pilih Departemen...</option>
-                                                {currentDivision?.departments.map(d => (
-                                                    <option key={d.id} value={d.id}>{d.name}</option>
-                                                ))}
-                                            </select>
-                                        </div>
-                                    )}
-                                </>
-                            )}
-
-                            {/* Role */}
-                            <div>
-                                <label className="block text-sm text-slate-500 mb-1">Role</label>
-                                <select
-                                    value={formData.role}
-                                    onChange={(e) => setFormData(f => ({ ...f, role: e.target.value }))}
-                                    className="input-field"
-                                >
-                                    <option value="USER">User</option>
-                                    <option value="ADMIN">Admin</option>
-                                    <option value="CANTEEN">Canteen</option>
-                                    <option value="VENDOR">Vendor</option>
-                                </select>
-                            </div>
-
-                            {/* Default Canteen - hidden for VENDOR role */}
-                            {formData.role !== 'VENDOR' && (
-                                <div>
-                                    <label className="block text-sm text-slate-500 mb-1">Kantin Default</label>
-                                    <select
-                                        value={formData.preferredCanteenId}
-                                        onChange={(e) => setFormData(f => ({ ...f, preferredCanteenId: e.target.value }))}
-                                        className="input-field"
-                                    >
-                                        <option value="">Tidak Ada</option>
-                                        {canteens.filter(c => c.isActive).map(c => (
-                                            <option key={c.id} value={c.id}>{c.name} {c.location ? `(${c.location})` : ''}</option>
-                                        ))}
-                                    </select>
-                                </div>
-                            )}
-
-                            {/* Vendor Selection - show only for VENDOR role */}
-                            {formData.role === 'VENDOR' && (
-                                <div>
-                                    <label className="block text-sm text-slate-500 mb-1">Vendor *</label>
-                                    <select
-                                        value={formData.vendorId}
-                                        onChange={(e) => setFormData(f => ({ ...f, vendorId: e.target.value }))}
-                                        className="input-field"
-                                        required
-                                    >
-                                        <option value="">Pilih Vendor</option>
-                                        {vendors.map(v => (
-                                            <option key={v.id} value={v.id}>{v.name}</option>
-                                        ))}
-                                    </select>
-                                </div>
-                            )}
-
-                            {/* Password - only for new users */}
-                            {!editingUser && (
-                                <div>
-                                    <label className="block text-sm text-slate-500 mb-1">Password</label>
-                                    <input
-                                        type="password"
-                                        value={formData.password}
-                                        onChange={(e) => setFormData(f => ({ ...f, password: e.target.value }))}
-                                        className="input-field"
-                                        placeholder="Kosongkan untuk default: default123"
-                                    />
-                                </div>
-                            )}
-                        </div>
-
-                        <div className="flex gap-3 mt-6">
-                            <button onClick={saveUser} className="bg-emerald-500 hover:bg-emerald-600 text-white px-4 py-2 rounded-xl flex items-center gap-2 flex-1 justify-center font-medium transition-colors">
-                                <Save className="w-4 h-4" />
-                                {editingUser ? 'Perbarui' : 'Buat'}
-                            </button>
-                            <button onClick={closeModal} className="btn-secondary flex-1">
-                                Batal
-                            </button>
-                        </div>
-                    </div>
-                </div>
-            )}
-
-            {/* Users Table */}
-            <div className="card p-0 overflow-hidden">
-                {isLoading ? (
-                    <div className="flex items-center justify-center py-20">
-                        <Loader2 className="w-8 h-8 animate-spin text-orange-500" />
-                    </div>
-                ) : users.length === 0 ? (
-                    <div className="text-center py-20">
-                        <div className="w-16 h-16 mx-auto mb-4 rounded-full bg-slate-100 flex items-center justify-center">
-                            <Users className="w-8 h-8 text-slate-400" />
-                        </div>
-                        <p className="text-slate-500">Tidak ada pengguna ditemukan</p>
-                    </div>
-                ) : (
+        <div className="space-y-4">
+            <PageHeader
+                title="Pengguna"
+                subtitle={`${total.toLocaleString('id-ID')} pengguna terdaftar`}
+                actions={
                     <>
-                        <div className="overflow-x-auto">
-                            <table className="w-full">
-                                <thead>
-                                    <tr className="border-b border-white/5">
-                                        <th className="table-header">ID HRIS</th>
-                                        <th className="table-header">NIK</th>
-                                        <th className="table-header">Nama</th>
-                                        <th className="table-header">Perusahaan</th>
-                                        <th className="table-header">Divisi</th>
-                                        <th className="table-header">Departemen</th>
-                                        <th className="table-header">Kantin</th>
-                                        <th className="table-header">Role</th>
-                                        <th className="table-header">Strike</th>
-                                        <th className="table-header">Status</th>
-                                        <th className="table-header">Aksi</th>
-                                    </tr>
-                                </thead>
-                                <tbody>
-                                    {users.map((user) => (
-                                        <tr key={user.id} className="table-row">
-                                            <td className="table-cell">
-                                                <div className="flex items-center gap-3">
-                                                    <div className="w-10 h-10 rounded-full overflow-hidden bg-slate-100 flex-shrink-0">
-                                                        {user.photo ? (
-                                                            <img src={`${import.meta.env.VITE_API_URL ?? ''}${user.photo}`} alt={user.name} className="w-full h-full object-cover" />
-                                                        ) : (
-                                                            <div className="w-full h-full flex items-center justify-center text-slate-400">
-                                                                <Users className="w-5 h-5" />
-                                                            </div>
-                                                        )}
-                                                    </div>
-                                                    <span className="text-apple-blue font-mono">{user.externalId}</span>
-                                                </div>
-                                            </td>
-                                            <td className="table-cell text-cyan-400 font-mono">{user.nik || '-'}</td>
-                                            <td className="table-cell">
-                                                <p className="text-white font-medium">{user.name}</p>
-                                                <p className="text-caption text-dark-text-secondary">{user.email}</p>
-                                            </td>
-                                            <td className="table-cell text-dark-text-secondary">{user.company}</td>
-                                            <td className="table-cell text-dark-text-secondary">{user.division}</td>
-                                            <td className="table-cell text-dark-text-secondary">{user.department}</td>
-                                            <td className="table-cell">
-                                                {user.preferredCanteen ? (
-                                                    <span className="px-2.5 py-1 rounded-full text-xs font-medium bg-cyan-50 text-cyan-600">
-                                                        {user.preferredCanteen.name}
-                                                    </span>
-                                                ) : (
-                                                    <span className="text-dark-text-secondary">-</span>
-                                                )}
-                                            </td>
-                                            <td className="table-cell">
-                                                {user.role === 'ADMIN' ? (
-                                                    <span className="px-2.5 py-1 rounded-full text-xs font-medium bg-purple-50 text-purple-600">Admin</span>
-                                                ) : user.role === 'CANTEEN' ? (
-                                                    <span className="px-2.5 py-1 rounded-full text-xs font-medium bg-amber-50 text-amber-600">Canteen</span>
-                                                ) : user.role === 'VENDOR' ? (
-                                                    <span className="px-2.5 py-1 rounded-full text-xs font-medium bg-teal-50 text-teal-600">Vendor</span>
-                                                ) : (
-                                                    <span className="px-2.5 py-1 rounded-full text-xs font-medium bg-blue-50 text-blue-600">User</span>
-                                                )}
-                                            </td>
-                                            <td className="table-cell">
-                                                {user.noShowCount > 0 ? (
-                                                    <div className="flex items-center gap-2">
-                                                        <span className="badge badge-warning">
-                                                            <AlertCircle className="w-3.5 h-3.5" />
-                                                            {user.noShowCount}
-                                                        </span>
-                                                        <button
-                                                            onClick={() => setStrikeResetTarget({ id: user.id, name: user.name, count: user.noShowCount })}
-                                                            className="btn-icon text-apple-green"
-                                                            title="Reset Strikes"
-                                                        >
-                                                            <RotateCcw className="w-3.5 h-3.5" />
-                                                        </button>
-                                                    </div>
-                                                ) : (
-                                                    <span className="text-dark-text-secondary">0</span>
-                                                )}
-                                            </td>
-                                            <td className="table-cell">
-                                                {user.isBlacklisted ? (
-                                                    <span className="px-2.5 py-1 rounded-full text-xs font-medium bg-red-50 text-red-600">Blacklist</span>
-                                                ) : !user.isActive ? (
-                                                    <span className="px-2.5 py-1 rounded-full text-xs font-medium bg-slate-100 text-slate-500">Non-Aktif</span>
-                                                ) : (
-                                                    <span className="px-2.5 py-1 rounded-full text-xs font-medium bg-emerald-50 text-emerald-600">Aktif</span>
-                                                )}
-                                            </td>
-                                            <td className="table-cell">
-                                                <div className="flex items-center gap-1">
-                                                    <button
-                                                        onClick={() => toggleUserActive(user)}
-                                                        className={`btn-icon ${user.isActive ? 'hover:text-orange-500' : 'hover:text-emerald-500'}`}
-                                                        title={user.isActive ? 'Nonaktifkan' : 'Aktifkan'}
-                                                    >
-                                                        <Power className="w-4 h-4" />
-                                                    </button>
-                                                    <button
-                                                        onClick={() => startEdit(user)}
-                                                        className="btn-icon"
-                                                        title="Edit"
-                                                    >
-                                                        <Edit2 className="w-4 h-4" />
-                                                    </button>
-                                                    <button
-                                                        onClick={() => setPasswordResetTarget({ id: user.id, name: user.name })}
-                                                        className="btn-icon hover:text-apple-orange"
-                                                        title="Reset Password"
-                                                    >
-                                                        <Key className="w-4 h-4" />
-                                                    </button>
-                                                    <button
-                                                        onClick={() => setDeleteTarget({ id: user.id, name: user.name })}
-                                                        className="btn-icon hover:text-apple-red"
-                                                        title="Hapus"
-                                                        type="button"
-                                                    >
-                                                        <Trash2 className="w-4 h-4" />
-                                                    </button>
-                                                </div>
-                                            </td>
-                                        </tr>
-                                    ))}
-                                </tbody>
-                            </table>
-                        </div>
-
-                        {/* Pagination */}
-                        {totalPages > 1 && (
-                            <div className="flex items-center justify-between px-6 py-4 border-t border-white/5">
-                                <p className="text-callout text-dark-text-secondary">Halaman {page} dari {totalPages}</p>
-                                <div className="flex items-center gap-2">
-                                    <button
-                                        onClick={() => setPage(p => Math.max(1, p - 1))}
-                                        disabled={page === 1}
-                                        className="btn-icon disabled:opacity-30"
-                                    >
-                                        <ChevronLeft className="w-5 h-5" />
-                                    </button>
-                                    <button
-                                        onClick={() => setPage(p => Math.min(totalPages, p + 1))}
-                                        disabled={page === totalPages}
-                                        className="btn-icon disabled:opacity-30"
-                                    >
-                                        <ChevronRight className="w-5 h-5" />
-                                    </button>
-                                </div>
-                            </div>
-                        )}
+                        <Button
+                            variant="ghost"
+                            size="sm"
+                            onClick={downloadTemplate}
+                            leftIcon={<FileDown className="w-3.5 h-3.5" aria-hidden="true" />}
+                        >
+                            Template
+                        </Button>
+                        <label className="inline-flex items-center gap-1.5 h-[34px] px-3 rounded-[9px] text-[13px] font-semibold bg-[#fff] hover:bg-[#fafaf9] text-[#1c1917] border border-[#e7e5e4] cursor-pointer transition-colors">
+                            <Upload className="w-3.5 h-3.5" aria-hidden="true" />
+                            <span>{isUploading ? 'Mengimpor...' : 'Impor Excel'}</span>
+                            <input
+                                ref={fileInputRef}
+                                type="file"
+                                accept=".xlsx"
+                                onChange={handleFileUpload}
+                                className="hidden"
+                            />
+                        </label>
+                        <Button
+                            variant="secondary"
+                            size="sm"
+                            onClick={handleExportCsv}
+                            leftIcon={<Download className="w-3.5 h-3.5" aria-hidden="true" />}
+                        >
+                            Ekspor
+                        </Button>
+                        <Button
+                            variant="primary"
+                            size="sm"
+                            onClick={openAddModal}
+                            leftIcon={<Plus className="w-3.5 h-3.5" aria-hidden="true" />}
+                        >
+                            Tambah pengguna
+                        </Button>
                     </>
-                )}
-            </div>
+                }
+            />
+
+            <Card padding="none">
+                <DataTable
+                    data={sortedUsers}
+                    columns={columns}
+                    getRowId={(u) => u.id}
+                    loading={isLoading}
+                    emptyTitle="Tidak ada pengguna ditemukan"
+                    emptyDescription="Ubah kata kunci atau filter untuk melihat daftar pengguna."
+                    searchValue={search}
+                    onSearchChange={(v) => {
+                        setSearch(v);
+                        setPage(1);
+                    }}
+                    searchPlaceholder="Cari nama, ID, atau NIK..."
+                    filters={filters}
+                    onResetFilters={() => {
+                        setSearch('');
+                        setFilterCompany('');
+                        setFilterDepartment('');
+                        setFilterRole('');
+                        setFilterStatus('all');
+                        setPage(1);
+                    }}
+                    sortKey={sortKey}
+                    sortDir={sortDir}
+                    onSortChange={(k) => {
+                        if (sortKey === k) setSortDir((d) => (d === 'asc' ? 'desc' : 'asc'));
+                        else {
+                            setSortKey(k);
+                            setSortDir('asc');
+                        }
+                    }}
+                    selectable
+                    selectedIds={selectedIds}
+                    onSelectionChange={setSelectedIds}
+                    bulkActions={bulkActions}
+                    rowActions={rowActions}
+                    getRowLabel={(u) => u.name}
+                    footer={
+                        <Pagination
+                            page={page}
+                            limit={limit}
+                            total={total}
+                            onPageChange={setPage}
+                            onLimitChange={(l) => {
+                                setLimit(l);
+                                setPage(1);
+                            }}
+                            variant="admin"
+                            showJumpToPage
+                        />
+                    }
+                />
+            </Card>
+
+            {/* Add / Edit User Modal */}
+            <Modal
+                open={Boolean(editingUser || showAddModal)}
+                onClose={closeModal}
+                title={editingUser ? 'Edit pengguna' : 'Tambah pengguna baru'}
+                size="md"
+                footer={
+                    <>
+                        <Button variant="secondary" onClick={closeModal}>
+                            Batal
+                        </Button>
+                        <Button variant="primary" loading={savingUser} onClick={saveUser}>
+                            {editingUser ? 'Simpan perubahan' : 'Buat pengguna'}
+                        </Button>
+                    </>
+                }
+            >
+                <div className="space-y-4">
+                    <div className="flex flex-col items-center gap-3 pb-2">
+                        <div className="w-24 h-24 rounded-full overflow-hidden bg-[#f5f5f4] border border-[#e7e5e4] flex items-center justify-center">
+                            {photoPreview ? (
+                                <img src={photoPreview} alt="Foto pengguna" className="w-full h-full object-cover" />
+                            ) : (
+                                <Users className="w-9 h-9 text-[#a8a29e]" aria-hidden="true" />
+                            )}
+                        </div>
+                        <div className="flex gap-2">
+                            <label className="inline-flex items-center gap-1.5 h-[32px] px-3 rounded-[8px] text-[12.5px] font-semibold bg-[#fff] hover:bg-[#fafaf9] text-[#1c1917] border border-[#e7e5e4] cursor-pointer">
+                                <Upload className="w-3.5 h-3.5" aria-hidden="true" />
+                                Unggah foto
+                                <input
+                                    type="file"
+                                    accept="image/*"
+                                    onChange={(e) => {
+                                        const file = e.target.files?.[0];
+                                        if (file) {
+                                            setPhotoFile(file);
+                                            setPhotoPreview(URL.createObjectURL(file));
+                                        }
+                                    }}
+                                    className="hidden"
+                                />
+                            </label>
+                            <Button
+                                type="button"
+                                variant="secondary"
+                                size="sm"
+                                onClick={() => setShowCamera(true)}
+                                leftIcon={<Camera className="w-3.5 h-3.5" aria-hidden="true" />}
+                            >
+                                Kamera
+                            </Button>
+                        </div>
+                    </div>
+
+                    {showCamera && (
+                        <div className="fixed inset-0 bg-[#000]/90 z-[60] flex flex-col items-center justify-center p-4">
+                            <div className="relative w-full max-w-md bg-[#000] rounded-[14px] overflow-hidden aspect-[3/4]">
+                                <Webcam
+                                    audio={false}
+                                    ref={webcamRef}
+                                    screenshotFormat="image/webp"
+                                    className="w-full h-full object-cover"
+                                    videoConstraints={{ facingMode: 'user' }}
+                                />
+                                <button
+                                    type="button"
+                                    aria-label="Tutup kamera"
+                                    onClick={() => setShowCamera(false)}
+                                    className="absolute top-3 right-3 p-2 bg-[#000]/60 text-[#fff] rounded-full border-0 cursor-pointer"
+                                >
+                                    <X className="w-5 h-5" />
+                                </button>
+                                <button
+                                    type="button"
+                                    aria-label="Ambil foto"
+                                    onClick={capturePhoto}
+                                    className="absolute bottom-5 left-1/2 -translate-x-1/2 w-14 h-14 bg-[#fff] rounded-full border-4 border-[#d6d3d1] cursor-pointer"
+                                />
+                            </div>
+                        </div>
+                    )}
+
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                        <Field label="ID Pengguna" required>
+                            <Input
+                                value={formData.externalId}
+                                disabled={Boolean(editingUser)}
+                                onChange={(e) => setFormData((f) => ({ ...f, externalId: e.target.value }))}
+                            />
+                        </Field>
+                        <Field label="NIK" hint="Angka saja (opsional)">
+                            <Input
+                                value={formData.nik}
+                                onChange={(e) =>
+                                    setFormData((f) => ({ ...f, nik: e.target.value.replace(/\D/g, '') }))
+                                }
+                            />
+                        </Field>
+                    </div>
+
+                    <Field label="Nama lengkap" required>
+                        <Input
+                            value={formData.name}
+                            onChange={(e) => setFormData((f) => ({ ...f, name: e.target.value }))}
+                        />
+                    </Field>
+
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                        <Field label="Email">
+                            <Input
+                                type="email"
+                                value={formData.email}
+                                onChange={(e) => setFormData((f) => ({ ...f, email: e.target.value }))}
+                            />
+                        </Field>
+                        <Field label="Role" required>
+                            <Select
+                                value={formData.role}
+                                onChange={(e) => setFormData((f) => ({ ...f, role: e.target.value }))}
+                            >
+                                <option value="USER">Karyawan</option>
+                                <option value="CANTEEN">Operator Kantin</option>
+                                <option value="VENDOR">Vendor</option>
+                                <option value="ADMIN">Admin</option>
+                            </Select>
+                        </Field>
+                    </div>
+
+                    {formData.role !== 'VENDOR' ? (
+                        <>
+                            <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                                <Field label="Perusahaan">
+                                    <Select
+                                        value={selectedCompany}
+                                        onChange={(e) => {
+                                            setSelectedCompany(e.target.value);
+                                            setSelectedDivision('');
+                                            setFormData((f) => ({ ...f, departmentId: '' }));
+                                        }}
+                                    >
+                                        <option value="">Pilih...</option>
+                                        {companies.map((c) => (
+                                            <option key={c.id} value={c.id}>
+                                                {c.name}
+                                            </option>
+                                        ))}
+                                    </Select>
+                                </Field>
+                                <Field label="Divisi">
+                                    <Select
+                                        value={selectedDivision}
+                                        disabled={!selectedCompany}
+                                        onChange={(e) => {
+                                            setSelectedDivision(e.target.value);
+                                            setFormData((f) => ({ ...f, departmentId: '' }));
+                                        }}
+                                    >
+                                        <option value="">Pilih...</option>
+                                        {currentCompany?.divisions.map((d) => (
+                                            <option key={d.id} value={d.id}>
+                                                {d.name}
+                                            </option>
+                                        ))}
+                                    </Select>
+                                </Field>
+                                <Field label="Departemen">
+                                    <Select
+                                        value={formData.departmentId}
+                                        disabled={!selectedDivision}
+                                        onChange={(e) =>
+                                            setFormData((f) => ({ ...f, departmentId: e.target.value }))
+                                        }
+                                    >
+                                        <option value="">Pilih...</option>
+                                        {currentDivision?.departments.map((d) => (
+                                            <option key={d.id} value={d.id}>
+                                                {d.name}
+                                            </option>
+                                        ))}
+                                    </Select>
+                                </Field>
+                            </div>
+
+                            <Field label="Kantin default">
+                                <Select
+                                    value={formData.preferredCanteenId}
+                                    onChange={(e) =>
+                                        setFormData((f) => ({ ...f, preferredCanteenId: e.target.value }))
+                                    }
+                                >
+                                    <option value="">Tidak ada</option>
+                                    {canteens
+                                        .filter((c) => c.isActive)
+                                        .map((c) => (
+                                            <option key={c.id} value={c.id}>
+                                                {c.name} {c.location ? `(${c.location})` : ''}
+                                            </option>
+                                        ))}
+                                </Select>
+                            </Field>
+                        </>
+                    ) : (
+                        <Field label="Vendor" required>
+                            <Select
+                                value={formData.vendorId}
+                                onChange={(e) => setFormData((f) => ({ ...f, vendorId: e.target.value }))}
+                            >
+                                <option value="">Pilih Vendor...</option>
+                                {vendors.map((v) => (
+                                    <option key={v.id} value={v.id}>
+                                        {v.name}
+                                    </option>
+                                ))}
+                            </Select>
+                        </Field>
+                    )}
+
+                    {!editingUser && (
+                        <Field label="Password awal" hint="Kosongkan untuk default: default123">
+                            <Input
+                                type="password"
+                                value={formData.password}
+                                onChange={(e) => setFormData((f) => ({ ...f, password: e.target.value }))}
+                            />
+                        </Field>
+                    )}
+                </div>
+            </Modal>
 
             {/* Delete Confirmation Modal */}
-            {deleteTarget && (
-                <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-50">
-                    <div className="bg-white rounded-2xl p-6 max-w-md w-full mx-4 shadow-2xl">
-                        <h3 className="text-lg font-semibold text-red-600 mb-4 flex items-center gap-2">
-                            <Trash2 className="w-5 h-5" />
-                            Hapus Permanen
-                        </h3>
-                        <div className="bg-red-50 border border-red-200 rounded-lg p-3 mb-4">
-                            <p className="text-sm text-red-700">
-                                <strong>⚠️ PERINGATAN:</strong> User <strong>"{deleteTarget.name}"</strong> akan dihapus permanen dari sistem beserta semua data terkait (pesanan, blacklist, dll). Tindakan ini tidak dapat dibatalkan!
-                            </p>
-                        </div>
-
-                        <div className="space-y-4 mb-6">
-                            <div>
-                                <label className="block text-sm text-slate-500 mb-1">Password Admin (Konfirmasi) *</label>
-                                <input
-                                    type="password"
-                                    value={deletePassword}
-                                    onChange={(e) => setDeletePassword(e.target.value)}
-                                    className="input-field"
-                                    placeholder="Masukkan password Anda"
-                                    autoFocus
-                                />
-                            </div>
-                        </div>
-
-                        <div className="flex gap-3 justify-end">
-                            <button
-                                onClick={() => {
-                                    setDeleteTarget(null);
-                                    setDeletePassword('');
-                                }}
-                                className="px-4 py-2 rounded-xl bg-slate-100 text-slate-700 hover:bg-slate-200 transition-colors font-medium"
-                            >
-                                Batal
-                            </button>
-                            <button
-                                onClick={confirmDelete}
-                                className="px-4 py-2 rounded-xl bg-red-500 text-white hover:bg-red-600 transition-colors font-medium"
-                            >
-                                Hapus Permanen
-                            </button>
-                        </div>
+            <Modal
+                open={Boolean(deleteTarget)}
+                onClose={() => {
+                    setDeleteTarget(null);
+                    setDeletePassword('');
+                }}
+                title="Hapus pengguna permanen"
+                size="md"
+                footer={
+                    <>
+                        <Button
+                            variant="secondary"
+                            onClick={() => {
+                                setDeleteTarget(null);
+                                setDeletePassword('');
+                            }}
+                        >
+                            Batal
+                        </Button>
+                        <Button variant="danger" onClick={confirmDelete}>
+                            Hapus permanen
+                        </Button>
+                    </>
+                }
+            >
+                <div className="space-y-4">
+                    <div className="px-3.5 py-2.5 rounded-[10px] bg-[#fef2f2] border border-[#fecaca] text-[13px] text-[#991b1b]">
+                        Pengguna <b>{deleteTarget?.name}</b> beserta seluruh riwayat pesanannya akan dihapus permanen.
                     </div>
+                    <Field label="Password admin (konfirmasi)" required>
+                        <Input
+                            type="password"
+                            value={deletePassword}
+                            onChange={(e) => setDeletePassword(e.target.value)}
+                            placeholder="Masukkan password Anda"
+                        />
+                    </Field>
                 </div>
-            )}
+            </Modal>
 
-            {/* Strike Reset Modal */}
-            {strikeResetTarget && (
-                <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-50">
-                    <div className="bg-white rounded-2xl p-6 max-w-md w-full mx-4 shadow-2xl">
-                        <h3 className="text-lg font-semibold text-[#1a1f37] mb-4">
-                            Reset Strikes - {strikeResetTarget.name}
-                        </h3>
-                        <p className="text-slate-500 mb-4">
-                            Current strikes: <span className="text-amber-600 font-bold">{strikeResetTarget.count}</span>
-                        </p>
-
-                        <div className="space-y-4">
-                            <div>
-                                <label className="block text-sm text-slate-500 mb-1">Password Admin *</label>
-                                <input
-                                    type="password"
-                                    value={strikeResetForm.password}
-                                    onChange={(e) => setStrikeResetForm(f => ({ ...f, password: e.target.value }))}
-                                    className="input-field"
-                                    placeholder="Masukkan password Anda"
-                                />
-                            </div>
-                            <div>
-                                <label className="block text-sm text-slate-500 mb-1">Alasan *</label>
-                                <input
-                                    type="text"
-                                    value={strikeResetForm.reason}
-                                    onChange={(e) => setStrikeResetForm(f => ({ ...f, reason: e.target.value }))}
-                                    className="input-field"
-                                    placeholder="Alasan reset strikes"
-                                />
-                            </div>
-                            <div>
-                                <label className="block text-sm text-slate-500 mb-1">Kurangi (opsional, kosong = reset ke 0)</label>
-                                <input
-                                    type="number"
-                                    value={strikeResetForm.reduceBy}
-                                    onChange={(e) => setStrikeResetForm(f => ({ ...f, reduceBy: e.target.value }))}
-                                    className="input-field"
-                                    placeholder="Jumlah yang dikurangi"
-                                    min="1"
-                                    max={strikeResetTarget.count}
-                                />
-                            </div>
-                        </div>
-
-                        <div className="flex gap-3 justify-end mt-6">
-                            <button
-                                onClick={() => {
+            {/* Single Strike Reset Modal */}
+            <Modal
+                open={Boolean(strikeResetTarget)}
+                onClose={() => {
+                    setStrikeResetTarget(null);
+                    setStrikeResetForm({ password: '', reason: '', reduceBy: '' });
+                }}
+                title={`Reset strike — ${strikeResetTarget?.name || ''}`}
+                size="md"
+                footer={
+                    <>
+                        <Button
+                            variant="secondary"
+                            onClick={() => {
+                                setStrikeResetTarget(null);
+                                setStrikeResetForm({ password: '', reason: '', reduceBy: '' });
+                            }}
+                        >
+                            Batal
+                        </Button>
+                        <Button
+                            variant="primary"
+                            onClick={async () => {
+                                if (!strikeResetTarget) return;
+                                try {
+                                    await api.post(`/api/blacklist/reset-strikes/${strikeResetTarget.id}`, {
+                                        adminPassword: strikeResetForm.password,
+                                        reason: strikeResetForm.reason,
+                                        reduceBy: strikeResetForm.reduceBy || undefined,
+                                    });
+                                    toast.success('Strike berhasil direset');
                                     setStrikeResetTarget(null);
                                     setStrikeResetForm({ password: '', reason: '', reduceBy: '' });
-                                }}
-                                className="px-4 py-2 rounded-xl bg-slate-100 text-slate-700 hover:bg-slate-200 transition-colors font-medium"
-                            >
-                                Batal
-                            </button>
-                            <button
-                                onClick={async () => {
-                                    try {
-                                        await api.post(`/api/blacklist/reset-strikes/${strikeResetTarget.id}`, {
-                                            adminPassword: strikeResetForm.password,
-                                            reason: strikeResetForm.reason,
-                                            reduceBy: strikeResetForm.reduceBy || undefined,
-                                        });
-                                        toast.success('Strikes updated successfully');
-                                        setStrikeResetTarget(null);
-                                        setStrikeResetForm({ password: '', reason: '', reduceBy: '' });
-                                        loadUsers();
-                                    } catch (error: any) {
-                                        toast.error(error.response?.data?.error || 'Failed to reset strikes');
-                                    }
-                                }}
-                                className="px-4 py-2 rounded-xl bg-emerald-500 text-white hover:bg-emerald-600 transition-colors font-medium"
-                            >
-                                Confirm
-                            </button>
-                        </div>
-                    </div>
+                                    loadUsers();
+                                } catch (error) {
+                                    toast.error((error as { response?: { data?: { error?: string } } })?.response?.data?.error || 'Gagal reset strike');
+                                }
+                            }}
+                        >
+                            Konfirmasi
+                        </Button>
+                    </>
+                }
+            >
+                <div className="space-y-3">
+                    <p className="text-[13px] text-[#57534e]">
+                        Strike saat ini: <b className="text-[#b45309]">{strikeResetTarget?.count}</b>
+                    </p>
+                    <Field label="Password admin" required>
+                        <Input
+                            type="password"
+                            value={strikeResetForm.password}
+                            onChange={(e) => setStrikeResetForm((f) => ({ ...f, password: e.target.value }))}
+                        />
+                    </Field>
+                    <Field label="Alasan" required>
+                        <Input
+                            value={strikeResetForm.reason}
+                            onChange={(e) => setStrikeResetForm((f) => ({ ...f, reason: e.target.value }))}
+                            placeholder="Alasan reset strike..."
+                        />
+                    </Field>
+                    <Field label="Kurangi jumlah" hint="Kosongkan untuk reset ke 0">
+                        <Input
+                            type="number"
+                            min={1}
+                            max={strikeResetTarget?.count}
+                            value={strikeResetForm.reduceBy}
+                            onChange={(e) => setStrikeResetForm((f) => ({ ...f, reduceBy: e.target.value }))}
+                        />
+                    </Field>
                 </div>
-            )}
+            </Modal>
 
-            {/* Password Reset Modal */}
-            {passwordResetTarget && (
-                <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-50">
-                    <div className="bg-white rounded-2xl p-6 max-w-md w-full mx-4 shadow-2xl">
-                        <h3 className="text-lg font-semibold text-[#1a1f37] mb-4">
-                            Reset Password - {passwordResetTarget.name}
-                        </h3>
-                        <p className="text-slate-500 mb-4">
-                            Masukkan password baru untuk user ini. User harus mengganti password saat login pertama.
-                        </p>
-
-                        <div className="space-y-4">
-                            <div>
-                                <label className="block text-sm text-slate-500 mb-1">Password Baru *</label>
-                                <input
-                                    type="password"
-                                    value={newPasswordInput}
-                                    onChange={(e) => setNewPasswordInput(e.target.value)}
-                                    className="input-field"
-                                    placeholder="Masukkan password baru"
-                                />
-                            </div>
-                        </div>
-
-                        <div className="flex gap-3 justify-end mt-6">
-                            <button
-                                onClick={() => {
+            {/* Single Password Reset Modal */}
+            <Modal
+                open={Boolean(passwordResetTarget)}
+                onClose={() => {
+                    setPasswordResetTarget(null);
+                    setNewPasswordInput('');
+                }}
+                title={`Reset password — ${passwordResetTarget?.name || ''}`}
+                size="md"
+                footer={
+                    <>
+                        <Button
+                            variant="secondary"
+                            onClick={() => {
+                                setPasswordResetTarget(null);
+                                setNewPasswordInput('');
+                            }}
+                        >
+                            Batal
+                        </Button>
+                        <Button
+                            variant="primary"
+                            onClick={async () => {
+                                if (!passwordResetTarget || !newPasswordInput) {
+                                    toast.error('Password baru wajib diisi');
+                                    return;
+                                }
+                                try {
+                                    await api.post(`/api/users/${passwordResetTarget.id}/reset-password`, {
+                                        newPassword: newPasswordInput,
+                                    });
+                                    toast.success(`Password ${passwordResetTarget.name} direset`);
                                     setPasswordResetTarget(null);
                                     setNewPasswordInput('');
-                                }}
-                                className="px-4 py-2 rounded-xl bg-slate-100 text-slate-700 hover:bg-slate-200 transition-colors font-medium"
-                            >
-                                Batal
-                            </button>
-                            <button
-                                onClick={async () => {
-                                    if (!newPasswordInput) {
-                                        toast.error('Password baru harus diisi');
-                                        return;
-                                    }
-                                    try {
-                                        await api.post(`/api/users/${passwordResetTarget.id}/reset-password`, {
-                                            newPassword: newPasswordInput,
-                                        });
-                                        toast.success(`Password reset untuk ${passwordResetTarget.name}. User harus ganti password.`);
-                                        setPasswordResetTarget(null);
-                                        setNewPasswordInput('');
-                                    } catch (error: any) {
-                                        toast.error(error.response?.data?.error || 'Gagal reset password');
-                                    }
-                                }}
-                                className="px-4 py-2 rounded-xl bg-amber-500 text-white hover:bg-amber-600 transition-colors font-medium"
-                            >
-                                Reset Password
-                            </button>
-                        </div>
-                    </div>
+                                } catch (error) {
+                                    toast.error((error as { response?: { data?: { error?: string } } })?.response?.data?.error || 'Gagal reset password');
+                                }
+                            }}
+                        >
+                            Reset password
+                        </Button>
+                    </>
+                }
+            >
+                <div className="space-y-3">
+                    <p className="text-[13px] text-[#57534e]">
+                        Pengguna wajib mengganti password saat login berikutnya.
+                    </p>
+                    <Field label="Password baru" required>
+                        <Input
+                            type="password"
+                            value={newPasswordInput}
+                            onChange={(e) => setNewPasswordInput(e.target.value)}
+                            placeholder="Minimal 6 karakter"
+                        />
+                    </Field>
                 </div>
-            )}
+            </Modal>
+
+            {/* Bulk Action Modal */}
+            <Modal
+                open={Boolean(bulkActionModal)}
+                onClose={() => setBulkActionModal(null)}
+                title={
+                    bulkActionModal === 'deactivate'
+                        ? `Nonaktifkan ${selectedIds.length} pengguna?`
+                        : bulkActionModal === 'reset-strike'
+                            ? `Reset strike ${selectedIds.length} pengguna`
+                            : `Reset password ${selectedIds.length} pengguna`
+                }
+                size="md"
+                footer={
+                    <>
+                        <Button variant="secondary" onClick={() => setBulkActionModal(null)}>
+                            Batal
+                        </Button>
+                        <Button
+                            variant={bulkActionModal === 'reset-password' ? 'danger' : 'primary'}
+                            loading={bulkSubmitting}
+                            onClick={handleBulkExecute}
+                        >
+                            Jalankan ({selectedIds.length})
+                        </Button>
+                    </>
+                }
+            >
+                <div className="space-y-3">
+                    {bulkActionModal === 'deactivate' && (
+                        <p className="text-[13px] text-[#57534e]">
+                            Seluruh pengguna yang dipilih akan dinonaktifkan dan tidak dapat memesan makanan hingga diaktifkan kembali.
+                        </p>
+                    )}
+                    {bulkActionModal === 'reset-strike' && (
+                        <>
+                            <Field label="Password admin" required>
+                                <Input
+                                    type="password"
+                                    value={bulkPassword}
+                                    onChange={(e) => setBulkPassword(e.target.value)}
+                                />
+                            </Field>
+                            <Field label="Alasan" required>
+                                <Input
+                                    value={bulkReason}
+                                    onChange={(e) => setBulkReason(e.target.value)}
+                                    placeholder="Alasan reset strike massal..."
+                                />
+                            </Field>
+                        </>
+                    )}
+                    {bulkActionModal === 'reset-password' && (
+                        <Field label="Password baru untuk semua yang dipilih" required>
+                            <Input
+                                type="password"
+                                value={bulkNewPassword}
+                                onChange={(e) => setBulkNewPassword(e.target.value)}
+                                placeholder="Masukkan password baru"
+                            />
+                        </Field>
+                    )}
+                </div>
+            </Modal>
         </div>
     );
 }
