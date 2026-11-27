@@ -1221,6 +1221,18 @@ router.get('/stats/canteen-live', authMiddleware, canteenMiddleware, async (req:
         ]);
 
         const hhmm = (d: Date) => d.toISOString().slice(11, 16);
+        // Overnight shifts put two windows with the same clock time in this
+        // list (last night's shift breaks early today, tonight's breaks early
+        // tomorrow). Label each by the day its break actually happens.
+        const todayKey = today.toISOString().slice(0, 10);
+        const tomorrowKey = tomorrow.toISOString().slice(0, 10);
+        const dayLabelOf = (start: Date) => {
+            const key = start.toISOString().slice(0, 10);
+            const early = start.getUTCHours() < 6;
+            if (key === todayKey) return early ? 'Dini hari tadi' : 'Hari ini';
+            if (key === tomorrowKey) return early ? 'Besok dini hari' : 'Besok';
+            return key;
+        };
         const shiftStartOn = (date: Date, time: string) => {
             const start = new Date(date);
             const { hours, minutes } = parseShiftTime(time);
@@ -1311,6 +1323,7 @@ router.get('/stats/canteen-live', authMiddleware, canteenMiddleware, async (req:
                         : 'Selesai';
             return {
                 time: `${hhmm(w.breakStart)}–${hhmm(w.breakEnd)}`,
+                dayLabel: dayLabelOf(w.breakStart),
                 shiftNames: w.items.map((it) => it.shiftName),
                 total: wOrders.length,
                 pickedUp: wOrders.filter((o) => o.status === 'PICKED_UP').length,
@@ -1329,6 +1342,7 @@ router.get('/stats/canteen-live', authMiddleware, canteenMiddleware, async (req:
         let activeBreak: {
             status: 'active' | 'upcoming' | 'finished';
             time: string;
+            dayLabel: string;
             shiftNames: string[];
             remainingMinutes: number;
             total: number;
@@ -1408,6 +1422,7 @@ router.get('/stats/canteen-live', authMiddleware, canteenMiddleware, async (req:
             activeBreak = {
                 status,
                 time: `${hhmm(activeWindow.breakStart)}–${hhmm(activeWindow.breakEnd)}`,
+                dayLabel: dayLabelOf(activeWindow.breakStart),
                 shiftNames: activeWindow.items.map((it) => it.shiftName),
                 remainingMinutes,
                 total: wOrders.length,

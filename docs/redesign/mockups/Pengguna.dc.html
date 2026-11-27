@@ -1,0 +1,151 @@
+<!doctype html>
+<html lang="id">
+<head>
+<meta charset="utf-8">
+<title>Admin — Pengguna</title>
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&amp;display=swap" rel="stylesheet">
+<style>
+body{margin:0;background:#f7f7f5}
+a{color:#b45309;text-decoration:none}a:hover{color:#92400e}
+button,select,input{font-family:inherit}
+</style>
+</helmet>
+<div style="font-family:'Plus Jakarta Sans',system-ui,sans-serif;color:#1c1917;display:flex;flex-wrap:wrap;min-height:940px;background:#f7f7f5">
+  <aside style="flex:1 1 72px;max-width:72px;background:#0f172a;display:flex;flex-direction:column;align-items:center;padding:20px 0;gap:6px;box-sizing:border-box">
+    <div style="width:34px;height:34px;border-radius:10px;background:#f59e0b;color:#1c1917;display:flex;align-items:center;justify-content:center;font-weight:800;margin-bottom:14px">C</div>
+    <sc-for list="{{rail}}" as="r" hint-placeholder-count="6">
+      <a href="#" aria-label="{{r.label}}" title="{{r.label}}" style="{{r.style}}"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="{{r.d}}"></path></svg></a>
+    </sc-for>
+  </aside>
+
+  <div style="flex:999 1 560px;min-width:0;display:flex;flex-direction:column">
+    <header style="height:64px;background:#fff;border-bottom:1px solid #e7e5e4;display:flex;align-items:center;gap:8px;padding:0 28px;font-size:13px;color:#78716c">
+      <span>Data Master</span><span>/</span><span style="color:#1c1917;font-weight:600">Pengguna</span>
+      <div style="flex:1"></div>
+      <span style="font-size:12px;color:#78716c">Sidebar diciutkan — tampilan ringkas</span>
+    </header>
+
+    <main style="padding:28px;display:flex;flex-direction:column;gap:16px;max-width:1320px;width:100%;box-sizing:border-box">
+      <div style="display:flex;flex-wrap:wrap;align-items:flex-end;gap:10px">
+        <div style="flex:1;min-width:240px">
+          <h1 style="margin:0;font-size:24px;font-weight:800;letter-spacing:-.02em">Pengguna</h1>
+          <p style="margin:4px 0 0;color:#78716c;font-size:14px">1.284 akun · 1.251 aktif</p>
+        </div>
+        <button style="height:38px;border:1px solid #e7e5e4;background:#fff;border-radius:10px;padding:0 14px;font-size:13px;font-weight:600;color:#44403c;cursor:pointer">Impor Excel</button>
+        <button style="height:38px;border:1px solid #e7e5e4;background:#fff;border-radius:10px;padding:0 14px;font-size:13px;font-weight:600;color:#44403c;cursor:pointer">Ekspor</button>
+        <button style="height:38px;border:0;background:#f59e0b;border-radius:10px;padding:0 16px;font-size:13px;font-weight:700;color:#1c1917;cursor:pointer">+ Tambah pengguna</button>
+      </div>
+
+      <section style="background:#fff;border:1px solid #e7e5e4;border-radius:14px;overflow:hidden">
+        <div style="display:flex;flex-wrap:wrap;gap:10px;align-items:center;padding:14px 16px;border-bottom:1px solid #f0efed">
+          <label style="display:flex;align-items:center;gap:8px;height:36px;border:1px solid #e7e5e4;border-radius:9px;padding:0 10px;flex:1;min-width:220px;max-width:340px;color:#78716c">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><circle cx="11" cy="11" r="7"></circle><path d="m20 20-3.5-3.5"></path></svg>
+            <input aria-label="Cari pengguna" placeholder="Cari nama, ID, atau NIK" style="border:0;outline:0;flex:1;font-size:13px;background:transparent">
+          </label>
+          <sc-for list="{{filters}}" as="f" hint-placeholder-count="4">
+            <label style="display:flex;align-items:center;gap:6px;height:36px;border:1px solid #e7e5e4;border-radius:9px;padding:0 10px;font-size:13px;color:#78716c">{{f.label}}
+              <select style="border:0;font-size:13px;font-weight:600;color:#1c1917;background:transparent"><option>{{f.value}}</option></select>
+            </label>
+          </sc-for>
+          <button style="border:0;background:none;color:#b45309;font-size:13px;font-weight:600;cursor:pointer">Reset</button>
+        </div>
+
+        <sc-if value="{{hasSel}}" hint-placeholder-val="{{false}}">
+          <div style="display:flex;align-items:center;gap:12px;padding:10px 16px;background:#1c1917;color:#fff;font-size:13px">
+            <b>{{selCount}} dipilih</b>
+            <button style="height:30px;border:1px solid #44403c;background:transparent;color:#fff;border-radius:8px;padding:0 10px;cursor:pointer">Nonaktifkan</button>
+            <button style="height:30px;border:1px solid #44403c;background:transparent;color:#fff;border-radius:8px;padding:0 10px;cursor:pointer">Reset strike</button>
+            <button style="height:30px;border:1px solid #44403c;background:transparent;color:#fff;border-radius:8px;padding:0 10px;cursor:pointer">Reset password</button>
+            <div style="flex:1"></div>
+            <button onClick="{{clearSel}}" style="border:0;background:none;color:#fbbf24;cursor:pointer;font-weight:600">Batal pilih</button>
+          </div>
+        </sc-if>
+
+        <div style="overflow-x:auto">
+          <table style="width:100%;border-collapse:collapse;font-size:13px;min-width:880px">
+            <thead>
+              <tr style="background:#fafaf9;color:#57534e;text-align:left">
+                <th style="padding:10px 16px;width:28px"><input type="checkbox" aria-label="Pilih semua" checked="{{allOn}}" onChange="{{toggleAll}}"></th>
+                <th style="padding:10px 8px;font-weight:600">Nama ↑</th>
+                <th style="padding:10px 8px;font-weight:600">Perusahaan</th>
+                <th style="padding:10px 8px;font-weight:600">Departemen</th>
+                <th style="padding:10px 8px;font-weight:600">Role</th>
+                <th style="padding:10px 8px;font-weight:600;text-align:right">Strike</th>
+                <th style="padding:10px 8px;font-weight:600">Status</th>
+                <th style="padding:10px 16px;width:40px"><span style="position:absolute;left:-9999px">Aksi</span></th>
+              </tr>
+            </thead>
+            <tbody>
+              <sc-for list="{{rows}}" as="u" hint-placeholder-count="10">
+                <tr style="{{u.rowStyle}}">
+                  <td style="padding:10px 16px"><input type="checkbox" aria-label="Pilih {{u.name}}" checked="{{u.on}}" onChange="{{u.toggle}}"></td>
+                  <td style="padding:10px 8px"><div style="display:flex;align-items:center;gap:10px"><span style="width:30px;height:30px;border-radius:50%;background:#f5f5f4;color:#57534e;display:inline-flex;align-items:center;justify-content:center;font-size:11px;font-weight:700;flex-shrink:0">{{u.ini}}</span><span><span style="display:block;font-weight:600">{{u.name}}</span><span style="display:block;font-size:12px;color:#78716c;font-family:ui-monospace,monospace">{{u.id}}</span></span></div></td>
+                  <td style="padding:10px 8px;color:#44403c">PT Santos Jaya Abadi</td>
+                  <td style="padding:10px 8px;color:#44403c">{{u.dept}}</td>
+                  <td style="padding:10px 8px"><span style="{{u.roleBadge}}">{{u.role}}</span></td>
+                  <td style="padding:10px 8px;text-align:right;font-variant-numeric:tabular-nums;color:{{u.strikeColor}};font-weight:600">{{u.strike}}</td>
+                  <td style="padding:10px 8px"><span style="display:inline-flex;align-items:center;gap:6px;font-size:12px;font-weight:600;color:{{u.statusColor}}"><span style="width:7px;height:7px;border-radius:50%;background:{{u.statusColor}}"></span>{{u.status}}</span></td>
+                  <td style="padding:10px 16px"><button aria-label="Aksi untuk {{u.name}}" style="width:30px;height:30px;border:1px solid transparent;background:none;border-radius:8px;cursor:pointer;color:#78716c;font-size:16px">⋯</button></td>
+                </tr>
+              </sc-for>
+            </tbody>
+          </table>
+        </div>
+
+        <nav aria-label="Halaman" style="display:flex;flex-wrap:wrap;align-items:center;gap:12px;padding:12px 16px;border-top:1px solid #e7e5e4;background:#fafaf9;font-size:13px;color:#57534e">
+          <span>Menampilkan <b style="color:#1c1917">1–10</b> dari <b style="color:#1c1917">1.284</b></span>
+          <div style="flex:1"></div>
+          <label style="display:flex;align-items:center;gap:6px">Per halaman <select style="font-size:13px;border:1px solid #e7e5e4;border-radius:8px;padding:4px 6px;background:#fff"><option>10</option><option>25</option><option>50</option><option>100</option></select></label>
+          <div style="display:flex;gap:4px">
+            <sc-for list="{{pages}}" as="p" hint-placeholder-count="7"><button aria-label="{{p.aria}}" style="{{p.style}}">{{p.label}}</button></sc-for>
+          </div>
+          <label style="display:flex;align-items:center;gap:6px">Ke hal. <input aria-label="Ke halaman" value="1" style="width:44px;height:30px;border:1px solid #e7e5e4;border-radius:8px;text-align:center;font-size:13px"></label>
+        </nav>
+      </section>
+    </main>
+  </div>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"$preview":{"width":1440,"height":940}}'>
+class Component extends DCLogic {
+  constructor(p){ super(p); this.state = { sel: ['00046702','00012177'] }; }
+  renderVals() {
+    const st = this.state;
+    const rail = [['Dashboard','M3 3h8v8H3zM13 3h8v5h-8zM13 10h8v11h-8zM3 13h8v8H3z'],['Check-in','M3 7V3h4M17 3h4v4M21 17v4h-4M7 21H3v-4M7 12h10'],['Laporan','M3 3v18h18M7 15l4-4 3 3 5-6'],['Pengguna','M16 21v-2a4 4 0 0 0-8 0v2M12 11a4 4 0 1 0 0-8 4 4 0 0 0 0 8z'],['Kantin','M4 21V5l8-3 8 3v16M9 21v-5h6v5'],['Pengaturan','M12 15a3 3 0 1 0 0-6 3 3 0 0 0 0 6z']]
+      .map(([label,d]) => ({ label, d, style:'width:44px;height:44px;border-radius:10px;display:flex;align-items:center;justify-content:center;' + (label === 'Pengguna' ? 'background:rgba(245,158,11,.16);color:#fbbf24' : 'color:#94a3b8') }));
+    const filters = [['Perusahaan','Semua'],['Departemen','Semua'],['Role','Semua'],['Status','Aktif']].map(([label,value]) => ({ label, value }));
+    const data = [
+      ['ABDUL AJIS','00068619','QC','USER',0,'Aktif'],['AGUS SUHARTO','00046702','PLANT 2','USER',1,'Aktif'],['CHECKIN RNG 1','RNG1','KANTIN','CANTEEN',0,'Aktif'],
+      ['DEDE RISWANDI','00015697','MAINTENANCE','USER',2,'Aktif'],['EKO RUSKADI','00004340','PACKING (R&G)','USER',0,'Aktif'],['FUAD ARIF RAHMAN','00016733','PACKING (R&G)','USER',3,'Diblokir'],
+      ['JOKO MULYONO','00015393','PACKING (R&G)','USER',0,'Aktif'],['NANA MULYANA','00012177','RMPW','USER',0,'Aktif'],['OTIM SUHERMAN','00021654','MIXING (R&G)','USER',1,'Aktif'],
+      ['RISDIYANTORO','00006269','MAINTENANCE','USER',0,'Nonaktif']
+    ];
+    const RB = { USER:'background:#f5f5f4;color:#44403c', CANTEEN:'background:#fef3c7;color:#92400e', ADMIN:'background:#1c1917;color:#fff', VENDOR:'background:#ccfbf1;color:#115e59' };
+    const SC = { Aktif:'#15803d', Diblokir:'#b91c1c', Nonaktif:'#78716c' };
+    const rows = data.map(([name,id,dept,role,strike,status]) => {
+      const on = st.sel.includes(id);
+      return { name, id, dept, role, strike: String(strike), status, on,
+        ini: name.split(' ').map(w => w[0]).slice(0,2).join(''),
+        roleBadge:'font-size:11px;font-weight:700;border-radius:6px;padding:3px 7px;' + RB[role],
+        strikeColor: strike >= 3 ? '#b91c1c' : strike > 0 ? '#b45309' : '#a8a29e',
+        statusColor: SC[status], rowStyle:'border-top:1px solid #f5f5f4;' + (on ? 'background:#fffbeb' : ''),
+        toggle: () => this.setState({ sel: on ? st.sel.filter(x => x !== id) : [...st.sel, id] }) };
+    });
+    const ids = data.map(d => d[1]);
+    const allOn = ids.every(i => st.sel.includes(i));
+    const pg = (label, cur, aria) => ({ label, aria: aria || ('Halaman ' + label), style:'min-width:32px;height:32px;border-radius:8px;font-size:13px;cursor:pointer;' + (cur ? 'border:1px solid #1c1917;background:#1c1917;color:#fff;font-weight:700' : 'border:1px solid #e7e5e4;background:#fff;color:#44403c') });
+    const pages = [pg('‹',false,'Sebelumnya'), pg('1',true), pg('2'), pg('3'), pg('…',false,'Lainnya'), pg('129'), pg('›',false,'Berikutnya')];
+    return { rail, filters, rows, pages, allOn,
+      hasSel: st.sel.length > 0, selCount: st.sel.length,
+      clearSel: () => this.setState({ sel: [] }),
+      toggleAll: () => this.setState({ sel: allOn ? [] : ids }) };
+  }
+}
+</script>
+</body>
+</html>

@@ -1,0 +1,96 @@
+<!doctype html>
+<html lang="id">
+<head>
+<meta charset="utf-8">
+<title>Karyawan — Pesan (HP)</title>
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&amp;display=swap" rel="stylesheet">
+<style>
+body{margin:0}
+a{color:#b45309;text-decoration:none}
+button{font-family:inherit}
+</style>
+</helmet>
+<div style="width:390px;height:844px;box-sizing:border-box;font-family:'Plus Jakarta Sans',system-ui,sans-serif;color:#1c1917;background:#f7f7f5;display:flex;flex-direction:column;overflow:hidden">
+  <header style="background:#0f172a;color:#fff;padding:18px 18px 22px">
+    <div style="display:flex;align-items:center;justify-content:space-between">
+      <div><div style="font-size:12px;color:#94a3b8">Selamat siang,</div><div style="font-size:18px;font-weight:800">Agus Suharto</div></div>
+      <div style="width:38px;height:38px;border-radius:50%;background:#f59e0b;color:#1c1917;display:flex;align-items:center;justify-content:center;font-weight:800">AS</div>
+    </div>
+    <div style="margin-top:14px;background:rgba(255,255,255,.08);border-radius:12px;padding:12px 14px;display:flex;align-items:center;gap:12px">
+      <div style="flex:1"><div style="font-size:12px;color:#94a3b8">Makan hari ini · Office Hour</div><div style="font-size:15px;font-weight:700;margin-top:2px">11:30–13:00 · Kantin RNG</div></div>
+      <a href="#" style="font-size:12px;font-weight:700;color:#1c1917;background:#f59e0b;border-radius:999px;padding:7px 12px">Lihat QR</a>
+    </div>
+  </header>
+
+  <div style="flex:1;overflow:auto;padding:16px 16px 0;display:flex;flex-direction:column;gap:16px">
+    <section>
+      <div style="display:flex;justify-content:space-between;align-items:baseline;margin-bottom:10px"><h2 style="margin:0;font-size:15px;font-weight:700">Pilih tanggal</h2><span style="font-size:12px;color:#78716c">Geser →</span></div>
+      <div style="display:flex;gap:8px;overflow-x:auto;padding-bottom:4px">
+        <sc-for list="{{days}}" as="d" hint-placeholder-count="7">
+          <button onClick="{{d.toggle}}" disabled="{{d.disabled}}" aria-pressed="{{d.on}}" style="{{d.style}}">
+            <span style="font-size:11px;font-weight:600">{{d.dow}}</span><span style="font-size:20px;font-weight:800">{{d.day}}</span><span style="font-size:10px">{{d.note}}</span>
+          </button>
+        </sc-for>
+      </div>
+    </section>
+    <section>
+      <h2 style="margin:0 0 10px;font-size:15px;font-weight:700">Shift</h2>
+      <div style="display:flex;flex-direction:column;gap:8px">
+        <sc-for list="{{shifts}}" as="s" hint-placeholder-count="3">
+          <button onClick="{{s.pick}}" aria-pressed="{{s.on}}" style="{{s.style}}"><span style="{{s.radio}}"></span><span style="flex:1;text-align:left"><span style="display:block;font-weight:700;font-size:14px">{{s.name}}</span><span style="display:block;font-size:12px;color:#78716c">Istirahat {{s.brk}}</span></span></button>
+        </sc-for>
+      </div>
+    </section>
+    <section>
+      <h2 style="margin:0 0 10px;font-size:15px;font-weight:700">Kantin</h2>
+      <div style="display:flex;background:#fff;border:1px solid #e7e5e4;border-radius:12px;padding:4px">
+        <button style="flex:1;height:40px;border:0;border-radius:9px;background:#1c1917;color:#fff;font-weight:700;font-size:14px">RNG</button>
+        <button disabled style="flex:1;height:40px;border:0;border-radius:9px;background:transparent;color:#a8a29e;font-size:14px">GOODDAY</button>
+      </div>
+    </section>
+  </div>
+
+  <div style="padding:12px 16px;background:#fff;border-top:1px solid #e7e5e4">
+    <button style="{{cta}}">{{ctaLabel}}</button>
+  </div>
+  <nav aria-label="Navigasi utama" style="display:flex;background:#fff;border-top:1px solid #f0efed;padding:6px 8px 14px">
+    <sc-for list="{{tabs}}" as="t" hint-placeholder-count="4">
+      <a href="#" style="{{t.style}}"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="{{t.d}}"></path></svg><span style="font-size:11px">{{t.label}}</span></a>
+    </sc-for>
+  </nav>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"$preview":{"width":390,"height":844}}'>
+class Component extends DCLogic {
+  constructor(p){ super(p); this.state = { sel: ['28','30'], shift: 'OFFICE HOUR' }; }
+  renderVals() {
+    const st = this.state;
+    const days = [['Jum','27','Lewat'],['Sab','28',''],['Min','29','Libur'],['Sen','30',''],['Sel','1',''],['Rab','2','Dipesan'],['Kam','3','']].map(([dow,day,note]) => {
+      const disabled = !!note; const on = st.sel.includes(day);
+      return { dow, day, note: on ? 'Dipilih' : (note || 'Tersedia'), disabled, on,
+        toggle: () => this.setState({ sel: on ? st.sel.filter(x => x !== day) : [...st.sel, day] }),
+        style:'flex:0 0 64px;height:78px;border-radius:12px;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:1px;font-family:inherit;' +
+          (on ? 'border:2px solid #f59e0b;background:#fffbeb;color:#1c1917' : disabled ? 'border:1px solid #f0efed;background:#fafaf9;color:#a8a29e' : 'border:1px solid #e7e5e4;background:#fff;color:#1c1917') };
+    });
+    const shifts = [['OFFICE HOUR','11:30–13:00'],['SHIFT 2','17:30–19:00'],['SHIFT 3','02:00–04:00']].map(([name,brk]) => {
+      const on = st.shift === name;
+      return { name, brk, on, pick: () => this.setState({ shift: name }),
+        style:'display:flex;align-items:center;gap:12px;min-height:56px;padding:10px 14px;border-radius:12px;font-family:inherit;color:#1c1917;' + (on ? 'border:2px solid #f59e0b;background:#fffbeb' : 'border:1px solid #e7e5e4;background:#fff'),
+        radio:'width:16px;height:16px;border-radius:50%;box-sizing:border-box;flex-shrink:0;' + (on ? 'border:5px solid #f59e0b' : 'border:2px solid #d6d3d1') };
+    });
+    const n = st.sel.length;
+    const tabs = [['Pesan','M3 11l9-8 9 8M5 10v10h14V10'],['Menu','M4 6h16M4 12h16M4 18h10'],['Riwayat','M3 12a9 9 0 1 0 3-6.7L3 8M3 3v5h5M12 7v5l3 2'],['Akun','M16 21v-2a4 4 0 0 0-8 0v2M12 11a4 4 0 1 0 0-8 4 4 0 0 0 0 8z']]
+      .map(([label,d]) => ({ label, d, style:'flex:1;display:flex;flex-direction:column;align-items:center;gap:2px;padding:6px 0;min-height:44px;' + (label === 'Pesan' ? 'color:#b45309;font-weight:700' : 'color:#78716c') }));
+    return { days, shifts, tabs,
+      ctaLabel: n ? 'Pesan ' + n + ' hari · ' + st.shift : 'Pilih tanggal dulu',
+      cta:'width:100%;height:50px;border:0;border-radius:12px;font-size:15px;font-weight:700;' + (n ? 'background:#f59e0b;color:#1c1917' : 'background:#f5f5f4;color:#a8a29e') };
+  }
+}
+</script>
+</body>
+</html>

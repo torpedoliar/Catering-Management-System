@@ -1,0 +1,178 @@
+<!doctype html>
+<html lang="id">
+<head>
+<meta charset="utf-8">
+<title>Admin Dashboard</title>
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&amp;display=swap" rel="stylesheet">
+<style>
+body{margin:0;background:#f7f7f5}
+a{color:#b45309;text-decoration:none}a:hover{color:#92400e}
+button{font-family:inherit}
+</style>
+</helmet>
+<div style="font-family:'Plus Jakarta Sans',system-ui,sans-serif;color:#1c1917;display:flex;flex-wrap:wrap;min-height:960px;background:#f7f7f5">
+
+  <aside style="flex:1 1 248px;max-width:248px;background:#0f172a;color:#cbd5e1;display:flex;flex-direction:column;padding:20px 14px;box-sizing:border-box;gap:4px">
+    <div style="display:flex;align-items:center;gap:10px;padding:4px 8px 18px">
+      <div style="width:34px;height:34px;border-radius:10px;background:#f59e0b;color:#1c1917;display:flex;align-items:center;justify-content:center;font-weight:800;font-size:15px">C</div>
+      <div><div style="color:#fff;font-weight:700;font-size:15px">Catering</div><div style="font-size:11px;color:#94a3b8">PT Santos Jaya Abadi</div></div>
+    </div>
+    <sc-for list="{{nav}}" as="g" hint-placeholder-count="4">
+      <div style="padding:14px 10px 6px;font-size:11px;font-weight:700;letter-spacing:.08em;color:#64748b;text-transform:uppercase">{{g.label}}</div>
+      <sc-for list="{{g.items}}" as="it" hint-placeholder-count="3">
+        <a href="#" style="{{it.style}}">
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="{{it.d}}"></path></svg>
+          <span style="flex:1">{{it.label}}</span>
+          <sc-if value="{{it.badge}}" hint-placeholder-val="{{false}}"><span style="font-size:11px;font-weight:700;background:#f59e0b;color:#1c1917;border-radius:999px;padding:1px 7px">{{it.badge}}</span></sc-if>
+        </a>
+      </sc-for>
+    </sc-for>
+  </aside>
+
+  <div style="flex:999 1 560px;min-width:0;display:flex;flex-direction:column">
+    <header style="height:64px;background:#fff;border-bottom:1px solid #e7e5e4;display:flex;align-items:center;gap:16px;padding:0 28px">
+      <nav aria-label="Breadcrumb" style="font-size:13px;color:#78716c;display:flex;gap:8px"><span>Operasional</span><span>/</span><span style="color:#1c1917;font-weight:600">Dashboard</span></nav>
+      <div style="flex:1"></div>
+      <label style="display:flex;align-items:center;gap:8px;height:38px;border:1px solid #e7e5e4;border-radius:10px;padding:0 12px;width:280px;color:#78716c;font-size:13px">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><circle cx="11" cy="11" r="7"></circle><path d="m20 20-3.5-3.5"></path></svg>
+        <input aria-label="Cari" placeholder="Cari menu, karyawan, pesanan…" style="border:0;outline:0;flex:1;font:inherit;background:transparent">
+        <kbd style="font-size:11px;border:1px solid #e7e5e4;border-radius:6px;padding:1px 6px;color:#a8a29e">Ctrl K</kbd>
+      </label>
+      <span style="display:flex;align-items:center;gap:6px;font-size:12px;font-weight:600;color:#166534;background:#dcfce7;border-radius:999px;padding:5px 10px"><span style="width:7px;height:7px;border-radius:50%;background:#16a34a"></span>Live · 7 terhubung</span>
+      <button aria-label="Notifikasi" style="position:relative;width:38px;height:38px;border:1px solid #e7e5e4;border-radius:10px;background:#fff;color:#57534e;cursor:pointer"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true"><path d="M6 8a6 6 0 0 1 12 0c0 7 3 9 3 9H3s3-2 3-9M10.3 21a1.9 1.9 0 0 0 3.4 0"></path></svg><span style="position:absolute;top:-4px;right:-4px;background:#dc2626;color:#fff;font-size:10px;font-weight:700;border-radius:999px;padding:1px 5px">99+</span></button>
+      <div style="display:flex;align-items:center;gap:10px;padding-left:6px">
+        <div style="text-align:right"><div style="font-size:13px;font-weight:600">Yohanes Octavian Rizky</div><div style="font-size:11px;color:#78716c">Admin</div></div>
+        <div style="width:36px;height:36px;border-radius:50%;background:#fde68a;color:#92400e;display:flex;align-items:center;justify-content:center;font-weight:700">Y</div>
+      </div>
+    </header>
+
+    <main style="padding:28px;display:flex;flex-direction:column;gap:20px;max-width:1240px;width:100%;box-sizing:border-box">
+      <div style="display:flex;flex-wrap:wrap;align-items:flex-end;gap:16px">
+        <div style="flex:1;min-width:260px">
+          <h1 style="margin:0;font-size:24px;font-weight:800;letter-spacing:-.02em">Dashboard</h1>
+          <p style="margin:4px 0 0;color:#78716c;font-size:14px">Jumat, 27 November 2026 · data hari ini</p>
+        </div>
+        <div role="group" aria-label="Periode" style="display:flex;background:#fff;border:1px solid #e7e5e4;border-radius:10px;padding:3px">
+          <sc-for list="{{ranges}}" as="r" hint-placeholder-count="4"><button onClick="{{r.pick}}" style="{{r.style}}">{{r.label}}</button></sc-for>
+        </div>
+        <button style="height:38px;border:1px solid #e7e5e4;background:#fff;border-radius:10px;padding:0 14px;font-size:13px;font-weight:600;color:#44403c;cursor:pointer">Ekspor</button>
+        <button style="height:38px;border:0;background:#f59e0b;border-radius:10px;padding:0 16px;font-size:13px;font-weight:700;color:#1c1917;cursor:pointer">Lihat detail order</button>
+      </div>
+
+      <section aria-label="Ringkasan" style="display:grid;grid-template-columns:repeat(5,minmax(0,1fr));gap:14px">
+        <sc-for list="{{kpis}}" as="k" hint-placeholder-count="5">
+          <div style="background:#fff;border:1px solid #e7e5e4;border-radius:14px;padding:16px 18px">
+            <div style="display:flex;align-items:center;gap:8px;font-size:12px;font-weight:600;color:#78716c"><span style="width:8px;height:8px;border-radius:2px;background:{{k.color}}"></span>{{k.label}}</div>
+            <div style="font-size:30px;font-weight:800;letter-spacing:-.02em;margin-top:8px;font-variant-numeric:tabular-nums">{{k.value}}</div>
+            <div style="font-size:12px;color:#a8a29e;margin-top:2px">{{k.sub}}</div>
+          </div>
+        </sc-for>
+      </section>
+
+      <section style="background:#fff;border:1px solid #e7e5e4;border-radius:14px;padding:20px">
+        <div style="display:flex;align-items:baseline;justify-content:space-between;margin-bottom:16px">
+          <h2 style="margin:0;font-size:16px;font-weight:700">Pengambilan per waktu istirahat</h2>
+          <span style="font-size:12px;color:#78716c">Diperbarui otomatis</span>
+        </div>
+        <div style="display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:14px">
+          <sc-for list="{{breaks}}" as="b" hint-placeholder-count="3">
+            <div style="border:1px solid #f0efed;border-radius:12px;padding:16px">
+              <div style="display:flex;justify-content:space-between;align-items:center">
+                <div><div style="font-weight:700;font-size:15px">{{b.time}}</div><div style="font-size:12px;color:#78716c;margin-top:2px">{{b.shifts}}</div></div>
+                <span style="{{b.pill}}">{{b.state}}</span>
+              </div>
+              <div style="display:flex;align-items:baseline;gap:6px;margin-top:14px"><span style="font-size:26px;font-weight:800;font-variant-numeric:tabular-nums">{{b.taken}}</span><span style="color:#78716c;font-size:13px">dari {{b.total}} diambil</span></div>
+              <div style="height:8px;background:#f5f5f4;border-radius:999px;margin-top:10px;overflow:hidden"><div style="height:100%;width:{{b.pct}};background:#16a34a;border-radius:999px"></div></div>
+              <div style="display:flex;justify-content:space-between;font-size:12px;color:#78716c;margin-top:8px"><span>Belum diambil {{b.pending}}</span><span>Tidak diambil {{b.noshow}}</span></div>
+            </div>
+          </sc-for>
+        </div>
+      </section>
+
+      <div style="display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1.4fr) minmax(0,1fr);gap:14px">
+        <section style="background:#fff;border:1px solid #e7e5e4;border-radius:14px;padding:20px">
+          <h2 style="margin:0 0 14px;font-size:16px;font-weight:700">Order per kantin</h2>
+          <sc-for list="{{canteens}}" as="c" hint-placeholder-count="2">
+            <div style="padding:10px 0;border-bottom:1px solid #f5f5f4">
+              <div style="display:flex;justify-content:space-between;font-size:14px"><span style="font-weight:600">{{c.name}}</span><span style="font-weight:700;font-variant-numeric:tabular-nums">{{c.n}}</span></div>
+              <div style="height:6px;background:#f5f5f4;border-radius:999px;margin-top:8px"><div style="height:100%;width:{{c.pct}};background:#f59e0b;border-radius:999px"></div></div>
+            </div>
+          </sc-for>
+        </section>
+        <section style="background:#fff;border:1px solid #e7e5e4;border-radius:14px;padding:20px">
+          <div style="display:flex;justify-content:space-between;align-items:baseline;margin-bottom:6px"><h2 style="margin:0;font-size:16px;font-weight:700">Rekap per departemen</h2><a href="#" style="font-size:13px;font-weight:600">Lihat semua</a></div>
+          <table style="width:100%;border-collapse:collapse;font-size:13px">
+            <thead><tr style="color:#78716c;text-align:left"><th style="padding:10px 0;font-weight:600">Departemen</th><th style="padding:10px 0;font-weight:600;text-align:right">Order</th><th style="padding:10px 0;font-weight:600;text-align:right">Diambil</th><th style="padding:10px 0;font-weight:600;text-align:right">Biaya</th></tr></thead>
+            <tbody>
+              <sc-for list="{{depts}}" as="d" hint-placeholder-count="6">
+                <tr style="border-top:1px solid #f5f5f4"><td style="padding:10px 0;font-weight:600">{{d.name}}</td><td style="padding:10px 0;text-align:right;font-variant-numeric:tabular-nums">{{d.n}}</td><td style="padding:10px 0;text-align:right;color:#78716c">0</td><td style="padding:10px 0;text-align:right;font-variant-numeric:tabular-nums">{{d.cost}}</td></tr>
+              </sc-for>
+            </tbody>
+          </table>
+        </section>
+        <section style="background:#fff;border:1px solid #e7e5e4;border-radius:14px;padding:20px">
+          <h2 style="margin:0 0 6px;font-size:16px;font-weight:700">Order terbaru</h2>
+          <sc-for list="{{recent}}" as="o" hint-placeholder-count="4">
+            <div style="display:flex;align-items:center;gap:10px;padding:10px 0;border-top:1px solid #f5f5f4">
+              <div style="width:32px;height:32px;border-radius:50%;background:#f5f5f4;color:#57534e;display:flex;align-items:center;justify-content:center;font-size:12px;font-weight:700">{{o.ini}}</div>
+              <div style="flex:1;min-width:0"><div style="font-size:13px;font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">{{o.name}}</div><div style="font-size:12px;color:#78716c">{{o.shift}}</div></div>
+              <span style="font-size:11px;font-weight:700;color:#1e40af;background:#dbeafe;border-radius:999px;padding:3px 8px">Menunggu</span>
+            </div>
+          </sc-for>
+        </section>
+      </div>
+    </main>
+  </div>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"$preview":{"width":1440,"height":960}}'>
+class Component extends DCLogic {
+  constructor(p){ super(p); this.state = { range: 'Hari ini' }; }
+  renderVals() {
+    const I = {
+      home:'M3 11l9-8 9 8M5 10v10h14V10', menu:'M4 6h16M4 12h16M4 18h10', hist:'M3 12a9 9 0 1 0 3-6.7L3 8M3 3v5h5M12 7v5l3 2',
+      dash:'M3 3h8v8H3zM13 3h8v5h-8zM13 10h8v11h-8zM3 13h8v8H3z', cost:'M12 2v20M17 6H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6',
+      cal:'M3 5h18v16H3zM16 3v4M8 3v4M3 10h18', msg:'M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z',
+      scan:'M3 7V3h4M17 3h4v4M21 17v4h-4M7 21H3v-4M7 12h10', users:'M16 21v-2a4 4 0 0 0-8 0v2M12 11a4 4 0 1 0 0-8 4 4 0 0 0 0 8z',
+      bld:'M4 21V5l8-3 8 3v16M9 21v-5h6v5', cog:'M12 15a3 3 0 1 0 0-6 3 3 0 0 0 0 6zM19 12l2-1-2-4-2 1-2-1-1-2H10L9 5 7 6 5 5 3 9l2 1v2l-2 1 2 4 2-1 2 1 1 2h4l1-2 2-1 2 1 2-4z',
+      store:'M3 9l2-5h14l2 5M5 9v11h14V9M9 20v-6h6v6', chart:'M3 3v18h18M7 15l4-4 3 3 5-6'
+    };
+    const active = 'Dashboard';
+    const item = (label, d, badge) => ({ label, d, badge: badge || '', style: 'display:flex;align-items:center;gap:10px;padding:9px 10px;border-radius:9px;font-size:13.5px;text-decoration:none;' + (label === active ? 'background:rgba(245,158,11,.14);color:#fbbf24;font-weight:700' : 'color:#cbd5e1;font-weight:500') });
+    const nav = [
+      { label:'Karyawan', items:[item('Pesan Makanan',I.home), item('Lihat Menu',I.menu), item('Riwayat',I.hist)] },
+      { label:'Operasional', items:[item('Dashboard',I.dash), item('Check-in',I.scan), item('Kalender',I.cal), item('Pesan & Sanggahan',I.msg,'12')] },
+      { label:'Laporan', items:[item('Analisis Biaya',I.cost), item('Rekap Vendor',I.store), item('Statistik Pengambilan',I.chart)] },
+      { label:'Data Master', items:[item('Pengguna',I.users), item('Perusahaan & Kantin',I.bld), item('Menu Mingguan',I.menu)] },
+      { label:'Sistem', items:[item('Pengaturan',I.cog)] }
+    ];
+    const ranges = ['Hari ini','Kemarin','7 hari','Bulan ini'].map(l => ({ label:l, pick: () => this.setState({ range:l }),
+      style: 'border:0;border-radius:8px;padding:7px 12px;font-size:13px;cursor:pointer;' + (this.state.range === l ? 'background:#1c1917;color:#fff;font-weight:600' : 'background:transparent;color:#57534e;font-weight:500') }));
+    const kpis = [
+      { label:'Total order', value:'335', sub:'semua shift hari ini', color:'#f59e0b' },
+      { label:'Sudah diambil', value:'0', sub:'0% dari total', color:'#16a34a' },
+      { label:'Menunggu', value:'335', sub:'belum lewat jam istirahat', color:'#2563eb' },
+      { label:'Tidak diambil', value:'0', sub:'diproses tiap jam :05', color:'#dc2626' },
+      { label:'Diblacklist', value:'0', sub:'aktif saat ini', color:'#57534e' }
+    ];
+    const pill = (s) => 'font-size:11px;font-weight:700;border-radius:999px;padding:4px 9px;' + (s === 'Berjalan' ? 'background:#fef3c7;color:#92400e' : 'background:#f5f5f4;color:#57534e');
+    const breaks = [
+      { time:'11:30–13:00', shifts:'Shift 1, Longshift 1, Office Hour', taken:'0', total:'40', pending:'40', noshow:'0', pct:'0%', state:'Berjalan' },
+      { time:'17:30–19:00', shifts:'Shift 2', taken:'0', total:'43', pending:'43', noshow:'0', pct:'0%', state:'Akan datang' },
+      { time:'02:00–04:00', shifts:'Shift 3, Longshift 2', taken:'0', total:'14', pending:'14', noshow:'0', pct:'0%', state:'Akan datang' }
+    ].map(b => ({ ...b, pill: pill(b.state) }));
+    const canteens = [{ name:'RNG', n:'266', pct:'79%' }, { name:'GOODDAY', n:'69', pct:'21%' }];
+    const depts = [['PACKING (R&G)','118','Rp1.534.000'],['QC','46','Rp598.000'],['RMPW','42','Rp546.000'],['MAINTENANCE','34','Rp442.000'],['MIXING (R&G)','15','Rp195.000'],['ROASTING','9','Rp117.000']].map(([name,n,cost]) => ({ name, n, cost }));
+    const recent = [['NANI ROSANTI','Shift 1'],['NANA MULYANA','Shift 1'],['DEDE RISWANDI','Shift 1'],['EKO RUSKADI','Shift 2']].map(([name,shift]) => ({ name, shift, ini: name.split(' ').map(w => w[0]).slice(0,2).join('') }));
+    return { nav, ranges, kpis, breaks, canteens, depts, recent };
+  }
+}
+</script>
+</body>
+</html>

@@ -1,0 +1,131 @@
+<!doctype html>
+<html lang="id">
+<head>
+<meta charset="utf-8">
+<title>Karyawan — Riwayat Pesanan</title>
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&amp;display=swap" rel="stylesheet">
+<style>
+body{margin:0;background:#f7f7f5}
+a{color:#b45309;text-decoration:none}a:hover{color:#92400e}
+button{font-family:inherit}
+</style>
+</helmet>
+<div style="font-family:'Plus Jakarta Sans',system-ui,sans-serif;color:#1c1917;display:flex;flex-wrap:wrap;min-height:900px;background:#f7f7f5">
+
+  <aside style="flex:1 1 248px;max-width:248px;background:#0f172a;color:#cbd5e1;display:flex;flex-direction:column;padding:20px 14px;box-sizing:border-box;gap:2px">
+    <div style="display:flex;align-items:center;gap:10px;padding:4px 8px 22px">
+      <div style="width:34px;height:34px;border-radius:10px;background:#f59e0b;color:#1c1917;display:flex;align-items:center;justify-content:center;font-weight:800;font-size:15px">C</div>
+      <div><div style="color:#fff;font-weight:700;font-size:15px">Catering</div><div style="font-size:11px;color:#94a3b8">PT Santos Jaya Abadi</div></div>
+    </div>
+    <sc-for list="{{nav}}" as="it" hint-placeholder-count="4">
+      <a href="#" style="{{it.style}}"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="{{it.d}}"></path></svg>{{it.label}}</a>
+    </sc-for>
+  </aside>
+
+  <div style="flex:999 1 560px;min-width:0;display:flex;flex-direction:column">
+    <header style="height:64px;background:#fff;border-bottom:1px solid #e7e5e4;display:flex;align-items:center;padding:0 28px">
+      <span style="font-size:13px;font-weight:600">Riwayat</span>
+      <div style="flex:1"></div>
+      <div style="width:36px;height:36px;border-radius:50%;background:#e0e7ff;color:#3730a3;display:flex;align-items:center;justify-content:center;font-weight:700;font-size:13px">AS</div>
+    </header>
+
+    <main style="padding:28px;display:flex;flex-direction:column;gap:18px;max-width:1080px;width:100%;box-sizing:border-box">
+      <div style="display:flex;flex-wrap:wrap;align-items:flex-end;gap:12px">
+        <div style="flex:1;min-width:240px">
+          <h1 style="margin:0;font-size:24px;font-weight:800;letter-spacing:-.02em">Riwayat pesanan</h1>
+          <p style="margin:4px 0 0;color:#78716c;font-size:14px">48 pesanan sejak September 2026</p>
+        </div>
+        <label style="display:flex;align-items:center;gap:8px;height:38px;border:1px solid #e7e5e4;border-radius:10px;padding:0 12px;background:#fff;font-size:13px;color:#57534e">Periode
+          <select style="border:0;font:inherit;font-weight:600;color:#1c1917;background:transparent"><option>3 bulan terakhir</option><option>Bulan ini</option><option>Semua</option></select>
+        </label>
+      </div>
+
+      <div role="tablist" aria-label="Status" style="display:flex;gap:4px;border-bottom:1px solid #e7e5e4;overflow-x:auto">
+        <sc-for list="{{tabs}}" as="t" hint-placeholder-count="5">
+          <button role="tab" aria-selected="{{t.on}}" onClick="{{t.pick}}" style="{{t.style}}">{{t.label}} <span style="{{t.count}}">{{t.n}}</span></button>
+        </sc-for>
+      </div>
+
+      <section style="background:#fff;border:1px solid #e7e5e4;border-radius:14px;overflow:hidden">
+        <sc-for list="{{rows}}" as="r" hint-placeholder-count="8">
+          <div style="display:flex;align-items:center;gap:16px;padding:14px 20px;border-top:1px solid #f5f5f4">
+            <div style="width:52px;text-align:center;flex-shrink:0"><div style="font-size:11px;font-weight:700;color:#78716c;text-transform:uppercase">{{r.mon}}</div><div style="font-size:22px;font-weight:800;line-height:1.1">{{r.day}}</div></div>
+            <div style="flex:1;min-width:0">
+              <div style="font-weight:700;font-size:14px">{{r.dow}} · {{r.shift}}</div>
+              <div style="font-size:12.5px;color:#78716c;margin-top:2px">Istirahat {{r.brk}} · Kantin {{r.canteen}}</div>
+            </div>
+            <span style="{{r.badge}}">{{r.status}}</span>
+            <div style="width:150px;text-align:right">
+              <sc-if value="{{r.action}}" hint-placeholder-val="{{true}}"><a href="#" style="font-size:13px;font-weight:600">{{r.action}}</a></sc-if>
+            </div>
+          </div>
+        </sc-for>
+        <sc-if value="{{empty}}" hint-placeholder-val="{{false}}">
+          <div style="padding:56px 20px;text-align:center">
+            <div style="font-weight:700">Tidak ada pesanan dengan status ini</div>
+            <div style="font-size:13px;color:#78716c;margin-top:4px">Coba pilih status lain atau ubah periode.</div>
+          </div>
+        </sc-if>
+
+        <nav aria-label="Halaman" style="display:flex;flex-wrap:wrap;align-items:center;gap:12px;padding:12px 20px;border-top:1px solid #e7e5e4;background:#fafaf9;font-size:13px;color:#57534e">
+          <span>Menampilkan <b style="color:#1c1917">{{from}}–{{to}}</b> dari <b style="color:#1c1917">{{total}}</b></span>
+          <div style="flex:1"></div>
+          <label style="display:flex;align-items:center;gap:6px">Per halaman <select style="font:inherit;border:1px solid #e7e5e4;border-radius:8px;padding:4px 6px;background:#fff"><option>8</option><option>20</option><option>50</option></select></label>
+          <div style="display:flex;gap:4px">
+            <button aria-label="Sebelumnya" onClick="{{prev}}" style="{{navBtn}}">‹</button>
+            <sc-for list="{{pages}}" as="p" hint-placeholder-count="5"><button aria-current="{{p.current}}" onClick="{{p.pick}}" style="{{p.style}}">{{p.label}}</button></sc-for>
+            <button aria-label="Berikutnya" onClick="{{next}}" style="{{navBtn}}">›</button>
+          </div>
+        </nav>
+      </section>
+    </main>
+  </div>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"$preview":{"width":1440,"height":900}}'>
+class Component extends DCLogic {
+  constructor(p){ super(p); this.state = { tab: 'Semua', page: 1 }; }
+  renderVals() {
+    const st = this.state;
+    const nav = [['Pesan Makanan','M3 11l9-8 9 8M5 10v10h14V10'],['Lihat Menu','M4 6h16M4 12h16M4 18h10'],['Riwayat','M3 12a9 9 0 1 0 3-6.7L3 8M3 3v5h5M12 7v5l3 2'],['Pengaturan','M12 15a3 3 0 1 0 0-6 3 3 0 0 0 0 6z']].map(([label,d]) => ({ label, d,
+      style:'display:flex;align-items:center;gap:10px;padding:10px;border-radius:9px;font-size:13.5px;text-decoration:none;' + (label === 'Riwayat' ? 'background:rgba(245,158,11,.14);color:#fbbf24;font-weight:700' : 'color:#cbd5e1;font-weight:500') }));
+    const B = {
+      Menunggu:'background:#dbeafe;color:#1e40af', Diambil:'background:#dcfce7;color:#166534',
+      'Tidak diambil':'background:#fee2e2;color:#991b1b', Dibatalkan:'background:#f5f5f4;color:#57534e'
+    };
+    const ACT = { Menunggu:'Batalkan', Diambil:'', 'Tidak diambil':'Ajukan sanggahan', Dibatalkan:'' };
+    const all = [
+      ['Des','1','Selasa','Menunggu'],['Nov','30','Senin','Menunggu'],['Nov','26','Kamis','Diambil'],['Nov','25','Rabu','Dibatalkan'],
+      ['Nov','24','Selasa','Diambil'],['Nov','23','Senin','Diambil'],['Nov','20','Jumat','Tidak diambil'],['Nov','19','Kamis','Diambil'],
+      ['Nov','18','Rabu','Diambil'],['Nov','17','Selasa','Tidak diambil'],['Nov','16','Senin','Diambil'],['Nov','13','Jumat','Diambil']
+    ].map(([mon,day,dow,status]) => ({ mon, day, dow, status, shift:'Office Hour', brk:'11:30–13:00', canteen:'RNG', action: ACT[status],
+      badge:'font-size:12px;font-weight:700;border-radius:999px;padding:4px 10px;white-space:nowrap;' + B[status] }));
+    const counts = { Semua: 48, Menunggu: 2, Diambil: 31, 'Tidak diambil': 6, Dibatalkan: 9 };
+    const tabs = Object.keys(counts).map(label => {
+      const on = st.tab === label;
+      return { label, n: counts[label], on, pick: () => this.setState({ tab: label, page: 1 }),
+        style:'border:0;background:none;padding:10px 12px;font-size:13.5px;cursor:pointer;white-space:nowrap;margin-bottom:-1px;' + (on ? 'border-bottom:2px solid #f59e0b;color:#1c1917;font-weight:700' : 'border-bottom:2px solid transparent;color:#78716c;font-weight:500'),
+        count:'font-size:11px;font-weight:700;border-radius:999px;padding:1px 7px;margin-left:4px;' + (on ? 'background:#fef3c7;color:#92400e' : 'background:#f5f5f4;color:#78716c') };
+    });
+    const filtered = st.tab === 'Semua' ? all : all.filter(r => r.status === st.tab);
+    const per = 8, total = counts[st.tab], last = Math.max(1, Math.ceil(total / per));
+    const page = Math.min(st.page, last);
+    const rows = filtered.slice(0, per);
+    const go = (p) => () => this.setState({ page: Math.max(1, Math.min(last, p)) });
+    const labels = last <= 5 ? Array.from({ length: last }, (_, i) => i + 1) : [1, 2, 3, '…', last];
+    const pages = labels.map(l => ({ label: String(l), current: l === page ? 'page' : undefined, pick: l === '…' ? () => {} : go(l),
+      style:'min-width:32px;height:32px;border-radius:8px;font-size:13px;cursor:pointer;' + (l === page ? 'border:1px solid #1c1917;background:#1c1917;color:#fff;font-weight:700' : 'border:1px solid #e7e5e4;background:#fff;color:#44403c') }));
+    return { nav, tabs, rows, empty: rows.length === 0, pages, total,
+      from: total ? (page - 1) * per + 1 : 0, to: Math.min(total, page * per),
+      prev: go(page - 1), next: go(page + 1),
+      navBtn:'min-width:32px;height:32px;border-radius:8px;border:1px solid #e7e5e4;background:#fff;color:#44403c;font-size:16px;cursor:pointer' };
+  }
+}
+</script>
+</body>
+</html>

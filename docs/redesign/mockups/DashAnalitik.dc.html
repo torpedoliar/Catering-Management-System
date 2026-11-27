@@ -1,0 +1,108 @@
+<!doctype html>
+<html lang="id">
+<head>
+<meta charset="utf-8">
+<title>Admin — Dashboard Analitik</title>
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&amp;display=swap" rel="stylesheet">
+<style>
+body{margin:0;background:#f7f7f5}
+a{color:#b45309;text-decoration:none}a:hover{color:#92400e}
+button{font-family:inherit}
+</style>
+</helmet>
+<div style="font-family:'Plus Jakarta Sans',system-ui,sans-serif;color:#1c1917;display:flex;flex-wrap:wrap;min-height:880px;background:#f7f7f5">
+  <aside style="flex:1 1 72px;max-width:72px;background:#0f172a;display:flex;flex-direction:column;align-items:center;padding:20px 0;gap:6px;box-sizing:border-box">
+    <div style="width:34px;height:34px;border-radius:10px;background:#f59e0b;color:#1c1917;display:flex;align-items:center;justify-content:center;font-weight:800;margin-bottom:14px">C</div>
+    <sc-for list="{{rail}}" as="r" hint-placeholder-count="6">
+      <a href="#" aria-label="{{r.label}}" title="{{r.label}}" style="{{r.style}}"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="{{r.d}}"></path></svg></a>
+    </sc-for>
+  </aside>
+
+  <div style="flex:999 1 560px;min-width:0;display:flex;flex-direction:column">
+    <header style="height:64px;background:#fff;border-bottom:1px solid #e7e5e4;display:flex;align-items:center;gap:8px;padding:0 28px;font-size:13px;color:#78716c">
+      <span>Laporan</span><span>/</span><span style="color:#1c1917;font-weight:600">Analitik</span>
+    </header>
+    <main style="padding:28px;display:flex;flex-direction:column;gap:18px;max-width:1320px;width:100%;box-sizing:border-box">
+      <div style="display:flex;flex-wrap:wrap;align-items:flex-end;gap:12px">
+        <div style="flex:1;min-width:260px">
+          <h1 style="margin:0;font-size:24px;font-weight:800;letter-spacing:-.02em">Biaya &amp; pemborosan</h1>
+          <p style="margin:4px 0 0;color:#78716c;font-size:14px">1–27 November 2026 · PT Santos Jaya Abadi · Rp13.000 per porsi</p>
+        </div>
+        <div role="group" aria-label="Periode" style="display:flex;background:#fff;border:1px solid #e7e5e4;border-radius:10px;padding:3px">
+          <sc-for list="{{ranges}}" as="r" hint-placeholder-count="4"><button onClick="{{r.pick}}" style="{{r.style}}">{{r.label}}</button></sc-for>
+        </div>
+        <button style="height:38px;border:0;background:#f59e0b;border-radius:10px;padding:0 16px;font-size:13px;font-weight:700;color:#1c1917;cursor:pointer">Ekspor Excel</button>
+      </div>
+
+      <section style="display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:14px">
+        <sc-for list="{{kpis}}" as="k" hint-placeholder-count="4">
+          <div style="background:#fff;border:1px solid #e7e5e4;border-radius:14px;padding:16px 18px">
+            <div style="font-size:12px;font-weight:600;color:#78716c">{{k.label}}</div>
+            <div style="font-size:26px;font-weight:800;margin-top:6px;font-variant-numeric:tabular-nums;color:{{k.color}}">{{k.value}}</div>
+            <div style="font-size:12px;color:#78716c;margin-top:2px">{{k.sub}}</div>
+          </div>
+        </sc-for>
+      </section>
+
+      <section style="background:#fff7ed;border:1px solid #fed7aa;border-radius:14px;padding:16px 18px;display:flex;gap:14px;align-items:flex-start">
+        <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="#b45309" stroke-width="2" aria-hidden="true" style="flex-shrink:0;margin-top:1px"><path d="M12 9v4M12 17h.01M10.3 3.9 1.8 18a2 2 0 0 0 1.7 3h17a2 2 0 0 0 1.7-3L13.7 3.9a2 2 0 0 0-3.4 0z"></path></svg>
+        <div style="font-size:13.5px;line-height:1.55"><b>54% porsi tidak diambil, target di bawah 10%.</b> Shift 1 menyumbang Rp6.435.000 (54%) dari kerugian bulan ini. Pertimbangkan pengingat pagi untuk Shift 1 dan blacklist otomatis.</div>
+      </section>
+
+      <div style="display:grid;grid-template-columns:minmax(0,1.3fr) minmax(0,1fr);gap:14px">
+        <section style="background:#fff;border:1px solid #e7e5e4;border-radius:14px;padding:20px">
+          <div style="display:flex;justify-content:space-between;align-items:baseline"><h2 style="margin:0;font-size:16px;font-weight:700">Order per hari</h2><span style="font-size:12px;color:#78716c">Minggu 48 · 22–28 Nov</span></div>
+          <div style="display:flex;align-items:flex-end;gap:14px;height:210px;border-bottom:1px solid #e7e5e4;margin-top:18px;padding:0 6px">
+            <sc-for list="{{week}}" as="w" hint-placeholder-count="7">
+              <div style="flex:1;display:flex;flex-direction:column;align-items:center;justify-content:flex-end;height:100%;gap:6px">
+                <span style="font-size:12px;font-weight:700;font-variant-numeric:tabular-nums;color:#44403c">{{w.v}}</span>
+                <div style="width:100%;max-width:46px;height:{{w.h}};background:{{w.color}};border-radius:6px 6px 0 0"></div>
+              </div>
+            </sc-for>
+          </div>
+          <div style="display:flex;gap:14px;padding:6px 6px 0"><sc-for list="{{week}}" as="w" hint-placeholder-count="7"><span style="flex:1;text-align:center;font-size:12px;color:#78716c">{{w.d}}</span></sc-for></div>
+          <p style="margin:12px 0 0;font-size:12px;color:#78716c">Jumat 27 (hari ini) dan Sabtu 28 masih bisa berubah sampai batas pesan.</p>
+        </section>
+
+        <section style="background:#fff;border:1px solid #e7e5e4;border-radius:14px;padding:20px">
+          <h2 style="margin:0 0 4px;font-size:16px;font-weight:700">Porsi tidak diambil per shift</h2>
+          <p style="margin:0 0 12px;font-size:12px;color:#78716c">1–27 November · diurutkan dari kerugian terbesar</p>
+          <sc-for list="{{shifts}}" as="s" hint-placeholder-count="6">
+            <div style="padding:8px 0">
+              <div style="display:flex;justify-content:space-between;font-size:13px"><span style="font-weight:600">{{s.name}}</span><span style="font-variant-numeric:tabular-nums"><b>{{s.rate}}</b> <span style="color:#78716c">· {{s.loss}}</span></span></div>
+              <div style="height:8px;background:#f5f5f4;border-radius:999px;margin-top:6px;overflow:hidden"><div style="height:100%;width:{{s.rate}};background:{{s.color}};border-radius:999px"></div></div>
+              <div style="font-size:11.5px;color:#78716c;margin-top:4px">{{s.miss}} dari {{s.orders}} porsi</div>
+            </div>
+          </sc-for>
+        </section>
+      </div>
+    </main>
+  </div>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"$preview":{"width":1440,"height":880}}'>
+class Component extends DCLogic {
+  constructor(p){ super(p); this.state = { range: 'Bulan ini' }; }
+  renderVals() {
+    const rail = [['Dashboard','M3 3h8v8H3zM13 3h8v5h-8zM13 10h8v11h-8zM3 13h8v8H3z'],['Check-in','M3 7V3h4M17 3h4v4M21 17v4h-4M7 21H3v-4M7 12h10'],['Analitik','M3 3v18h18M7 15l4-4 3 3 5-6'],['Pengguna','M16 21v-2a4 4 0 0 0-8 0v2M12 11a4 4 0 1 0 0-8 4 4 0 0 0 0 8z'],['Menu Mingguan','M4 6h16M4 12h16M4 18h10'],['Pengaturan','M12 15a3 3 0 1 0 0-6 3 3 0 0 0 0 6z']]
+      .map(([label,d]) => ({ label, d, style:'width:44px;height:44px;border-radius:10px;display:flex;align-items:center;justify-content:center;' + (label === 'Analitik' ? 'background:rgba(245,158,11,.16);color:#fbbf24' : 'color:#94a3b8') }));
+    const ranges = ['Hari ini','7 hari','Bulan ini','Kustom'].map(l => ({ label:l, pick: () => this.setState({ range:l }),
+      style:'border:0;border-radius:8px;padding:7px 12px;font-size:13px;cursor:pointer;' + (this.state.range === l ? 'background:#1c1917;color:#fff;font-weight:600' : 'background:transparent;color:#57534e;font-weight:500') }));
+    const kpis = [['Total biaya','Rp22.113.000','1.701 pesanan','#1c1917'],['Biaya termanfaatkan','Rp5.811.000','447 diambil · 26%','#15803d'],['Kerugian','Rp11.947.000','919 tidak diambil · 54%','#b91c1c'],['Waste rate','54%','Target di bawah 10%','#b45309']]
+      .map(([label,value,sub,color]) => ({ label, value, sub, color }));
+    const W = [['Min',19],['Sen',224],['Sel',307],['Rab',361],['Kam',363],['Jum',335],['Sab',235]];
+    const week = W.map(([d,v]) => ({ d, v: String(v), h: Math.round(v / 363 * 170) + 'px', color: d === 'Jum' ? '#f59e0b' : d === 'Sab' ? '#fde68a' : '#d6d3d1' }));
+    const S = [['Shift 1',495,833,'Rp6.435.000'],['Shift 2',265,532,'Rp3.445.000'],['Shift 3',100,168,'Rp1.300.000'],['Office Hour',40,140,'Rp520.000'],['Longshift 1',14,21,'Rp182.000'],['Longshift 2',5,7,'Rp65.000']];
+    const shifts = S.map(([name,miss,orders,loss]) => { const r = Math.round(miss / orders * 100);
+      return { name, miss: String(miss), orders: String(orders), loss, rate: r + '%', color: r >= 50 ? '#dc2626' : r >= 15 ? '#f59e0b' : '#16a34a' }; });
+    return { rail, ranges, kpis, week, shifts };
+  }
+}
+</script>
+</body>
+</html>

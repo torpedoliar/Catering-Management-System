@@ -1,0 +1,128 @@
+<!doctype html>
+<html lang="id">
+<head>
+<meta charset="utf-8">
+<title>Komponen &amp; Motion</title>
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&amp;display=swap" rel="stylesheet">
+<style>
+body{margin:0;background:#f7f7f5}
+a{color:#b45309}a:hover{color:#92400e}
+button,input,select{font-family:inherit}
+@keyframes shimmer{0%{background-position:-240px 0}100%{background-position:240px 0}}
+@keyframes rise{from{opacity:0;transform:translateY(8px)}to{opacity:1;transform:none}}
+.sk{background:linear-gradient(90deg,#f0efed 0,#fafaf9 40%,#f0efed 80%);background-size:480px 100%;animation:shimmer 1.4s linear infinite;border-radius:8px}
+.rise{animation:rise .24s cubic-bezier(.2,.8,.2,1) both}
+@media (prefers-reduced-motion: reduce){.sk,.rise{animation:none}}
+</style>
+</helmet>
+<div style="font-family:'Plus Jakarta Sans',system-ui,sans-serif;color:#1c1917;background:#f7f7f5;padding:40px;box-sizing:border-box;min-height:1220px;display:flex;flex-direction:column;gap:24px;max-width:1440px">
+  <div>
+    <h1 style="margin:0;font-size:28px;font-weight:800;letter-spacing:-.02em">Komponen &amp; motion</h1>
+    <p style="margin:6px 0 0;color:#78716c;font-size:14px">Satu set dipakai di semua halaman: karyawan, operator, vendor, admin.</p>
+  </div>
+
+  <div style="display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:20px">
+    <section style="background:#fff;border:1px solid #e7e5e4;border-radius:14px;padding:20px">
+      <h2 style="margin:0 0 14px;font-size:15px;font-weight:700">Warna</h2>
+      <div style="display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:10px">
+        <sc-for list="{{colors}}" as="c" hint-placeholder-count="12">
+          <div><div style="height:48px;border-radius:10px;background:{{c.hex}};border:1px solid rgba(0,0,0,.06)"></div><div style="font-size:12px;font-weight:600;margin-top:6px">{{c.name}}</div><div style="font-size:11px;color:#78716c;font-family:ui-monospace,monospace">{{c.hex}}</div></div>
+        </sc-for>
+      </div>
+    </section>
+    <section style="background:#fff;border:1px solid #e7e5e4;border-radius:14px;padding:20px">
+      <h2 style="margin:0 0 14px;font-size:15px;font-weight:700">Tipografi · Plus Jakarta Sans</h2>
+      <div style="display:flex;flex-direction:column;gap:10px">
+        <div style="display:flex;align-items:baseline;gap:16px"><span style="width:90px;font-size:12px;color:#78716c">Judul hal.</span><span style="font-size:24px;font-weight:800;letter-spacing:-.02em">Riwayat pesanan</span></div>
+        <div style="display:flex;align-items:baseline;gap:16px"><span style="width:90px;font-size:12px;color:#78716c">Judul kartu</span><span style="font-size:16px;font-weight:700">Order per kantin</span></div>
+        <div style="display:flex;align-items:baseline;gap:16px"><span style="width:90px;font-size:12px;color:#78716c">Isi</span><span style="font-size:14px">Pilih tanggal, shift, dan kantin.</span></div>
+        <div style="display:flex;align-items:baseline;gap:16px"><span style="width:90px;font-size:12px;color:#78716c">Bantu</span><span style="font-size:12px;color:#78716c">Diperbarui otomatis</span></div>
+        <div style="display:flex;align-items:baseline;gap:16px"><span style="width:90px;font-size:12px;color:#78716c">Angka</span><span style="font-size:30px;font-weight:800;font-variant-numeric:tabular-nums">1.844</span></div>
+      </div>
+    </section>
+  </div>
+
+  <section style="background:#fff;border:1px solid #e7e5e4;border-radius:14px;padding:20px">
+    <h2 style="margin:0 0 14px;font-size:15px;font-weight:700">Tombol &amp; input</h2>
+    <div style="display:flex;flex-wrap:wrap;gap:10px;align-items:center">
+      <button style="height:40px;border:0;background:#f59e0b;border-radius:10px;padding:0 16px;font-size:14px;font-weight:700;color:#1c1917">Simpan</button>
+      <button style="height:40px;border:1px solid #e7e5e4;background:#fff;border-radius:10px;padding:0 16px;font-size:14px;font-weight:600;color:#44403c">Batal</button>
+      <button style="height:40px;border:0;background:transparent;border-radius:10px;padding:0 12px;font-size:14px;font-weight:600;color:#b45309">Lihat semua</button>
+      <button style="height:40px;border:0;background:#b91c1c;border-radius:10px;padding:0 16px;font-size:14px;font-weight:700;color:#fff">Hapus</button>
+      <button disabled style="height:40px;border:0;background:#f5f5f4;border-radius:10px;padding:0 16px;font-size:14px;font-weight:700;color:#a8a29e">Nonaktif</button>
+      <button style="height:40px;border:0;background:#f59e0b;border-radius:10px;padding:0 16px;font-size:14px;font-weight:700;color:#1c1917;display:inline-flex;align-items:center;gap:8px"><span style="width:14px;height:14px;border:2px solid #1c1917;border-right-color:transparent;border-radius:50%;display:inline-block"></span>Menyimpan…</button>
+      <span style="width:1px;height:28px;background:#e7e5e4;margin:0 6px"></span>
+      <label style="display:flex;flex-direction:column;gap:4px;font-size:12px;font-weight:600;color:#44403c">Nama kantin<input value="RNG" style="height:40px;border:1px solid #d6d3d1;border-radius:10px;padding:0 12px;font-size:14px;width:200px"></label>
+      <label style="display:flex;flex-direction:column;gap:4px;font-size:12px;font-weight:600;color:#b91c1c">Kapasitas<input value="-5" aria-invalid="true" style="height:40px;border:2px solid #dc2626;border-radius:10px;padding:0 12px;font-size:14px;width:120px"><span style="font-weight:500">Harus lebih dari 0</span></label>
+    </div>
+  </section>
+
+  <div style="display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:20px">
+    <section style="background:#fff;border:1px solid #e7e5e4;border-radius:14px;padding:20px">
+      <h2 style="margin:0 0 14px;font-size:15px;font-weight:700">Status pesanan</h2>
+      <div style="display:flex;flex-wrap:wrap;gap:8px">
+        <sc-for list="{{badges}}" as="b" hint-placeholder-count="5"><span style="{{b.style}}">{{b.label}}</span></sc-for>
+      </div>
+      <p style="margin:12px 0 0;font-size:12px;color:#78716c">Selalu teks + warna, tidak hanya warna.</p>
+    </section>
+    <section style="background:#fff;border:1px solid #e7e5e4;border-radius:14px;padding:20px">
+      <h2 style="margin:0 0 14px;font-size:15px;font-weight:700">Memuat (skeleton)</h2>
+      <div style="display:flex;flex-direction:column;gap:10px">
+        <div class="sk" style="height:14px;width:60%"></div><div class="sk" style="height:32px;width:40%"></div><div class="sk" style="height:10px;width:85%"></div><div class="sk" style="height:10px;width:70%"></div>
+      </div>
+      <p style="margin:12px 0 0;font-size:12px;color:#78716c">Ganti spinner layar penuh; bentuk mengikuti konten.</p>
+    </section>
+    <section style="background:#fff;border:1px solid #e7e5e4;border-radius:14px;padding:20px">
+      <h2 style="margin:0 0 14px;font-size:15px;font-weight:700">Notifikasi (toast)</h2>
+      <sc-for list="{{toasts}}" as="t" hint-placeholder-count="2">
+        <div class="rise" style="display:flex;gap:10px;align-items:flex-start;border:1px solid #e7e5e4;border-radius:12px;padding:12px;margin-bottom:8px;box-shadow:0 8px 24px rgba(28,25,23,.08)">
+          <span style="width:8px;height:8px;border-radius:50%;background:{{t.color}};margin-top:6px;flex-shrink:0"></span>
+          <div style="flex:1"><div style="font-size:13px;font-weight:700">{{t.title}}</div><div style="font-size:12px;color:#78716c">{{t.body}}</div></div>
+        </div>
+      </sc-for>
+    </section>
+  </div>
+
+  <section style="background:#fff;border:1px solid #e7e5e4;border-radius:14px;padding:20px">
+    <h2 style="margin:0 0 4px;font-size:15px;font-weight:700">Motion · Framer Motion</h2>
+    <p style="margin:0 0 14px;font-size:13px;color:#78716c">Cepat dan tidak menghalangi kerja. Semua dimatikan bila pengguna memilih "kurangi animasi" di sistem.</p>
+    <table style="width:100%;border-collapse:collapse;font-size:13px">
+      <thead><tr style="text-align:left;color:#57534e;background:#fafaf9"><th style="padding:10px 12px;font-weight:600">Momen</th><th style="padding:10px 12px;font-weight:600">Gerak</th><th style="padding:10px 12px;font-weight:600">Durasi</th><th style="padding:10px 12px;font-weight:600">Easing</th></tr></thead>
+      <tbody>
+        <sc-for list="{{motion}}" as="m" hint-placeholder-count="7">
+          <tr style="border-top:1px solid #f5f5f4"><td style="padding:10px 12px;font-weight:600">{{m.what}}</td><td style="padding:10px 12px;color:#44403c">{{m.how}}</td><td style="padding:10px 12px;font-family:ui-monospace,monospace">{{m.dur}}</td><td style="padding:10px 12px;font-family:ui-monospace,monospace;color:#57534e">{{m.ease}}</td></tr>
+        </sc-for>
+      </tbody>
+    </table>
+  </section>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"$preview":{"width":1440,"height":1220}}'>
+class Component extends DCLogic {
+    renderVals() {
+    const colors = [['Amber 500 · aksi utama','#f59e0b'],['Amber 700 · link','#b45309'],['Amber 50 · terpilih','#fffbeb'],['Navy · sidebar','#0f172a'],
+      ['Stone 900 · teks','#1c1917'],['Stone 500 · teks bantu','#78716c'],['Stone 200 · garis','#e7e5e4'],['Latar','#f7f7f5'],
+      ['Hijau · berhasil','#15803d'],['Biru · menunggu','#1e40af'],['Merah · gagal','#b91c1c'],['Kuning tua · peringatan','#b45309']].map(([name,hex]) => ({ name, hex }));
+    const badges = [['Menunggu','#dbeafe','#1e40af'],['Diambil','#dcfce7','#166534'],['Tidak diambil','#fee2e2','#991b1b'],['Dibatalkan','#f5f5f4','#57534e'],['Perlu dicek','#fef3c7','#92400e']]
+      .map(([label,bg,fg]) => ({ label, style:'font-size:12px;font-weight:700;border-radius:999px;padding:4px 10px;background:' + bg + ';color:' + fg }));
+    const toasts = [{ title:'Pesanan dibuat', body:'3 hari · Office Hour · RNG', color:'#16a34a' }, { title:'Gagal menyimpan', body:'Periksa koneksi lalu coba lagi.', color:'#dc2626' }];
+    const motion = [
+      ['Pindah halaman','fade + naik 8 px','180 ms','[0.2, 0.8, 0.2, 1]'],
+      ['Daftar / baris tabel muncul','stagger 20 ms per baris, maks. 10 baris','160 ms','easeOut'],
+      ['Modal & drawer','skala 0.98→1 + fade; drawer geser dari kanan','200 ms','spring(400, 32)'],
+      ['Tab & filter aktif','garis bawah bergeser (layoutId)','220 ms','spring(500, 40)'],
+      ['Angka KPI berubah','hitung naik ke nilai baru','400 ms','easeOut'],
+      ['Toast','masuk dari bawah, keluar fade','200 / 150 ms','easeOut'],
+      ['Popup check-in','pop skala 0.96→1; tanpa delay','140 ms','easeOut']
+    ].map(([what,how,dur,ease]) => ({ what, how, dur, ease }));
+    return { colors, badges, toasts, motion };
+  }
+}
+</script>
+</body>
+</html>

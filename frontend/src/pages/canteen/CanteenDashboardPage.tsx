@@ -18,6 +18,8 @@ interface CanteenLiveResponse {
     activeBreak: {
         status: 'active' | 'upcoming' | 'finished';
         time: string;
+        /** "Dini hari tadi" | "Hari ini" | "Besok dini hari" | "Besok" (older servers: absent) */
+        dayLabel?: string;
         shiftNames: string[];
         remainingMinutes: number;
         total: number;
@@ -29,6 +31,7 @@ interface CanteenLiveResponse {
     } | null;
     todayBreaks: Array<{
         time: string;
+        dayLabel?: string;
         shiftNames: string[];
         total: number;
         pickedUp: number;
@@ -166,7 +169,7 @@ export default function CanteenDashboardPage() {
                                         : 'Istirahat hari ini selesai'}
                             </span>
                             <h1 className="m-0 mt-3 mb-1 text-[24px] md:text-[28px] font-extrabold tracking-[-0.02em] text-[#fff]">
-                                {ab.time} · {ab.shiftNames.join(', ')}
+                                {ab.dayLabel && ab.dayLabel !== 'Hari ini' ? `${ab.dayLabel}, ` : ''}{ab.time} · {ab.shiftNames.join(', ')}
                             </h1>
                             <p className="m-0 text-[#a8a29e] text-[14px]">
                                 Kantin {selectedCanteen?.name || 'Semua'} · {data?.date ? formatHeaderDate(data.date) : ''}
@@ -297,14 +300,17 @@ export default function CanteenDashboardPage() {
 
             {/* Today's breaks schedule */}
             <Card>
-                <h2 className="m-0 mb-3.5 text-[16px] font-bold text-[#1c1917]">Jadwal istirahat hari ini</h2>
+                <h2 className="m-0 mb-1 text-[16px] font-bold text-[#1c1917]">Jadwal istirahat hari ini</h2>
+                <p className="m-0 mb-3.5 text-[12px] text-[#78716c]">
+                    Termasuk istirahat shift malam: yang dini hari tadi (pesanan kemarin) dan yang besok dini hari (pesanan hari ini).
+                </p>
                 {data && data.todayBreaks.length > 0 ? (
                     <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
                         {data.todayBreaks.map((brk) => {
                             const active = brk.state === 'Berjalan';
                             return (
                                 <div
-                                    key={brk.time}
+                                    key={`${brk.dayLabel ?? ''}-${brk.time}`}
                                     className={`rounded-[12px] p-3.5 ${
                                         active
                                             ? 'border-2 border-[#f59e0b] bg-[#fffbeb]'
@@ -312,7 +318,14 @@ export default function CanteenDashboardPage() {
                                     }`}
                                 >
                                     <div className="flex items-center justify-between gap-2">
-                                        <b className="text-[15px] text-[#1c1917] tabular-nums">{brk.time}</b>
+                                        <div>
+                                            {brk.dayLabel && (
+                                                <div className="text-[11px] font-semibold uppercase tracking-[0.04em] text-[#78716c]">
+                                                    {brk.dayLabel}
+                                                </div>
+                                            )}
+                                            <b className="text-[15px] text-[#1c1917] tabular-nums">{brk.time}</b>
+                                        </div>
                                         {active ? (
                                             <span className="text-[11px] font-bold rounded-full px-2 py-[3px] bg-[#f59e0b] text-[#1c1917]">
                                                 Berjalan

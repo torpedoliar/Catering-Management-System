@@ -1,0 +1,120 @@
+<!doctype html>
+<html lang="id">
+<head>
+<meta charset="utf-8">
+<title>Vendor — Rekap Order</title>
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&amp;display=swap" rel="stylesheet">
+<style>
+body{margin:0;background:#f7f7f5}
+a{color:#b45309;text-decoration:none}a:hover{color:#92400e}
+button,select{font-family:inherit}
+</style>
+</helmet>
+<div style="font-family:'Plus Jakarta Sans',system-ui,sans-serif;color:#1c1917;display:flex;flex-wrap:wrap;min-height:860px;background:#f7f7f5">
+  <aside style="flex:1 1 248px;max-width:248px;background:#0f172a;color:#cbd5e1;display:flex;flex-direction:column;padding:20px 14px;box-sizing:border-box;gap:2px">
+    <div style="display:flex;align-items:center;gap:10px;padding:4px 8px 22px">
+      <div style="width:34px;height:34px;border-radius:10px;background:#f59e0b;color:#1c1917;display:flex;align-items:center;justify-content:center;font-weight:800;font-size:15px">C</div>
+      <div><div style="color:#fff;font-weight:700;font-size:15px">Catering</div><div style="font-size:11px;color:#94a3b8">PT Berkat Sehat Sejahtera</div></div>
+    </div>
+    <a href="#" style="display:flex;align-items:center;gap:10px;padding:10px;border-radius:9px;font-size:13.5px;background:rgba(245,158,11,.14);color:#fbbf24;font-weight:700"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true"><path d="M3 9l2-5h14l2 5M5 9v11h14V9M9 20v-6h6v6"></path></svg>Rekap Order</a>
+    <a href="#" style="display:flex;align-items:center;gap:10px;padding:10px;border-radius:9px;font-size:13.5px;color:#cbd5e1;font-weight:500"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true"><path d="M3 3v18h18M7 15l4-4 3 3 5-6"></path></svg>Statistik Pengambilan</a>
+  </aside>
+
+  <div style="flex:999 1 560px;min-width:0;display:flex;flex-direction:column">
+    <header style="height:64px;background:#fff;border-bottom:1px solid #e7e5e4;display:flex;align-items:center;padding:0 28px;font-size:13px"><b>Rekap Order</b></header>
+    <main style="padding:28px;display:flex;flex-direction:column;gap:18px;max-width:1240px;width:100%;box-sizing:border-box">
+      <div style="display:flex;flex-wrap:wrap;align-items:flex-end;gap:10px">
+        <div style="flex:1;min-width:240px">
+          <h1 style="margin:0;font-size:24px;font-weight:800;letter-spacing:-.02em">Rekap order makanan</h1>
+          <p style="margin:4px 0 0;color:#78716c;font-size:14px">Minggu 48 · 22–28 November 2026</p>
+        </div>
+        <div style="display:flex;align-items:center;border:1px solid #e7e5e4;background:#fff;border-radius:10px;height:38px">
+          <button aria-label="Minggu sebelumnya" style="width:38px;height:36px;border:0;background:none;cursor:pointer;font-size:16px;color:#44403c">‹</button>
+          <span style="padding:0 10px;font-size:13px;font-weight:600;border-left:1px solid #f0efed;border-right:1px solid #f0efed;line-height:36px">Minggu ini</span>
+          <button aria-label="Minggu berikutnya" style="width:38px;height:36px;border:0;background:none;cursor:pointer;font-size:16px;color:#44403c">›</button>
+        </div>
+        <button style="height:38px;border:0;background:#f59e0b;border-radius:10px;padding:0 16px;font-size:13px;font-weight:700;color:#1c1917;cursor:pointer">Ekspor Excel</button>
+      </div>
+
+      <section aria-label="Ringkasan minggu" style="display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:14px">
+        <sc-for list="{{kpis}}" as="k" hint-placeholder-count="4">
+          <div style="background:#fff;border:1px solid #e7e5e4;border-radius:14px;padding:16px 18px">
+            <div style="font-size:12px;font-weight:600;color:#78716c">{{k.label}}</div>
+            <div style="font-size:28px;font-weight:800;margin-top:6px;font-variant-numeric:tabular-nums;color:{{k.color}}">{{k.value}}</div>
+          </div>
+        </sc-for>
+      </section>
+
+      <section style="background:#fff;border:1px solid #e7e5e4;border-radius:14px;overflow:hidden">
+        <div role="tablist" aria-label="Kantin" style="display:flex;gap:4px;padding:0 16px;border-bottom:1px solid #e7e5e4">
+          <sc-for list="{{tabs}}" as="t" hint-placeholder-count="3"><button role="tab" aria-selected="{{t.on}}" onClick="{{t.pick}}" style="{{t.style}}">{{t.label}} <span style="color:#a8a29e;font-weight:500">{{t.n}}</span></button></sc-for>
+        </div>
+        <div style="overflow-x:auto">
+          <table style="width:100%;border-collapse:collapse;font-size:13.5px;min-width:760px">
+            <thead>
+              <tr style="background:#fafaf9;color:#57534e">
+                <th style="text-align:left;padding:12px 16px;font-weight:600">Hari</th>
+                <th style="text-align:right;padding:12px 16px;font-weight:600">11:30–13:00<div style="font-size:11px;font-weight:500;color:#a8a29e">Shift 1 · LS1 · Office</div></th>
+                <th style="text-align:right;padding:12px 16px;font-weight:600">17:30–19:00<div style="font-size:11px;font-weight:500;color:#a8a29e">Shift 2</div></th>
+                <th style="text-align:right;padding:12px 16px;font-weight:600">02:00–04:00<div style="font-size:11px;font-weight:500;color:#a8a29e">Shift 3 · LS2</div></th>
+                <th style="text-align:right;padding:12px 16px;font-weight:700;color:#1c1917">Total</th>
+              </tr>
+            </thead>
+            <tbody>
+              <sc-for list="{{rows}}" as="r" hint-placeholder-count="7">
+                <tr style="{{r.style}}">
+                  <td style="padding:11px 16px"><b>{{r.day}}</b> <span style="color:#78716c">{{r.date}}</span> <sc-if value="{{r.today}}" hint-placeholder-val="{{false}}"><span style="font-size:11px;font-weight:700;background:#fef3c7;color:#92400e;border-radius:999px;padding:2px 7px;margin-left:4px">Hari ini</span></sc-if></td>
+                  <td style="padding:11px 16px;text-align:right;font-variant-numeric:tabular-nums">{{r.a}}</td>
+                  <td style="padding:11px 16px;text-align:right;font-variant-numeric:tabular-nums">{{r.b}}</td>
+                  <td style="padding:11px 16px;text-align:right;font-variant-numeric:tabular-nums">{{r.c}}</td>
+                  <td style="padding:11px 16px;text-align:right;font-weight:800;font-variant-numeric:tabular-nums">{{r.t}}</td>
+                </tr>
+              </sc-for>
+            </tbody>
+            <tfoot>
+              <tr style="border-top:2px solid #e7e5e4;background:#fafaf9;font-weight:800">
+                <td style="padding:12px 16px">Total minggu</td>
+                <td style="padding:12px 16px;text-align:right">{{tot.a}}</td><td style="padding:12px 16px;text-align:right">{{tot.b}}</td><td style="padding:12px 16px;text-align:right">{{tot.c}}</td><td style="padding:12px 16px;text-align:right;color:#b45309">{{tot.t}}</td>
+              </tr>
+            </tfoot>
+          </table>
+        </div>
+        <p style="margin:0;padding:10px 16px;font-size:12px;color:#78716c;border-top:1px solid #f0efed">Hari yang sudah lewat menampilkan jumlah yang benar-benar dimasak. Angka berubah sampai batas pesan tiap shift.</p>
+      </section>
+    </main>
+  </div>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"$preview":{"width":1440,"height":860}}'>
+class Component extends DCLogic {
+  constructor(p){ super(p); this.state = { tab: 'Semua kantin' }; }
+  renderVals() {
+    const st = this.state;
+    const D = {
+      'Semua kantin': [['Minggu','22 Nov',13,6,0],['Senin','23 Nov',139,65,20],['Selasa','24 Nov',182,95,30],['Rabu','25 Nov',210,115,36],['Kamis','26 Nov',209,117,37],['Jumat','27 Nov',191,108,36],['Sabtu','28 Nov',123,83,29]],
+      RNG: [['Minggu','22 Nov',7,6,0],['Senin','23 Nov',104,49,19],['Selasa','24 Nov',133,73,29],['Rabu','25 Nov',147,94,35],['Kamis','26 Nov',150,96,36],['Jumat','27 Nov',142,89,35],['Sabtu','28 Nov',81,69,28]],
+      GOODDAY: [['Minggu','22 Nov',6,0,0],['Senin','23 Nov',35,16,1],['Selasa','24 Nov',49,22,1],['Rabu','25 Nov',63,21,1],['Kamis','26 Nov',59,21,1],['Jumat','27 Nov',49,19,1],['Sabtu','28 Nov',42,14,1]]
+    };
+    const data = D[st.tab];
+    const fmt = n => n ? n.toLocaleString('id-ID') : '–';
+    const rows = data.map(([day,date,a,b,c]) => ({ day, date, a: fmt(a), b: fmt(b), c: fmt(c), t: fmt(a + b + c), today: date === '27 Nov',
+      style:'border-top:1px solid #f5f5f4;' + (date === '27 Nov' ? 'background:#fffbeb' : '') }));
+    const sum = i => data.reduce((s, r) => s + r[i], 0);
+    const tot = { a: fmt(sum(2)), b: fmt(sum(3)), c: fmt(sum(4)), t: fmt(sum(2) + sum(3) + sum(4)) };
+    const tabs = [['Semua kantin','1.844'],['RNG','1.422'],['GOODDAY','422']].map(([label,n]) => {
+      const on = st.tab === label;
+      return { label, n, on, pick: () => this.setState({ tab: label }),
+        style:'border:0;background:none;padding:12px 10px;font-size:13.5px;cursor:pointer;margin-bottom:-1px;' + (on ? 'border-bottom:2px solid #f59e0b;font-weight:700;color:#1c1917' : 'border-bottom:2px solid transparent;color:#78716c;font-weight:500') };
+    });
+    const kpis = [['Total order','1.844','#1c1917'],['Diambil','447','#15803d'],['Tidak diambil','827','#b91c1c'],['Dibatalkan','47','#57534e']].map(([label,value,color]) => ({ label, value, color }));
+    return { rows, tot, tabs, kpis };
+  }
+}
+</script>
+</body>
+</html>
