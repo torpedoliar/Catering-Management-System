@@ -1,5 +1,7 @@
-import { Toaster, resolveValue, Toast } from 'react-hot-toast';
+import toast, { Toaster, resolveValue, Toast } from 'react-hot-toast';
 import { AnimatePresence, motion } from 'framer-motion';
+
+type ClickableToast = Toast & { onClick?: () => void };
 
 function getDotColor(t: Toast): string {
     switch (t.type) {
@@ -26,6 +28,13 @@ export function AppToaster() {
             {(t) => {
                 const dotColor = getDotColor(t);
                 const content = resolveValue(t.message, t);
+                const toastOnClick = (t as ClickableToast).onClick;
+                const handleActivate = toastOnClick
+                    ? () => {
+                          toast.dismiss(t.id);
+                          toastOnClick();
+                      }
+                    : undefined;
                 return (
                     <AnimatePresence>
                         {t.visible && (
@@ -37,8 +46,24 @@ export function AppToaster() {
                                     duration: t.visible ? 0.2 : 0.15,
                                     ease: 'easeOut',
                                 }}
-                                className="pointer-events-auto flex items-start gap-2.5 max-w-[360px] w-full bg-[#fff] text-[#1c1917] border border-[#e7e5e4] rounded-[12px] px-3.5 py-3 shadow-[0_8px_24px_rgba(28,25,23,0.08)]"
-                                role={t.type === 'error' ? 'alert' : 'status'}
+                                onClick={handleActivate}
+                                onKeyDown={
+                                    handleActivate
+                                        ? (e) => {
+                                              if (e.key === 'Enter' || e.key === ' ') {
+                                                  e.preventDefault();
+                                                  handleActivate();
+                                              }
+                                          }
+                                        : undefined
+                                }
+                                tabIndex={handleActivate ? 0 : undefined}
+                                role={handleActivate ? 'button' : t.type === 'error' ? 'alert' : 'status'}
+                                className={`pointer-events-auto flex items-start gap-2.5 max-w-[360px] w-full bg-[#fff] text-[#1c1917] border border-[#e7e5e4] rounded-[12px] px-3.5 py-3 shadow-[0_8px_24px_rgba(28,25,23,0.08)] ${
+                                    handleActivate
+                                        ? 'cursor-pointer hover:border-[#d6d3d1] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#f59e0b]'
+                                        : ''
+                                }`}
                             >
                                 {t.type === 'loading' ? (
                                     <span

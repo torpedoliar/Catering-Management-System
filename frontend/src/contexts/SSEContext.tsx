@@ -441,15 +441,20 @@ function showEventToast(eventType: string, data: any, currentUserId: string, cur
         relatedType?: 'ORDER' | 'BLACKLIST' | 'MESSAGE' | 'NONE' | null;
         relatedId?: string | null;
         title?: string;
+        directUrl?: string;
     }) => {
         // Lazy import: keeps the SSE context bundle small for users who
         // never tap a toast and avoids a circular dep with AuthContext.
-        import('../utils/notificationRoutes').then(({ navigateToNotification }) => {
+        import('../utils/notificationRoutes').then(({ navigateToNotification, navigateToUrl }) => {
+            if (notif.directUrl) {
+                navigateToUrl(notif.directUrl, currentRole);
+                return;
+            }
             navigateToNotification({
                 relatedType: notif.relatedType ?? null,
                 relatedId: notif.relatedId ?? null,
                 title: notif.title ?? '',
-            });
+            }, currentRole);
         }).catch(() => {});
     };
 
@@ -464,7 +469,7 @@ function showEventToast(eventType: string, data: any, currentUserId: string, cur
             if (!isOwnAction && showOthersActivity) {
                 toast.success(`📦 New order: ${data.order?.user?.name || 'User'}`, withClick({
                     icon: '🍽️',
-                    onClick: () => goTo({ relatedType: 'ORDER', relatedId: data.order?.id, title: 'order:created' }),
+                    onClick: () => goTo({ directUrl: '/admin/orders' }),
                 }));
             }
             // Cancel reminders on Android when own order is created
@@ -496,7 +501,7 @@ function showEventToast(eventType: string, data: any, currentUserId: string, cur
             if (!isOwnAction && showOthersActivity) {
                 toast(`Order cancelled: ${data.order?.user?.name || 'User'}`, withClick({
                     icon: '❌',
-                    onClick: () => goTo({ relatedType: 'ORDER', relatedId: data.order?.id, title: 'order:cancelled' }),
+                    onClick: () => goTo({ directUrl: '/admin/orders' }),
                 }));
             }
             // Reschedule reminders on Android when own order is cancelled
@@ -510,7 +515,11 @@ function showEventToast(eventType: string, data: any, currentUserId: string, cur
             if (!isOwnAction && !showOthersActivity) break;
             toast.error(`Tidak diambil: ${data.userName || 'User'}`, withClick({
                 icon: '⚠️',
-                onClick: () => goTo({ relatedType: 'ORDER', relatedId: data.orderId, title: 'order:noshow' }),
+                onClick: () => goTo(
+                    isOwnAction
+                        ? { relatedType: 'ORDER', relatedId: data.orderId, title: 'order:noshow' }
+                        : { directUrl: '/admin/orders' }
+                ),
             }));
             break;
         case 'user:blacklisted':

@@ -174,11 +174,15 @@ export function AuthProvider({ children }: { children: ReactNode }) {
                     const res = await api.get('/api/auth/me');
                     if (isMounted) {
                         setUser(res.data);
+                        if (res.data?.role) {
+                            try { sessionStorage.setItem('userRole', res.data.role); } catch { /* noop */ }
+                        }
                     }
                 } catch (error) {
                     console.error('Failed to load user:', error);
                     await Preferences.remove({ key: 'token' });
                     await Preferences.remove({ key: 'refreshToken' });
+                    try { sessionStorage.removeItem('userRole'); } catch { /* noop */ }
                     memoryToken = null;
                     if (isMounted) {
                         setToken(null);
@@ -198,6 +202,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
             setUser(null);
             sessionStorage.removeItem('announcementsShown');
             sessionStorage.removeItem('dismissedAnnouncements');
+            try { sessionStorage.removeItem('userRole'); } catch { /* noop */ }
         };
         window.addEventListener('force-logout', handleForceLogout);
 
@@ -220,6 +225,9 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         memoryToken = newToken;
         setToken(newToken);
         setUser(userData);
+        if (userData?.role) {
+            try { sessionStorage.setItem('userRole', userData.role); } catch { /* noop */ }
+        }
     }, []);
 
     const logout = useCallback(async () => {
@@ -237,6 +245,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
             // Clear announcement session tracking so popups show on next login
             sessionStorage.removeItem('announcementsShown');
             sessionStorage.removeItem('dismissedAnnouncements');
+            try { sessionStorage.removeItem('userRole'); } catch { /* noop */ }
             setToken(null);
             setUser(null);
         }
@@ -249,6 +258,9 @@ export function AuthProvider({ children }: { children: ReactNode }) {
                 memoryToken = storedToken;
                 const res = await api.get('/api/auth/me');
                 setUser(res.data);
+                if (res.data?.role) {
+                    try { sessionStorage.setItem('userRole', res.data.role); } catch { /* noop */ }
+                }
             } catch (error) {
                 console.error('Failed to refresh user:', error);
             }

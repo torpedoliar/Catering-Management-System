@@ -92,7 +92,7 @@ export default function MessagesPage() {
 
     const [searchParams, setSearchParams] = useSearchParams();
     const deepLinkId = searchParams.get('id');
-    const deepLinkConsumed = useRef(false);
+    const lastConsumedIdRef = useRef<string | null>(null);
     const [detailMessage, setDetailMessage] = useState<Message | null>(null);
 
     const loadMessages = useCallback(async () => {
@@ -140,11 +140,11 @@ export default function MessagesPage() {
     useSSERefresh(ORDER_EVENTS, loadMessages);
 
     useEffect(() => {
-        if (deepLinkConsumed.current || !deepLinkId || isLoading) return;
+        if (!deepLinkId || lastConsumedIdRef.current === deepLinkId || isLoading) return;
         const match = messages.find((m) => m.id === deepLinkId);
         if (match) {
             setDetailMessage(match);
-            deepLinkConsumed.current = true;
+            lastConsumedIdRef.current = deepLinkId;
             const next = new URLSearchParams(searchParams);
             next.delete('id');
             setSearchParams(next, { replace: true });
@@ -187,8 +187,9 @@ export default function MessagesPage() {
             await api.put(`/api/messages/${messageId}/resolve`, { status });
             toast.success(status === 'APPROVED' ? 'Sanggahan disetujui' : 'Sanggahan ditolak');
             loadMessages();
-        } catch (error) {
-            toast.error((error as { response?: { data?: { error?: string } } })?.response?.data?.error || 'Gagal memproses sanggahan');
+        } catch (error: unknown) {
+            const err = error as { response?: { data?: { error?: string } } };
+            toast.error(err.response?.data?.error || 'Gagal memproses sanggahan');
         } finally {
             setResolvingId(null);
         }
@@ -515,13 +516,12 @@ export default function MessagesPage() {
                 onClose={() => setDetailMessage(null)}
                 title={
                     detailMessage
-                        ? `Detail ${
-                              detailMessage.type === 'COMPLAINT'
-                                  ? 'Keluhan'
-                                  : detailMessage.type === 'CANCELLATION'
-                                    ? 'Pembatalan'
-                                    : 'Sanggahan'
-                          }`
+                        ? `Detail ${detailMessage.type === 'COMPLAINT'
+                            ? 'Keluhan'
+                            : detailMessage.type === 'CANCELLATION'
+                                ? 'Pembatalan'
+                                : 'Sanggahan'
+                        }`
                         : ''
                 }
                 size="lg"

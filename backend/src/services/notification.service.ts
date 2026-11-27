@@ -49,7 +49,8 @@ export class NotificationService {
         message: string,
         type: NotificationType = 'INFO',
         related?: NotificationRelated,
-        relatedId?: string
+        relatedId?: string,
+        deepLinkOverride?: string
     ) {
         try {
             // Backward-compat: callers that pass a 5th positional string still
@@ -80,7 +81,7 @@ export class NotificationService {
             // FIX-M5: Fire-and-forget push dispatch (non-blocking)
             // DB write + SSE are done; push delivery is best-effort
             setImmediate(() => {
-                this.dispatchPush(userId, title, message, related, resolvedType, resolvedId, type).catch(err =>
+                this.dispatchPush(userId, title, message, related, resolvedType, resolvedId, type, deepLinkOverride).catch(err =>
                     console.error('[NotificationService] Background push dispatch error:', err)
                 );
             });
@@ -102,7 +103,8 @@ export class NotificationService {
         related: NotificationRelated | undefined,
         resolvedType: string | null,
         resolvedId: string | null,
-        type: NotificationType
+        type: NotificationType,
+        deepLinkOverride?: string
     ) {
         const subs = await prisma.pushSubscription.findMany({
             where: { userId }
@@ -110,6 +112,7 @@ export class NotificationService {
 
         if (subs.length === 0) return;
 
+        const targetUrl = deepLinkOverride || getNotificationDeepLink(related);
         const webSubs = subs.filter(s => s.endpoint && s.p256dh && s.auth);
         const fcmSubs = subs.filter(s => s.fcmToken);
 
@@ -120,7 +123,7 @@ export class NotificationService {
                 body: message,
                 icon: '/vite.svg',
                 data: {
-                    url: getNotificationDeepLink(related),
+                    url: targetUrl,
                     relatedId: resolvedId,
                     relatedType: resolvedType,
                 }
@@ -153,7 +156,7 @@ export class NotificationService {
             const fcmPayload = {
                 notification: { title, body: message },
                 data: {
-                    url: getNotificationDeepLink(related),
+                    url: targetUrl,
                     relatedId: resolvedId ?? '',
                     relatedType: resolvedType ?? '',
                     type: type || 'INFO',
@@ -209,13 +212,7 @@ export class NotificationService {
             const resolvedType = related?.type ?? null;
             const resolvedId = related?.id ?? null;
 
-            // For admin notifications, fall back to the admin deep-link helper
-            // when the caller did not specify a type. This ensures the embedded
-            // `url` in push payloads still routes to something useful (e.g.
-            // backup-failure -> /admin/backup, daily-summary -> /admin/dashboard).
-            const pushUrl = resolvedType
-                ? getNotificationDeepLink(related)
-                : getAdminNotificationDeepLink(related);
+            const pushUrl = getAdminNotificationDeepLink(related, title);
 
             const admins = await prisma.user.findMany({
                 where: { role: 'ADMIN' },
@@ -223,15 +220,18 @@ export class NotificationService {
             });
 
             const sendPromises = admins.map(admin =>
-                this.notifyUser(admin.id, title, message, type, { id: resolvedId ?? undefined, type: resolvedType ?? undefined })
+                this.notifyUser(
+                    admin.id,
+                    title,
+                    message,
+                    type,
+                    { id: resolvedId ?? undefined, type: resolvedType ?? undefined },
+                    undefined,
+                    pushUrl
+                )
             );
 
             await Promise.allSettled(sendPromises);
-            // Reference `pushUrl` so the helper is exercised at build time; the
-            // current admin bell click path uses the frontend mapper, but having
-            // the same URL pre-baked into FCM data makes cold-tap navigation
-            // work before the SPA is loaded.
-            void pushUrl;
         } catch (error) {
             console.error('[NotificationService] Error notifying admins:', error);
         }

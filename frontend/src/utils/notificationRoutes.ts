@@ -64,10 +64,39 @@ function titlePrefixToRoute(title: string): NotificationRelatedType | null {
  * paths in `notificationToUrl` handle the legacy / cold-tap case
  * where only a plain route is available.
  */
+function roleHome(userRole?: string): string {
+    switch (userRole) {
+        case 'ADMIN':
+            return '/admin/dashboard';
+        case 'CANTEEN':
+            return '/canteen';
+        case 'VENDOR':
+            return '/vendor';
+        default:
+            return '/';
+    }
+}
+
+function getStoredUserRole(): string | undefined {
+    try {
+        const raw = localStorage.getItem('user');
+        if (raw) {
+            const parsed = JSON.parse(raw);
+            if (parsed?.role) return parsed.role;
+        }
+        const sessionRole = sessionStorage.getItem('userRole');
+        if (sessionRole) return sessionRole;
+    } catch {
+        // Storage unavailable
+    }
+    return undefined;
+}
+
 export function notificationToRoute(
     n: Pick<Notification, 'relatedType' | 'relatedId' | 'title'>,
     userRole?: string
 ): string {
+    const resolvedRole = userRole ?? getStoredUserRole();
     const explicit = n.relatedType ?? null;
     const fallback = explicit ? null : titlePrefixToRoute(n.title);
     const type: NotificationRelatedType = explicit ?? fallback ?? 'NONE';
@@ -87,21 +116,25 @@ export function notificationToRoute(
             // For USER-facing blacklist notifications we land on the user
             // settings page (banner). For ADMIN callers, the admin page
             // is more useful — see `notificationToRoute` admin branch.
-            route = userRole === 'ADMIN' ? withId('/admin/blacklist') : withId('/settings');
+            route = resolvedRole === 'ADMIN' ? withId('/admin/blacklist') : withId('/settings');
             break;
         case 'MESSAGE':
             route = withId('/admin/messages');
             break;
         case 'NONE':
         default:
-            route = '/';
+            if (resolvedRole === 'ADMIN' && n.title?.startsWith('Auto Backup')) {
+                route = '/admin/backup';
+            } else {
+                route = roleHome(resolvedRole);
+            }
             break;
     }
 
     // Role gate: keep the user inside the SPA. A non-admin seeing a
-    // MESSAGE / admin-summary notification falls back to the user home.
-    if (userRole && userRole !== 'ADMIN' && route.startsWith('/admin/')) {
-        return id ? `/?id=${encodeURIComponent(id)}` : '/';
+    // MESSAGE / admin-summary notification falls back to their role home.
+    if (resolvedRole && resolvedRole !== 'ADMIN' && route.startsWith('/admin/')) {
+        return roleHome(resolvedRole);
     }
     return route;
 }
@@ -117,10 +150,13 @@ export function notificationToUrl(
     relatedId?: string | null,
     relatedType?: NotificationRelatedType | null
 ): string {
+    void relatedType;
     if (!route || !route.startsWith('/')) return '/';
     if (!relatedId) return route;
     if (route.includes('?id=')) return route; // already deep-linked
-    return `${route}?id=${encodeURIComponent(relatedId)}`;
+    return route.includes('?')
+        ? `${route}&id=${encodeURIComponent(relatedId)}`
+        : `${route}?id=${encodeURIComponent(relatedId)}`;
 }
 
 /**
@@ -129,21 +165,10 @@ export function notificationToUrl(
  * `<GlobalNavListener />` in App.tsx will replay it on mount.
  */
 export function navigateToNotification(
-    n: Partial<Notification> & { relatedType?: NotificationRelatedType | null; relatedId?: string | null }
+    n: Partial<Notification> & { relatedType?: NotificationRelatedType | null; relatedId?: string | null },
+    explicitRole?: string
 ): void {
-    // Read user role from auth context if present. Lazy import to avoid a
-    // circular dep with contexts/AuthContext (which itself imports from
-    // this file via SSEContext for toast onClick).
-    let userRole: string | undefined;
-    try {
-        const raw = localStorage.getItem('user');
-        if (raw) {
-            const parsed = JSON.parse(raw);
-            userRole = parsed?.role;
-        }
-    } catch {
-        // No user in localStorage — fall through with undefined role.
-    }
+    const userRole = explicitRole ?? getStoredUserRole();
 
     const route = notificationToRoute(
         {
@@ -170,26 +195,28 @@ export function navigateToNotification(
  * Helper for the rare case where a native push payload carries only a
  * pre-resolved `url` (e.g. the FCM `data.url` we baked in on the
  * backend). Dispatches it as-is, after the same role gate. Falls back to
- * `/` if `url` is missing or non-app.
+ * role home if `url` is missing or non-app.
  *
  * Augments the backend route with `?id=` from the push payload so the
  * destination page can auto-focus the related entity.
  */
 export function navigateToUrl(
     url: string | undefined | null,
-    userRole?: string,
+    explicitRole?: string,
     relatedId?: string | null,
     relatedType?: NotificationRelatedType | null
 ): void {
     if (typeof window === 'undefined') return;
+    const userRole = explicitRole ?? getStoredUserRole();
     if (!url || !url.startsWith('/')) {
-        window.dispatchEvent(new CustomEvent('hallofood:navigate', { detail: '/' }));
+        window.dispatchEvent(new CustomEvent('hallofood:navigate', { detail: roleHome(userRole) }));
         return;
     }
-    if (userRole && userRole !== 'ADMIN' && url.startsWith('/admin/')) {
-        url = '/';
+    let resolvedUrl = url;
+    if (userRole && userRole !== 'ADMIN' && resolvedUrl.startsWith('/admin/')) {
+        resolvedUrl = roleHome(userRole);
     }
-    const deep = notificationToUrl(url, relatedId ?? null, relatedType ?? null);
+    const deep = notificationToUrl(resolvedUrl, relatedId ?? null, relatedType ?? null);
     try {
         sessionStorage.setItem('pendingNav', deep);
     } catch {

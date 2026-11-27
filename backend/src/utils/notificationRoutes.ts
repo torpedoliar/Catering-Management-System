@@ -59,9 +59,11 @@ export function getNotificationDeepLink(
  * this helper is only used to disambiguate `NONE` for admins.
  */
 export function getAdminNotificationDeepLink(
-    related?: NotificationRelated | null
+    related?: NotificationRelated | null,
+    title?: string
 ): string {
     if (!related || !related.type) {
+        if (title?.startsWith('Auto Backup')) return '/admin/backup';
         return '/admin/dashboard';
     }
 
@@ -74,6 +76,7 @@ export function getAdminNotificationDeepLink(
             return '/admin/messages';
         case 'NONE':
         default:
+            if (title?.startsWith('Auto Backup')) return '/admin/backup';
             return '/admin/dashboard';
     }
 }

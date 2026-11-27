@@ -171,10 +171,20 @@ function GlobalNavListener() {
         const handler = (e: Event) => {
             const route = (e as CustomEvent<string>).detail;
             if (typeof route === 'string' && route.startsWith('/')) {
+                try { sessionStorage.removeItem('pendingNav'); } catch { /* noop */ }
                 navigate(route);
             }
         };
         window.addEventListener('hallofood:navigate', handler);
+
+        const swHandler = (e: MessageEvent) => {
+            if (e.data?.type === 'hallofood:navigate' && typeof e.data.url === 'string' && e.data.url.startsWith('/')) {
+                navigate(e.data.url);
+            }
+        };
+        if (typeof navigator !== 'undefined' && navigator.serviceWorker) {
+            navigator.serviceWorker.addEventListener('message', swHandler);
+        }
 
         // Cold-start replay: if a native handler ran before this component
         // mounted, it stashed the route here. Consume and clear so a reload
@@ -189,7 +199,12 @@ function GlobalNavListener() {
             // sessionStorage unavailable — ignore.
         }
 
-        return () => window.removeEventListener('hallofood:navigate', handler);
+        return () => {
+            window.removeEventListener('hallofood:navigate', handler);
+            if (typeof navigator !== 'undefined' && navigator.serviceWorker) {
+                navigator.serviceWorker.removeEventListener('message', swHandler);
+            }
+        };
     }, [navigate]);
     return null;
 }

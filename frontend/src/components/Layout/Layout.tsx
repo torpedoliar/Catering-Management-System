@@ -319,17 +319,15 @@ export default function Layout({ children }: LayoutProps) {
                                 )
                             ) : (
                                 <div
-                                    className={`flex items-center gap-2 px-2.5 py-1.5 mb-1.5 rounded-[8px] border text-[11px] font-bold tracking-[0.08em] uppercase ${
-                                        groupHasActive
-                                            ? 'bg-[rgba(245,158,11,0.12)] border-[rgba(245,158,11,0.28)] text-[#fbbf24]'
-                                            : 'bg-[rgba(255,255,255,0.05)] border-[rgba(255,255,255,0.08)] text-[#cbd5e1]'
-                                    }`}
+                                    className={`flex items-center gap-2 px-2.5 py-1.5 mb-1.5 rounded-[8px] border text-[11px] font-bold tracking-[0.08em] uppercase ${groupHasActive
+                                        ? 'bg-[rgba(245,158,11,0.12)] border-[rgba(245,158,11,0.28)] text-[#fbbf24]'
+                                        : 'bg-[rgba(255,255,255,0.05)] border-[rgba(255,255,255,0.08)] text-[#cbd5e1]'
+                                        }`}
                                 >
                                     <span
                                         aria-hidden="true"
-                                        className={`w-1 h-3 rounded-full flex-shrink-0 ${
-                                            groupHasActive ? 'bg-[#f59e0b]' : 'bg-[#64748b]'
-                                        }`}
+                                        className={`w-1 h-3 rounded-full flex-shrink-0 ${groupHasActive ? 'bg-[#f59e0b]' : 'bg-[#64748b]'
+                                            }`}
                                     />
                                     <span className="truncate">{group.label}</span>
                                 </div>
@@ -628,17 +626,15 @@ export default function Layout({ children }: LayoutProps) {
                     {isCheckinPage ? (
                         children
                     ) : (
-                        <AnimatePresence initial={false}>
-                            <motion.div
-                                key={location.pathname}
-                                className="w-full min-w-0"
-                                initial={{ opacity: 0, y: 8 }}
-                                animate={{ opacity: 1, y: 0 }}
-                                transition={{ duration: 0.18, ease: [0.2, 0.8, 0.2, 1] }}
-                            >
-                                {children}
-                            </motion.div>
-                        </AnimatePresence>
+                        <motion.div
+                            key={location.pathname}
+                            className="w-full min-w-0"
+                            initial={{ opacity: 0, y: 8 }}
+                            animate={{ opacity: 1, y: 0 }}
+                            transition={{ duration: 0.18, ease: [0.2, 0.8, 0.2, 1] }}
+                        >
+                            {children}
+                        </motion.div>
                     )}
                 </main>
             </div>

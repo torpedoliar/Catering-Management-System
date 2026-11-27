@@ -100,7 +100,7 @@ export default function HistoryPage() {
     const [counts, setCounts] = useState<Record<string, number>>({});
 
     const [selectedOrder, setSelectedOrder] = useState<Order | null>(null);
-    const deepLinkConsumed = useRef(false);
+    const lastConsumedIdRef = useRef<string | null>(null);
 
     // Modals
     const [showCancelModal, setShowCancelModal] = useState(false);
@@ -190,24 +190,25 @@ export default function HistoryPage() {
 
     // FE-NOTIF-NAV deep link support
     useEffect(() => {
-        if (deepLinkConsumed.current || !deepLinkOrderId || isLoading) return;
+        if (!deepLinkOrderId) return;
+        if (lastConsumedIdRef.current === deepLinkOrderId) return;
+        if (statusFilter !== '') {
+            setStatusFilter('');
+            setPage(1);
+            return;
+        }
+        if (isLoading) return;
         const match = orders.find((o) => o.id === deepLinkOrderId);
         if (match) {
             setSelectedOrder(match);
-            deepLinkConsumed.current = true;
+            lastConsumedIdRef.current = deepLinkOrderId;
             const next = new URLSearchParams(searchParams);
             next.delete('id');
             setSearchParams(next, { replace: true });
-        }
-    }, [deepLinkOrderId, isLoading, orders, searchParams, setSearchParams]);
-
-    useEffect(() => {
-        if (deepLinkConsumed.current || !deepLinkOrderId || isLoading) return;
-        const onPage = orders.some((o) => o.id === deepLinkOrderId);
-        if (!onPage && page < totalPages && page < 5) {
+        } else if (page < totalPages && page < 5) {
             setPage((p) => p + 1);
         }
-    }, [deepLinkOrderId, isLoading, orders, page, totalPages]);
+    }, [deepLinkOrderId, statusFilter, isLoading, orders, page, totalPages, searchParams, setSearchParams]);
 
     const isCancelLocked = (order: Order) => {
         const orderKey = formatOrderDate(order.orderDate);

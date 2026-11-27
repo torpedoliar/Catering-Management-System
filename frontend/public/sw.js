@@ -18,20 +18,24 @@ self.addEventListener('push', function(event) {
 self.addEventListener('notificationclick', function(event) {
   event.notification.close();
 
-  const urlToOpen = event.notification.data.url || '/';
+  const data = event.notification.data || {};
+  const baseUrl = data.url || '/';
+  const targetUrl =
+    data.relatedId && !baseUrl.includes('?id=')
+      ? baseUrl + (baseUrl.includes('?') ? '&' : '?') + 'id=' + encodeURIComponent(data.relatedId)
+      : baseUrl;
 
   event.waitUntil(
-    clients.matchAll({ type: 'window', includeUncontrolled: true }).then(windowClients => {
-      // Focus if already open
+    clients.matchAll({ type: 'window', includeUncontrolled: true }).then(function(windowClients) {
       for (let i = 0; i < windowClients.length; i++) {
         const client = windowClients[i];
-        if (client.url.includes(urlToOpen) && 'focus' in client) {
+        if ('focus' in client) {
+          client.postMessage({ type: 'hallofood:navigate', url: targetUrl });
           return client.focus();
         }
       }
-      // Open new window
       if (clients.openWindow) {
-        return clients.openWindow(urlToOpen);
+        return clients.openWindow(targetUrl);
       }
     })
   );

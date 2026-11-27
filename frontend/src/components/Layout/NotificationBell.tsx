@@ -160,7 +160,7 @@ export default function NotificationBell() {
                                         onClick={() => {
                                             if (!notif.isRead) markAsRead(notif.id);
                                             setIsOpen(false);
-                                            navigateToNotification(notif);
+                                            navigateToNotification(notif, user?.role);
                                         }}
                                         className={`w-full text-left flex gap-3 p-3.5 transition-colors cursor-pointer border-0 hover:bg-[#fafaf9] ${
                                             !notif.isRead ? 'bg-[#fffbeb]/60' : 'bg-[#fff]'

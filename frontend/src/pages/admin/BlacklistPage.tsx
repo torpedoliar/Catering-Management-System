@@ -61,7 +61,7 @@ export default function BlacklistPage() {
     // Deep-link `?id=<blacklistId>`
     const [searchParams, setSearchParams] = useSearchParams();
     const deepLinkId = searchParams.get('id');
-    const deepLinkConsumed = useRef(false);
+    const lastConsumedIdRef = useRef<string | null>(null);
 
     // Blacklist form state
     const [searchTerm, setSearchTerm] = useState('');
@@ -106,11 +106,11 @@ export default function BlacklistPage() {
     useSSERefresh(USER_EVENTS, loadBlacklists);
 
     useEffect(() => {
-        if (deepLinkConsumed.current || !deepLinkId || isLoading) return;
+        if (!deepLinkId || lastConsumedIdRef.current === deepLinkId || isLoading) return;
         const match = blacklists.find((b) => b.id === deepLinkId);
         if (match) {
             setDetailEntry(match);
-            deepLinkConsumed.current = true;
+            lastConsumedIdRef.current = deepLinkId;
             const next = new URLSearchParams(searchParams);
             next.delete('id');
             setSearchParams(next, { replace: true });
