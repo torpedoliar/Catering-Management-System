@@ -41,6 +41,43 @@ export default {
                 danger: '#ef4444',
                 warning: '#f59e0b',
                 info: '#3b82f6',
+                // Redesign v2 tokens (SPEC.md §2)
+                brand: {
+                    DEFAULT: '#f59e0b',
+                    strong: '#b45309',
+                    soft: '#fffbeb',
+                    tint: '#fef3c7',
+                },
+                sidebar: {
+                    DEFAULT: '#0f172a',
+                    text: '#cbd5e1',
+                    muted: '#94a3b8',
+                    label: '#64748b',
+                },
+                ink: '#1c1917',
+                muted: '#78716c',
+                line: {
+                    DEFAULT: '#e7e5e4',
+                    soft: '#f0efed',
+                    subtle: '#f5f5f4',
+                },
+                canvas: '#f7f7f5',
+                surface: {
+                    DEFAULT: '#ffffff',
+                    2: '#fafaf9',
+                },
+                semantic: {
+                    success: '#15803d',
+                    'success-bg': '#dcfce7',
+                    'success-text': '#166534',
+                    'info-bg': '#dbeafe',
+                    'info-text': '#1e40af',
+                    danger: '#b91c1c',
+                    'danger-bg': '#fee2e2',
+                    'danger-text': '#991b1b',
+                    'neutral-bg': '#f5f5f4',
+                    'neutral-text': '#57534e',
+                },
             },
             fontFamily: {
                 sans: ['Plus Jakarta Sans', '-apple-system', 'BlinkMacSystemFont', 'Segoe UI', 'Roboto', 'sans-serif'],

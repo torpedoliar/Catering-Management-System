@@ -1,8 +1,10 @@
 import { BrowserRouter, Routes, Route, Navigate, Outlet, useNavigate } from 'react-router-dom';
 import { lazy, Suspense, useEffect } from 'react';
-import { Toaster, useToasterStore, toast } from 'react-hot-toast';
+import { useToasterStore, toast } from 'react-hot-toast';
+import { MotionConfig } from 'framer-motion';
 import { AuthProvider, useAuth } from './contexts/AuthContext';
 import { SSEProvider } from './contexts/SSEContext';
+import { AppToaster } from './components/ui/toastStyle';
 
 // Eager loaded pages (need to be available immediately)
 import LoginPage from './pages/LoginPage';
@@ -137,7 +139,8 @@ function AppRoutes() {
                 </Route>
 
                 {/* Canteen Routes */}
-                <Route element={<ProtectedRoute roles={['CANTEEN', 'ADMIN']}><Suspense fallback={<div className="flex items-center justify-center h-screen"><div className="animate-spin rounded-full h-12 w-12 border-t-2 border-b-2 border-orange-500"></div></div>}><Outlet /></Suspense></ProtectedRoute>}>
+                <Route element={<ProtectedRoute roles={['CANTEEN', 'ADMIN']}><Suspense fallback={<div className="flex items-center justify-center h-screen"><div className="animate-spin rounded-full h-12 w-12 border-t-2 border-b-2 border-[#f59e0b]"></div></div>}><Outlet /></Suspense></ProtectedRoute>}>
+                    <Route path="/canteen" element={<Navigate to="/canteen/checkin" replace />} />
                     <Route path="/canteen/checkin" element={<CheckInPage />} />
                 </Route>
 
@@ -208,38 +211,18 @@ function ToastLimit() {
 
 export default function App() {
     return (
-        <BrowserRouter future={{ v7_startTransition: true, v7_relativeSplatPath: true }}>
-            <AuthProvider>
-                <SSEProvider>
-                    <GlobalNavListener />
-                    <AppRoutes />
-                    <ToastLimit />
-                    <Toaster
-                        position="top-center"
-                        toastOptions={{
-                            duration: 4000,
-                            style: {
-                                background: '#1e293b',
-                                color: '#f1f5f9',
-                                border: '1px solid rgba(100, 116, 139, 0.3)',
-                            },
-                            success: {
-                                iconTheme: {
-                                    primary: '#22c55e',
-                                    secondary: '#f1f5f9',
-                                },
-                            },
-                            error: {
-                                iconTheme: {
-                                    primary: '#ef4444',
-                                    secondary: '#f1f5f9',
-                                },
-                            },
-                        }}
-                    />
-                    <AnnouncementPopup />
-                </SSEProvider>
-            </AuthProvider>
-        </BrowserRouter>
+        <MotionConfig reducedMotion="user">
+            <BrowserRouter future={{ v7_startTransition: true, v7_relativeSplatPath: true }}>
+                <AuthProvider>
+                    <SSEProvider>
+                        <GlobalNavListener />
+                        <AppRoutes />
+                        <ToastLimit />
+                        <AppToaster />
+                        <AnnouncementPopup />
+                    </SSEProvider>
+                </AuthProvider>
+            </BrowserRouter>
+        </MotionConfig>
     );
 }
