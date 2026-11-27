@@ -195,7 +195,7 @@ export default function VendorDashboardPage() {
 
     if (isLoading && !data) {
         return (
-            <div className="max-w-[1240px] space-y-4">
+            <div className="w-full space-y-4">
                 <SkeletonCard lines={2} />
                 <div className="grid grid-cols-2 md:grid-cols-4 gap-3.5">
                     <SkeletonCard lines={2} />
@@ -242,7 +242,7 @@ export default function VendorDashboardPage() {
     const footerGrandTotal = data ? data.dailyData.reduce((sum, day) => sum + getRowTotal(day), 0) : 0;
 
     return (
-        <div className="max-w-[1240px] w-full flex flex-col gap-[18px]">
+        <div className="w-full flex flex-col gap-[18px]">
             <PageHeader
                 title="Rekap order makanan"
                 subtitle={

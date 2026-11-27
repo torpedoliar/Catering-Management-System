@@ -66,7 +66,7 @@ export default function UpdatePage() {
 
     if (isLoading) {
         return (
-            <div className="space-y-4 max-w-4xl">
+            <div className="space-y-4 w-full">
                 <Skeleton className="h-9 w-56" />
                 <Skeleton className="h-36 w-full" />
                 <Skeleton className="h-36 w-full" />
@@ -75,7 +75,7 @@ export default function UpdatePage() {
     }
 
     return (
-        <div className="space-y-4 max-w-4xl">
+        <div className="space-y-4 w-full">
             <PageHeader
                 title="Pembaruan sistem"
                 subtitle="Informasi versi aplikasi saat ini dan panduan update"

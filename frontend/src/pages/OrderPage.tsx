@@ -439,7 +439,7 @@ export default function OrderPage() {
 
     if (isLoading) {
         return (
-            <div className="max-w-[1240px] space-y-4">
+            <div className="w-full space-y-4">
                 <SkeletonCard lines={3} />
                 <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
                     <div className="lg:col-span-2 space-y-4">
@@ -454,7 +454,7 @@ export default function OrderPage() {
 
     if (bulkResult) {
         return (
-            <div className="max-w-[820px] space-y-5">
+            <div className="w-full space-y-5">
                 <PageHeader
                     title="Hasil pemesanan"
                     subtitle={`${bulkResult.summary.successCount} berhasil, ${bulkResult.summary.failedCount} gagal`}
@@ -522,7 +522,7 @@ export default function OrderPage() {
     }
 
     return (
-        <div className="max-w-[1240px] w-full">
+        <div className="w-full">
             {/* MOBILE HEADER BANNER (< 768px) — PesanMobile.dc.html */}
             <div className="md:hidden -mx-4 -mt-4 mb-4 bg-[#0f172a] text-[#fff] px-[18px] pt-[18px] pb-[22px]">
                 <div className="flex items-center justify-between">
@@ -888,7 +888,7 @@ export default function OrderPage() {
                 </div>
 
                 {/* Desktop Right Summary Card */}
-                <aside className="hidden md:flex flex-[1_1_300px] max-w-[360px] w-full bg-[#fff] border border-[#e7e5e4] rounded-[14px] p-5 flex-col gap-3.5 sticky top-20">
+                <aside className="hidden md:flex flex-[1_1_300px] md:max-w-[360px] xl:max-w-[400px] w-full bg-[#fff] border border-[#e7e5e4] rounded-[14px] p-5 flex-col gap-3.5 sticky top-20">
                     <h2 className="m-0 text-[15px] font-bold text-[#1c1917]">Ringkasan pesanan</h2>
                     <dl className="m-0 grid grid-cols-[auto_1fr] gap-x-3 gap-y-2.5 text-[13px]">
                         <dt className="text-[#78716c]">Tanggal</dt>

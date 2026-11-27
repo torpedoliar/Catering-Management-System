@@ -352,7 +352,7 @@ export default function SettingsPage() {
     };
 
     return (
-        <div className="max-w-[960px] w-full space-y-[18px]">
+        <div className="w-full space-y-[18px]">
             <PageHeader
                 title="Pengaturan"
                 subtitle={isAdmin ? 'Kelola akun dan konfigurasi sistem' : 'Kelola informasi akun dan keamanan Anda'}

@@ -108,8 +108,9 @@ export default function TimeSettingsPage() {
             setSettings(response.data);
             toast.success('Pengaturan NTP disimpan');
             fetchData();
-        } catch (error) {
-            toast.error((error as { response?: { data?: { error?: string } } })?.response?.data?.error || 'Gagal menyimpan pengaturan');
+        } catch (error: unknown) {
+            const err = error as { response?: { data?: { error?: string } } };
+            toast.error(err.response?.data?.error || 'Gagal menyimpan pengaturan');
         } finally {
             setSaving(false);
         }
@@ -135,7 +136,7 @@ export default function TimeSettingsPage() {
 
     if (loading) {
         return (
-            <div className="space-y-4 max-w-4xl">
+            <div className="space-y-4 w-full">
                 <Skeleton className="h-9 w-64" />
                 <Skeleton className="h-32 w-full" />
                 <Skeleton className="h-64 w-full" />
@@ -144,7 +145,7 @@ export default function TimeSettingsPage() {
     }
 
     return (
-        <div className="space-y-4 max-w-4xl">
+        <div className="space-y-4 w-full">
             <PageHeader
                 title="Pengaturan waktu & NTP"
                 subtitle="Sinkronisasi jam server catering dengan NTP untuk validasi cutoff & check-in"
@@ -218,14 +219,12 @@ export default function TimeSettingsPage() {
                             aria-checked={Boolean(settings?.ntpEnabled)}
                             disabled={saving}
                             onClick={() => updateSettings({ ntpEnabled: !settings?.ntpEnabled })}
-                            className={`relative inline-flex h-6 w-11 items-center rounded-full border-0 cursor-pointer transition-colors disabled:opacity-50 ${
-                                settings?.ntpEnabled ? 'bg-[#16a34a]' : 'bg-[#d6d3d1]'
-                            }`}
+                            className={`relative inline-flex h-6 w-11 items-center rounded-full border-0 cursor-pointer transition-colors disabled:opacity-50 ${settings?.ntpEnabled ? 'bg-[#16a34a]' : 'bg-[#d6d3d1]'
+                                }`}
                         >
                             <span
-                                className={`inline-block h-4 w-4 rounded-full bg-[#fff] transition-transform ${
-                                    settings?.ntpEnabled ? 'translate-x-6' : 'translate-x-1'
-                                }`}
+                                className={`inline-block h-4 w-4 rounded-full bg-[#fff] transition-transform ${settings?.ntpEnabled ? 'translate-x-6' : 'translate-x-1'
+                                    }`}
                             />
                         </button>
                     </div>

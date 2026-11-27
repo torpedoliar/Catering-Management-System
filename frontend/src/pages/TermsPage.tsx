@@ -55,7 +55,7 @@ export default function TermsPage() {
 
     if (isLoading) {
         return (
-            <div className="max-w-[960px] space-y-4">
+            <div className="w-full space-y-4">
                 <SkeletonCard lines={3} />
                 <SkeletonCard lines={4} />
             </div>
@@ -63,7 +63,7 @@ export default function TermsPage() {
     }
 
     return (
-        <div className="max-w-[960px] w-full space-y-[18px]">
+        <div className="w-full space-y-[18px]">
             <PageHeader
                 title="Syarat & Ketentuan"
                 subtitle="Kebijakan penggunaan sistem katering"

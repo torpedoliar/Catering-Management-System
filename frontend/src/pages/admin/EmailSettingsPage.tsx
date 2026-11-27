@@ -54,8 +54,9 @@ export default function EmailSettingsPage() {
         try {
             await api.put('/api/email/settings', settings);
             toast.success('Pengaturan email disimpan');
-        } catch (error) {
-            toast.error((error as { response?: { data?: { error?: string } } })?.response?.data?.error || 'Gagal menyimpan pengaturan');
+        } catch (error: unknown) {
+            const err = error as { response?: { data?: { error?: string } } };
+            toast.error(err.response?.data?.error || 'Gagal menyimpan pengaturan');
         } finally {
             setIsSaving(false);
         }
@@ -66,8 +67,9 @@ export default function EmailSettingsPage() {
         try {
             await api.post('/api/email/test-connection');
             toast.success('Koneksi SMTP berhasil');
-        } catch (error) {
-            toast.error((error as { response?: { data?: { error?: string } } })?.response?.data?.error || 'Gagal terhubung ke SMTP');
+        } catch (error: unknown) {
+            const err = error as { response?: { data?: { error?: string } } };
+            toast.error(err.response?.data?.error || 'Gagal terhubung ke SMTP');
         } finally {
             setIsTesting(false);
         }
@@ -82,8 +84,9 @@ export default function EmailSettingsPage() {
         try {
             await api.post('/api/email/send-test', { to: testEmail });
             toast.success(`Email uji dikirim ke ${testEmail}`);
-        } catch (error) {
-            toast.error((error as { response?: { data?: { error?: string } } })?.response?.data?.error || 'Gagal mengirim email uji');
+        } catch (error: unknown) {
+            const err = error as { response?: { data?: { error?: string } } };
+            toast.error(err.response?.data?.error || 'Gagal mengirim email uji');
         } finally {
             setIsTesting(false);
         }
@@ -91,7 +94,7 @@ export default function EmailSettingsPage() {
 
     if (isLoading) {
         return (
-            <div className="space-y-4 max-w-4xl">
+            <div className="space-y-4 w-full">
                 <Skeleton className="h-9 w-56" />
                 <Skeleton className="h-24 w-full" />
                 <Skeleton className="h-64 w-full" />
@@ -100,7 +103,7 @@ export default function EmailSettingsPage() {
     }
 
     return (
-        <div className="space-y-4 max-w-4xl">
+        <div className="space-y-4 w-full">
             <PageHeader
                 title="Pengaturan email"
                 subtitle="Konfigurasi SMTP untuk notifikasi keluhan dan pesan ke admin"
@@ -130,14 +133,12 @@ export default function EmailSettingsPage() {
                         role="switch"
                         aria-checked={settings.emailEnabled}
                         onClick={() => setSettings((s) => ({ ...s, emailEnabled: !s.emailEnabled }))}
-                        className={`relative inline-flex h-6 w-11 items-center rounded-full border-0 cursor-pointer transition-colors ${
-                            settings.emailEnabled ? 'bg-[#16a34a]' : 'bg-[#d6d3d1]'
-                        }`}
+                        className={`relative inline-flex h-6 w-11 items-center rounded-full border-0 cursor-pointer transition-colors ${settings.emailEnabled ? 'bg-[#16a34a]' : 'bg-[#d6d3d1]'
+                            }`}
                     >
                         <span
-                            className={`inline-block h-4 w-4 rounded-full bg-[#fff] transition-transform ${
-                                settings.emailEnabled ? 'translate-x-6' : 'translate-x-1'
-                            }`}
+                            className={`inline-block h-4 w-4 rounded-full bg-[#fff] transition-transform ${settings.emailEnabled ? 'translate-x-6' : 'translate-x-1'
+                                }`}
                         />
                     </button>
                 </div>

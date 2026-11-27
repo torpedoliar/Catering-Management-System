@@ -55,7 +55,7 @@ export default function ExportPage() {
     };
 
     return (
-        <div className="space-y-4 max-w-4xl">
+        <div className="space-y-4 w-full">
             <PageHeader
                 title="Ekspor transaksi"
                 subtitle="Unduh riwayat pemesanan makanan dalam format Excel (.xlsx)"

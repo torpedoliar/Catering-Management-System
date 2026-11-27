@@ -132,7 +132,7 @@ export default function VendorPickupStatsPage() {
     useSSERefresh(ORDER_EVENTS, loadData);
 
     return (
-        <div className="max-w-[1240px] w-full space-y-[18px]">
+        <div className="w-full space-y-[18px]">
             <PageHeader
                 title="Statistik pengambilan"
                 subtitle="Pemantauan pengambilan makanan per jam istirahat"

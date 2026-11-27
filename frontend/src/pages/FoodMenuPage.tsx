@@ -238,7 +238,7 @@ export default function FoodMenuPage() {
 
     if (loading && !weekData) {
         return (
-            <div className="max-w-[1080px] space-y-4">
+            <div className="w-full space-y-4">
                 <SkeletonCard lines={2} />
                 <SkeletonCard lines={4} />
                 <SkeletonCard lines={4} />
@@ -247,7 +247,7 @@ export default function FoodMenuPage() {
     }
 
     return (
-        <div className="max-w-[1080px] w-full space-y-[18px]">
+        <div className="w-full space-y-[18px]">
             <PageHeader
                 title="Lihat menu"
                 subtitle={

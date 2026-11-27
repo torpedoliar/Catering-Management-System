@@ -237,7 +237,7 @@ export default function HistoryPage() {
     ];
 
     return (
-        <div className="max-w-[1080px] w-full flex flex-col gap-[18px]">
+        <div className="w-full flex flex-col gap-[18px]">
             <PageHeader
                 title="Riwayat pesanan"
                 subtitle={`${(counts[''] ?? total).toLocaleString('id-ID')} pesanan`}

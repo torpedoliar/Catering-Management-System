@@ -84,8 +84,9 @@ export default function BrandingSettingsPage() {
         try {
             const res = await api.post(url, fd);
             onSuccess(res.data);
-        } catch (error) {
-            toast.error((error as { response?: { data?: { error?: string } } })?.response?.data?.error || `Gagal mengunggah ${field}`);
+        } catch (error: unknown) {
+            const err = error as { response?: { data?: { error?: string } } };
+            toast.error(err.response?.data?.error || `Gagal mengunggah ${field}`);
         }
     };
 
@@ -101,8 +102,9 @@ export default function BrandingSettingsPage() {
             );
             document.title = settings.appName;
             toast.success('Nama aplikasi disimpan');
-        } catch (error) {
-            toast.error((error as { response?: { data?: { error?: string } } })?.response?.data?.error || 'Gagal menyimpan');
+        } catch (error: unknown) {
+            const err = error as { response?: { data?: { error?: string } } };
+            toast.error(err.response?.data?.error || 'Gagal menyimpan');
         } finally {
             setIsSaving(false);
         }
@@ -110,13 +112,13 @@ export default function BrandingSettingsPage() {
 
     const hasTextChanges = Boolean(
         originalSettings &&
-            (settings.appName !== originalSettings.appName ||
-                settings.appShortName !== originalSettings.appShortName)
+        (settings.appName !== originalSettings.appName ||
+            settings.appShortName !== originalSettings.appShortName)
     );
 
     if (isLoading) {
         return (
-            <div className="space-y-4 max-w-4xl">
+            <div className="space-y-4 w-full">
                 <Skeleton className="h-9 w-56" />
                 <Skeleton className="h-36 w-full" />
                 <Skeleton className="h-44 w-full" />
@@ -125,7 +127,7 @@ export default function BrandingSettingsPage() {
     }
 
     return (
-        <div className="space-y-4 max-w-4xl">
+        <div className="space-y-4 w-full">
             <PageHeader
                 title="Branding aplikasi"
                 subtitle="Atur nama aplikasi, logo sidebar, favicon browser, dan latar halaman login"

@@ -120,7 +120,7 @@ export default function CanteenDashboardPage() {
 
     if (loading && !data) {
         return (
-            <div className="max-w-[1240px] space-y-4">
+            <div className="w-full space-y-4">
                 <SkeletonCard lines={4} />
                 <div className="grid grid-cols-1 lg:grid-cols-[1.5fr_1fr] gap-3.5">
                     <SkeletonCard lines={4} />
@@ -131,7 +131,7 @@ export default function CanteenDashboardPage() {
     }
 
     return (
-        <div className="max-w-[1240px] w-full flex flex-col gap-[18px]">
+        <div className="w-full flex flex-col gap-[18px]">
             {/* Canteen selector bar */}
             <div className="flex flex-wrap items-center justify-between gap-3">
                 <label className="inline-flex items-center gap-2 text-[13px] text-[#78716c]">
