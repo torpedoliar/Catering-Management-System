@@ -216,7 +216,7 @@ export default function Layout({ children }: LayoutProps) {
                         setPendingMessages(res.data?.pagination?.total || 0);
                     }
                 })
-                .catch(() => {});
+                .catch(() => { });
         };
         loadPending();
         return () => {
@@ -228,7 +228,7 @@ export default function Layout({ children }: LayoutProps) {
         if (role !== 'ADMIN') return;
         api.get('/api/messages?type=APPEAL&status=PENDING&limit=1')
             .then((res) => setPendingMessages(res.data?.pagination?.total || 0))
-            .catch(() => {});
+            .catch(() => { });
     });
 
     const navGroups = getVisibleGroupsForRole(role);
@@ -297,67 +297,91 @@ export default function Layout({ children }: LayoutProps) {
                 className={`flex-1 overflow-y-auto overflow-x-hidden ${railMode ? 'flex flex-col items-center gap-1.5 w-full px-2' : 'space-y-1'
                     }`}
             >
-                {navGroups.map((group, gIdx) => (
-                    <div key={group.id} className={railMode ? 'flex flex-col items-center gap-1.5 w-full' : ''}>
-                        {railMode ? (
-                            gIdx > 0 && (
+                {navGroups.map((group, gIdx) => {
+                    const groupHasActive = group.items.some((item) => isRouteActive(item.path));
+                    return (
+                        <div
+                            key={group.id}
+                            className={
+                                railMode
+                                    ? 'flex flex-col items-center gap-1.5 w-full'
+                                    : gIdx > 0
+                                        ? 'mt-3 pt-3 border-t border-[rgba(255,255,255,0.10)] space-y-0.5'
+                                        : 'mt-0.5 space-y-0.5'
+                            }
+                        >
+                            {railMode ? (
+                                gIdx > 0 && (
+                                    <div
+                                        aria-hidden="true"
+                                        className="w-8 h-px bg-[rgba(255,255,255,0.16)] my-1.5"
+                                    />
+                                )
+                            ) : (
                                 <div
-                                    aria-hidden="true"
-                                    className="w-7 h-px bg-[rgba(255,255,255,0.08)] my-1"
-                                />
-                            )
-                        ) : (
-                            <div className="px-2.5 pt-3.5 pb-1.5 text-[11px] font-bold tracking-[0.08em] text-[#64748b] uppercase first:pt-1">
-                                {group.label}
-                            </div>
-                        )}
+                                    className={`flex items-center gap-2 px-2.5 py-1.5 mb-1.5 rounded-[8px] border text-[11px] font-bold tracking-[0.08em] uppercase ${
+                                        groupHasActive
+                                            ? 'bg-[rgba(245,158,11,0.12)] border-[rgba(245,158,11,0.28)] text-[#fbbf24]'
+                                            : 'bg-[rgba(255,255,255,0.05)] border-[rgba(255,255,255,0.08)] text-[#cbd5e1]'
+                                    }`}
+                                >
+                                    <span
+                                        aria-hidden="true"
+                                        className={`w-1 h-3 rounded-full flex-shrink-0 ${
+                                            groupHasActive ? 'bg-[#f59e0b]' : 'bg-[#64748b]'
+                                        }`}
+                                    />
+                                    <span className="truncate">{group.label}</span>
+                                </div>
+                            )}
 
-                        {group.items.map((item) => {
-                            const Icon = item.icon;
-                            const active = isRouteActive(item.path);
-                            if (railMode) {
+                            {group.items.map((item) => {
+                                const Icon = item.icon;
+                                const active = isRouteActive(item.path);
+                                if (railMode) {
+                                    return (
+                                        <Link
+                                            key={item.path}
+                                            to={item.path}
+                                            aria-label={item.label}
+                                            title={item.label}
+                                            className={`w-11 h-11 rounded-[10px] flex items-center justify-center no-underline transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#f59e0b] ${active
+                                                ? 'bg-[rgba(245,158,11,0.16)] text-[#fbbf24]'
+                                                : 'text-[#94a3b8] hover:bg-[rgba(255,255,255,0.06)] hover:text-[#fff]'
+                                                }`}
+                                        >
+                                            <Icon className="w-5 h-5" strokeWidth={1.8} aria-hidden="true" />
+                                        </Link>
+                                    );
+                                }
+
                                 return (
                                     <Link
                                         key={item.path}
                                         to={item.path}
-                                        aria-label={item.label}
-                                        title={item.label}
-                                        className={`w-11 h-11 rounded-[10px] flex items-center justify-center no-underline transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#f59e0b] ${active
-                                            ? 'bg-[rgba(245,158,11,0.16)] text-[#fbbf24]'
-                                            : 'text-[#94a3b8] hover:bg-[rgba(255,255,255,0.06)] hover:text-[#fff]'
+                                        onClick={() => isMobileDrawer && setDrawerOpen(false)}
+                                        className={`flex items-center gap-2.5 px-2.5 py-[9px] rounded-[9px] text-[13.5px] no-underline transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#f59e0b] ${active
+                                            ? 'bg-[rgba(245,158,11,0.14)] text-[#fbbf24] font-bold'
+                                            : 'text-[#cbd5e1] font-medium hover:bg-[rgba(255,255,255,0.06)] hover:text-[#fff]'
                                             }`}
                                     >
-                                        <Icon className="w-5 h-5" strokeWidth={1.8} aria-hidden="true" />
+                                        <Icon
+                                            className="w-[18px] h-[18px] flex-shrink-0"
+                                            strokeWidth={1.8}
+                                            aria-hidden="true"
+                                        />
+                                        <span className="flex-1 truncate">{item.label}</span>
+                                        {item.badgeKey === 'pendingMessages' && pendingMessages > 0 && (
+                                            <span className="px-1.5 py-0.5 rounded-full text-[11px] font-bold bg-[#b45309] text-[#fff] tabular-nums">
+                                                {pendingMessages > 99 ? '99+' : pendingMessages}
+                                            </span>
+                                        )}
                                     </Link>
                                 );
-                            }
-
-                            return (
-                                <Link
-                                    key={item.path}
-                                    to={item.path}
-                                    onClick={() => isMobileDrawer && setDrawerOpen(false)}
-                                    className={`flex items-center gap-2.5 px-2.5 py-[9px] rounded-[9px] text-[13.5px] no-underline transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#f59e0b] ${active
-                                        ? 'bg-[rgba(245,158,11,0.14)] text-[#fbbf24] font-bold'
-                                        : 'text-[#cbd5e1] font-medium hover:bg-[rgba(255,255,255,0.06)] hover:text-[#fff]'
-                                        }`}
-                                >
-                                    <Icon
-                                        className="w-[18px] h-[18px] flex-shrink-0"
-                                        strokeWidth={1.8}
-                                        aria-hidden="true"
-                                    />
-                                    <span className="flex-1 truncate">{item.label}</span>
-                                    {item.badgeKey === 'pendingMessages' && pendingMessages > 0 && (
-                                        <span className="px-1.5 py-0.5 rounded-full text-[11px] font-bold bg-[#b45309] text-[#fff] tabular-nums">
-                                            {pendingMessages > 99 ? '99+' : pendingMessages}
-                                        </span>
-                                    )}
-                                </Link>
-                            );
-                        })}
-                    </div>
-                ))}
+                            })}
+                        </div>
+                    );
+                })}
             </nav>
 
             {/* Footer */}
