@@ -8,6 +8,7 @@ import {
     HOLIDAY_EVENTS,
     SHIFT_EVENTS,
     SETTINGS_EVENTS,
+    MENU_EVENTS,
 } from '../contexts/SSEContext';
 import {
     AlertTriangle,
@@ -19,6 +20,8 @@ import {
     X,
     Ban,
     QrCode,
+    UtensilsCrossed,
+    Store,
 } from 'lucide-react';
 import toast from 'react-hot-toast';
 import { getLocalDateString, addDays, formatOrderDate } from '../utils/dateHelpers';
@@ -84,6 +87,26 @@ interface Canteen {
     }>;
 }
 
+interface DailyMenuPreview {
+    id: string;
+    menuMode: string;
+    shiftId: string | null;
+    shiftName: string | null;
+    notes: string | null;
+    menuItem: {
+        id: string;
+        name: string;
+        description: string | null;
+        imageUrl: string | null;
+        category: string | null;
+        vendor?: {
+            id: string;
+            name: string;
+            logoUrl?: string | null;
+        } | null;
+    };
+}
+
 const DOW_SHORT = ['Min', 'Sen', 'Sel', 'Rab', 'Kam', 'Jum', 'Sab'];
 const DOW_LONG = ['Minggu', 'Senin', 'Selasa', 'Rabu', 'Kamis', 'Jumat', 'Sabtu'];
 const MONTH_SHORT = ['Jan', 'Feb', 'Mar', 'Apr', 'Mei', 'Jun', 'Jul', 'Ags', 'Sep', 'Okt', 'Nov', 'Des'];
@@ -133,6 +156,10 @@ export default function OrderPage() {
     const [selectedDates, setSelectedDates] = useState<string[]>([]);
     const [availableDates, setAvailableDates] = useState<DateInfo[]>([]);
     const [bulkResult, setBulkResult] = useState<BulkOrderResult | null>(null);
+    const [menusByDate, setMenusByDate] = useState<Record<string, DailyMenuPreview[]>>({});
+    const [menusLoading, setMenusLoading] = useState(false);
+    const [previewMenuImage, setPreviewMenuImage] = useState<{ src: string; title: string } | null>(null);
+    const fetchedMenuDatesRef = useRef<Set<string>>(new Set());
 
     // Cancel & QR modals
     const [showCancelModal, setShowCancelModal] = useState(false);
@@ -244,6 +271,26 @@ export default function OrderPage() {
         }
     }, []);
 
+    const loadUpcomingMenus = useCallback(async () => {
+        setMenusLoading(true);
+        try {
+            const res = await api.get('/api/weekly-menu/upcoming?days=14');
+            const days: Array<{ date: string; menus: DailyMenuPreview[] }> = res.data?.days || [];
+            const nextMap: Record<string, DailyMenuPreview[]> = {};
+            const seen = new Set<string>();
+            for (const day of days) {
+                nextMap[day.date] = day.menus || [];
+                seen.add(day.date);
+            }
+            fetchedMenuDatesRef.current = seen;
+            setMenusByDate(nextMap);
+        } catch {
+            // Non-blocking: menu preview stays optional if endpoint fails
+        } finally {
+            setMenusLoading(false);
+        }
+    }, []);
+
     useEffect(() => {
         loadData();
         refreshUser();
@@ -253,12 +300,39 @@ export default function OrderPage() {
         loadBulkData();
     }, [loadBulkData]);
 
+    useEffect(() => {
+        loadUpcomingMenus();
+    }, [loadUpcomingMenus]);
+
+    useEffect(() => {
+        const missing = selectedDates.filter((d) => !fetchedMenuDatesRef.current.has(d));
+        if (missing.length === 0) return;
+        missing.forEach((d) => fetchedMenuDatesRef.current.add(d));
+        Promise.all(
+            missing.map((d) =>
+                api
+                    .get(`/api/weekly-menu/day?date=${encodeURIComponent(d)}`)
+                    .then((res) => ({ date: d, menus: (res.data?.menus || []) as DailyMenuPreview[] }))
+                    .catch(() => ({ date: d, menus: [] as DailyMenuPreview[] }))
+            )
+        ).then((results) => {
+            setMenusByDate((prev) => {
+                const updated = { ...prev };
+                for (const item of results) {
+                    updated[item.date] = item.menus;
+                }
+                return updated;
+            });
+        });
+    }, [selectedDates]);
+
     const handleSSERefresh = useCallback(() => {
         loadData();
         loadBulkData();
     }, [loadData, loadBulkData]);
 
     useSSERefresh([...ORDER_EVENTS, ...HOLIDAY_EVENTS, ...SHIFT_EVENTS, ...SETTINGS_EVENTS], handleSSERefresh);
+    useSSERefresh(MENU_EVENTS, loadUpcomingMenus);
     useSSERefresh(USER_EVENTS, () => {
         refreshUser();
         loadData();
@@ -885,6 +959,120 @@ export default function OrderPage() {
                             </div>
                         </Card>
                     )}
+
+                    {/* Auto Menu Preview for Selected Days */}
+                    {selectedDates.length > 0 && (
+                        <Card className="p-4 md:p-5">
+                            <div className="flex flex-wrap items-center justify-between gap-2 mb-3.5">
+                                <div>
+                                    <h2 className="m-0 text-[15px] font-bold text-[#1c1917] flex items-center gap-2">
+                                        <UtensilsCrossed className="w-4 h-4 text-[#b45309]" aria-hidden="true" />
+                                        <span>Menu pada hari dipilih</span>
+                                    </h2>
+                                    <p className="m-0 mt-0.5 text-[12.5px] text-[#78716c]">
+                                        Menampilkan jadwal menu untuk {selectedDates.length} hari yang dipilih
+                                        {activeShiftObj ? ` · ${activeShiftObj.name}` : ''}
+                                    </p>
+                                </div>
+                                <Badge variant="warning">{selectedDates.length} hari</Badge>
+                            </div>
+
+                            {menusLoading && Object.keys(menusByDate).length === 0 ? (
+                                <SkeletonCard lines={3} />
+                            ) : (
+                                <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-3">
+                                    {[...selectedDates].sort().map((dateStr) => {
+                                        const p = parseDateParts(dateStr);
+                                        const rawMenus = menusByDate[dateStr] || [];
+                                        const dayMenus = selectedShift
+                                            ? rawMenus.filter((m) => m.shiftId === selectedShift || !m.shiftId)
+                                            : rawMenus;
+
+                                        return (
+                                            <div
+                                                key={dateStr}
+                                                className="border border-[#e7e5e4] rounded-[12px] bg-[#fafaf9] p-3 flex flex-col gap-2.5"
+                                            >
+                                                <div className="flex items-center justify-between gap-2 pb-2 border-b border-[#e7e5e4]">
+                                                    <span className="text-[13px] font-bold text-[#1c1917]">
+                                                        {p.dayName}, {p.formatted}
+                                                    </span>
+                                                    <span className="text-[11px] font-semibold text-[#78716c] tabular-nums">
+                                                        {dayMenus.length} menu
+                                                    </span>
+                                                </div>
+
+                                                {dayMenus.length === 0 ? (
+                                                    <div className="py-4 text-center text-[12px] text-[#78716c]">
+                                                        {rawMenus.length > 0 && activeShiftObj
+                                                            ? `Belum ada menu untuk ${activeShiftObj.name}`
+                                                            : 'Menu belum dijadwalkan untuk hari ini'}
+                                                    </div>
+                                                ) : (
+                                                    <div className="space-y-2">
+                                                        {dayMenus.map((m) => (
+                                                            <div
+                                                                key={m.id}
+                                                                className="flex items-start gap-2.5 p-2 rounded-[10px] bg-[#fff] border border-[#f0efed]"
+                                                            >
+                                                                {m.menuItem.imageUrl ? (
+                                                                    <button
+                                                                        type="button"
+                                                                        onClick={() =>
+                                                                            setPreviewMenuImage({
+                                                                                src: m.menuItem.imageUrl!,
+                                                                                title: m.menuItem.name,
+                                                                            })
+                                                                        }
+                                                                        aria-label={`Lihat foto ${m.menuItem.name}`}
+                                                                        className="w-12 h-12 rounded-[8px] overflow-hidden flex-shrink-0 border border-[#e7e5e4] p-0 cursor-pointer bg-[#fafaf9]"
+                                                                    >
+                                                                        <img
+                                                                            src={m.menuItem.imageUrl}
+                                                                            alt={m.menuItem.name}
+                                                                            className="w-full h-full object-cover"
+                                                                        />
+                                                                    </button>
+                                                                ) : (
+                                                                    <div className="w-12 h-12 rounded-[8px] bg-[#fffbeb] border border-[#fde68a] text-[#b45309] flex items-center justify-center flex-shrink-0">
+                                                                        <UtensilsCrossed className="w-4 h-4" aria-hidden="true" />
+                                                                    </div>
+                                                                )}
+
+                                                                <div className="flex-1 min-w-0">
+                                                                    <div className="text-[13px] font-bold text-[#1c1917] leading-snug">
+                                                                        {m.menuItem.name}
+                                                                    </div>
+                                                                    {(m.menuItem.description || m.notes) && (
+                                                                        <div className="text-[11.5px] text-[#78716c] mt-0.5 line-clamp-2">
+                                                                            {m.menuItem.description || m.notes}
+                                                                        </div>
+                                                                    )}
+                                                                    <div className="flex flex-wrap items-center gap-1.5 mt-1.5">
+                                                                        {m.menuItem.vendor?.name && (
+                                                                            <span className="inline-flex items-center gap-1 text-[11px] font-medium text-[#57534e]">
+                                                                                <Store className="w-3 h-3 text-[#a8a29e]" aria-hidden="true" />
+                                                                                {m.menuItem.vendor.name}
+                                                                            </span>
+                                                                        )}
+                                                                        {m.shiftName && (
+                                                                            <span className="px-1.5 py-0.5 rounded bg-[#f5f5f4] text-[#57534e] text-[10.5px] font-semibold">
+                                                                                {m.shiftName}
+                                                                            </span>
+                                                                        )}
+                                                                    </div>
+                                                                </div>
+                                                            </div>
+                                                        ))}
+                                                    </div>
+                                                )}
+                                            </div>
+                                        );
+                                    })}
+                                </div>
+                            )}
+                        </Card>
+                    )}
                 </div>
 
                 {/* Desktop Right Summary Card */}
@@ -1040,6 +1228,24 @@ export default function OrderPage() {
                     placeholder="Contoh: Ada rapat mendadak di luar kantor"
                     hint="Alasan ini dicatat dan dapat dilihat oleh admin."
                 />
+            </Modal>
+
+            {/* Menu Photo Preview Modal */}
+            <Modal
+                open={!!previewMenuImage}
+                onClose={() => setPreviewMenuImage(null)}
+                title={previewMenuImage?.title || 'Foto menu'}
+                size="md"
+            >
+                {previewMenuImage && (
+                    <div className="flex justify-center">
+                        <img
+                            src={previewMenuImage.src}
+                            alt={previewMenuImage.title}
+                            className="max-h-[70vh] w-auto rounded-[10px] object-contain"
+                        />
+                    </div>
+                )}
             </Modal>
         </div>
     );
